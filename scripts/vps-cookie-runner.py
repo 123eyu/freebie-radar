@@ -64,9 +64,11 @@ def normalize_cookies(raw_cookies, default_domain: str):
 def collect_zhihu(page, keywords):
     seen = {}
     for kw in keywords:
+        if len(seen) >= 45:
+            break
         url = "https://www.zhihu.com/search?type=content&q=" + urllib.parse.quote(str(kw))
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(3200)
+        page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        page.wait_for_timeout(2200)
         state = page.evaluate(
             """() => {
               const text = document.body?.innerText || '';
@@ -103,21 +105,22 @@ def collect_zhihu(page, keywords):
 def collect_xhs(page, keywords):
     seen = {}
     for kw in keywords:
+        if len(seen) >= 45:
+            break
         url = (
             "https://www.xiaohongshu.com/search_result?keyword="
             + urllib.parse.quote(str(kw))
             + "&source=web_search_result_notes"
         )
-        page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        page.wait_for_timeout(3500)
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(2500)
         try:
-            page.locator("text=最新").first.click(timeout=2000)
-            page.wait_for_timeout(1500)
+            page.locator("text=最新").first.click(timeout=1500)
+            page.wait_for_timeout(1000)
         except Exception:
             pass
-        for _ in range(2):
-            page.mouse.wheel(0, 1800)
-            page.wait_for_timeout(1100)
+        page.mouse.wheel(0, 1800)
+        page.wait_for_timeout(900)
         state = page.evaluate(
             """() => {
               const text = document.body?.innerText || '';
@@ -169,9 +172,11 @@ def collect_xiaoheihe(page, keywords):
     page.on("response", on_response)
     try:
         for kw in keywords:
+            if len(seen) >= 40:
+                break
             captured.clear()
-            page.goto(f"https://www.xiaoheihe.cn/app/bbs/home?t={int(time.time())}", wait_until="domcontentloaded", timeout=35000)
-            page.wait_for_timeout(3200)
+            page.goto(f"https://www.xiaoheihe.cn/app/bbs/home?t={int(time.time())}", wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2400)
             try:
                 page.fill(".el-input__inner", str(kw), timeout=8000)
                 page.press(".el-input__inner", "Enter")
@@ -261,11 +266,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_json(self, code: int, payload: dict):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self):
         if self.path == "/health":

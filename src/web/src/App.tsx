@@ -1735,7 +1735,8 @@ export function App() {
               runs={runs.data?.runs ?? []}
               sourceName={sourceName}
               onCollectSource={async (id) => {
-                notify("正在采集…");
+                const isCookieSite = id === "zhihu-search" || id === "xhs-search" || id === "xiaoheihe-search";
+                notify(isCookieSite ? "正在通过 VPS Cookie 采集（约 15-40 秒）…" : "正在采集…");
                 const res = await fetch(`/api/sources/${id}/collect`, { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as {
                   ok?: boolean;

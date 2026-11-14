@@ -3,7 +3,7 @@ import { all } from "../db.ts";
 import { BASE_SITE_KEYWORDS, getCookieSettings, siteKeyOfSource, type CookieSiteKey } from "../cookie-store.ts";
 import type { Collector, RawItem } from "./types.ts";
 
-function keywordsForSite(site: CookieSiteKey, maxKeywords = 10): string[] {
+function keywordsForSite(site: CookieSiteKey, maxKeywords = 4): string[] {
   const base = BASE_SITE_KEYWORDS[site];
   if (site === "xiaoheihe") return base;
   const extra = all<{ keyword: string }>("SELECT keyword FROM subscriptions ORDER BY keyword").map((r) => r.keyword.trim()).filter(Boolean);
@@ -66,7 +66,7 @@ export const cookieIngestCollector: Collector = {
         keywords,
         proxy: site === "xhs" && settings.xhsProxy ? settings.xhsProxy : "",
       }),
-      signal: AbortSignal.timeout(150_000),
+      signal: AbortSignal.timeout(240_000),
     });
 
     const data = (await res.json().catch(() => ({}))) as RunnerResponse;

@@ -352,7 +352,16 @@ export function OpsPanel({
   const [subTab, setSubTab] = useState<OpsTab>("sources");
   const [filterText, setFilterText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "error" | "disabled">("all");
-  const [runningId, setRunningId] = useState<string | null>(null);
+  const [runningIds, setRunningIds] = useState<string[]>([]);
+  const isRunning = (id: string) => runningIds.includes(id);
+  const runSourceWithLock = async (id: string) => {
+    setRunningIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    try {
+      await onCollectSource(id);
+    } finally {
+      setRunningIds((prev) => prev.filter((x) => x !== id));
+    }
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddRss, setShowAddRss] = useState(false);
   const [rssName, setRssName] = useState("");
@@ -787,22 +796,17 @@ export function OpsPanel({
                             </button>
                             <button
                               type="button"
-                              disabled={(!draft.trim() && !st?.configured) || cookieBusy !== null}
+                              disabled={(!draft.trim() && !st?.configured) || cookieBusy !== null || isRunning(site.sourceId)}
                               onClick={async () => {
                                 if (draft.trim()) {
                                   const ok = await saveCookiePatch({ cookies: { [site.key]: draft } }, `run-${site.key}`, site.key);
                                   if (!ok) return;
                                 }
-                                setRunningId(site.sourceId);
-                                try {
-                                  await onCollectSource(site.sourceId);
-                                } finally {
-                                  setRunningId(null);
-                                }
+                                await runSourceWithLock(site.sourceId);
                               }}
                               className="inline-flex h-7 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2.5 text-[11.5px] font-medium text-ink-800 hover:border-brand-border hover:text-brand disabled:opacity-40"
                             >
-                              {runningId === site.sourceId ? <Loader2 size={11} className="animate-spin" /> : <Play size={10} />}
+                              {isRunning(site.sourceId) ? <Loader2 size={11} className="animate-spin" /> : <Play size={10} />}
                               立即采集
                             </button>
                           </div>
@@ -1058,18 +1062,11 @@ export function OpsPanel({
                       ) : (
                         <button
                           type="button"
-                          disabled={runningId === s.id}
-                          onClick={async () => {
-                            setRunningId(s.id);
-                            try {
-                              await onCollectSource(s.id);
-                            } finally {
-                              setRunningId(null);
-                            }
-                          }}
+                          disabled={isRunning(s.id)}
+                          onClick={() => void runSourceWithLock(s.id)}
                           className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-2 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
                         >
-                          {runningId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                          {isRunning(s.id) ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
                           立即采集
                         </button>
                       )}
@@ -1209,18 +1206,11 @@ export function OpsPanel({
                             ) : (
                               <button
                                 type="button"
-                                disabled={runningId === s.id}
-                                onClick={async () => {
-                                  setRunningId(s.id);
-                                  try {
-                                    await onCollectSource(s.id);
-                                  } finally {
-                                    setRunningId(null);
-                                  }
-                                }}
+                                disabled={isRunning(s.id)}
+                                onClick={() => void runSourceWithLock(s.id)}
                                 className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
                               >
-                                {runningId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                                {isRunning(s.id) ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
                                 立即采集
                               </button>
                             )}
