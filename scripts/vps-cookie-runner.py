@@ -220,29 +220,37 @@ def collect_xhs(page, keywords):
             for it in state.get("items", []):
                 seen.setdefault(it["url"], it)
 
-            # 点开若干有潜力的笔记弹窗抓正文（不整页跳转，每条 ~1.3s），识别标题党/隐藏广告
+            # 按精确 note_id 点开若干有潜力的笔记弹窗抓正文（校验 URL/feed ID 严格对齐，防止错位）
             if detail_budget > 0:
-                covers = page.locator("section.note-item a.cover")
                 for it in state.get("items", []):
                     if detail_budget <= 0:
                         break
                     u = it["url"]
                     if seen[u].get("content") or CHATTER_RE.search(it["title"]):
                         continue
-                    nid_m = re.search(r"/explore/([0-9a-zA-Z]+)", u)
+                    nid_m = re.search(r"/(?:explore|search_result)/([0-9a-zA-Z]+)", u)
                     nid = nid_m.group(1) if nid_m else ""
+                    if not nid:
+                        continue
                     detail_budget -= 1
                     try:
-                        covers.nth(it["idx"]).click(timeout=2500)
-                        page.wait_for_timeout(1300)
-                        modal_desc = page.evaluate(
-                            """() => {
+                        link = page.locator(f'section.note-item a[href*="{nid}"]').first
+                        link.scroll_into_view_if_needed(timeout=1500)
+                        link.click(timeout=2500)
+                        for _ in range(10):
+                            if nid in feed_notes:
+                                break
+                            page.wait_for_timeout(200)
+                        modal_info = page.evaluate(
+                            """(nid) => {
+                              if (!location.href.includes(nid)) return '';
                               const el = document.querySelector('#detail-desc, .note-content .desc, .note-text');
                               return el ? el.innerText.trim() : '';
-                            }"""
+                            }""",
+                            nid,
                         )
-                        fn = feed_notes.get(nid) if nid else None
-                        full_desc = (fn.get("desc") if fn else "") or modal_desc or ""
+                        fn = feed_notes.get(nid)
+                        full_desc = (fn.get("desc") if fn else "") or modal_info or ""
                         if full_desc:
                             if fn and fn.get("tags"):
                                 tag_str = " ".join(f"#{t}" for t in fn["tags"][:8])
@@ -365,7 +373,9 @@ def collect_xiaoheihe(page, keywords):
                   return el ? el.innerText.trim() : '';
                 }"""
             )
-            cleaned = _clean_text(re.sub(r"^返回\s+.*?关注\s+", "", body or ""), 3500)
+            trimmed = re.sub(r"^返回[\s\S]*?Lv\.\d+[\s\S]*?关注\s*", "", body or "")
+            trimmed = re.sub(r"^返回\s+.*?关注\s+", "", trimmed)
+            cleaned = _clean_text(trimmed, 3500)
             if len(cleaned) > len(it.get("summary") or ""):
                 it["content"] = cleaned
                 it["summary"] = cleaned[:380]
