@@ -60,7 +60,7 @@ export const SITE_BY_SOURCE: Record<string, CookieSiteKey> = {
 export const BASE_SITE_KEYWORDS: Record<CookieSiteKey, string[]> = {
   zhihu: ["免费领取", "免费额度", "白嫖", "免费积分", "白嫖算力", "开发者福利"],
   xhs: ["免费领取", "白嫖", "免费会员", "白嫖额度", "免费积分", "免费算力", "开发者福利"],
-  xiaoheihe: ["免费领取", "Epic 喜加一"],
+  xiaoheihe: ["免费"],
 };
 
 export function siteKeyOfSource(sourceId: string): CookieSiteKey | null {

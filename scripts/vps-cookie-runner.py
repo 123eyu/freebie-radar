@@ -288,14 +288,21 @@ def collect_xhs(page, keywords):
 def collect_xiaoheihe(page, keywords):
     seen = {}
     captured = []
+    feed_captured = []
 
     def on_response(resp):
-        if "general/search" in resp.url and resp.request.method != "OPTIONS" and resp.status == 200:
+        if resp.request.method == "OPTIONS" or resp.status != 200:
+            return
+        if "general/search" in resp.url:
             try:
                 captured.append(resp.text())
             except Exception:
                 pass
-
+        elif "/bbs/app/feeds?" in resp.url:
+            try:
+                feed_captured.append(resp.text())
+            except Exception:
+                pass
     page.on("response", on_response)
     try:
         for kw in keywords:
@@ -350,6 +357,34 @@ def collect_xiaoheihe(page, keywords):
         except Exception:
             pass
 
+    if not seen and feed_captured:
+        for txt in list(feed_captured):
+            try:
+                parsed = json.loads(txt)
+                for n in (parsed.get("result") or {}).get("links") or []:
+                    if not isinstance(n, dict):
+                        continue
+                    linkid = str(n.get("linkid") or "").strip()
+                    title = re.sub(r"<[^>]+>", "", str(n.get("title") or "")).strip()
+                    if not linkid or not title or not re.search(r"免费|白嫖|喜加一|限免|领取|福利|优惠", title):
+                        continue
+                    summary = re.sub(r"<[^>]+>", "", str(n.get("description") or "")).strip()[:300]
+                    created_at = n.get("create_at")
+                    published_at = datetime.fromtimestamp(created_at, tz=timezone.utc).isoformat() if isinstance(created_at, (int, float)) and created_at > 0 else None
+                    seen.setdefault(
+                        linkid,
+                        {
+                            "externalId": linkid,
+                            "url": f"https://www.xiaoheihe.cn/app/bbs/link/{linkid}",
+                            "title": title,
+                            "summary": summary,
+                            "content": None,
+                            "publishedAt": published_at,
+                            "tags": ["xiaoheihe"],
+                        },
+                    )
+            except Exception:
+                pass
     if not seen:
         need_login = page.evaluate("() => /登录\\/注册/.test(document.body?.innerText || '') && !document.querySelector('.user-info, .avatar, .el-avatar')")
         if need_login:
