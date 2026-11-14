@@ -26,6 +26,10 @@ const OPENSOURCE_SOURCES = new Set([
 
 const DEAL_SOURCES = new Set([
   "rss-lowendbox",
+  "rss-lowendtalk",
+  "rss-lowendspirit",
+  "rss-vpsgo",
+  "rss-vpsxb",
   "rss-reddit-gamedeals",
   "rss-reddit-googleplay",
   "rss-9to5toys",
@@ -45,6 +49,8 @@ export const NEWS_SOURCES = new Set([
   "rss-rfi-cn",
   "rss-gnews-cn",
   "rss-gnews-world",
+  "rss-nikkei-cn",
+  "rss-voa-cn",
 ]);
 
 export function isAuthoritativeNewsSource(

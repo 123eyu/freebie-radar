@@ -130,7 +130,15 @@ export function groupOfSource(s: Source): SourceGroupKey {
     id === "rss-bbc-zh" ||
     id === "rss-dw-cn" ||
     id === "rss-rfi-cn" ||
+    id === "rss-nikkei-cn" ||
+    id === "rss-voa-cn" ||
     id === "rss-wallstreetcn" ||
+    id === "rss-qbitai" ||
+    id === "rss-leiphone" ||
+    id === "rss-tmtpost" ||
+    id === "rss-ifanr" ||
+    id === "rss-openai-blog" ||
+    id === "rss-cloudflare-blog" ||
     id === "rss-ithome" ||
     id === "rss-sspai" ||
     id === "rss-ruanyifeng" ||
@@ -144,6 +152,9 @@ export function groupOfSource(s: Source): SourceGroupKey {
     id.startsWith("linuxdo-") ||
     id.startsWith("v2ex-") ||
     id.includes("nodeseek") ||
+    id === "rss-deepflood" ||
+    id === "rss-nodeloc" ||
+    id === "rss-meta-appinn" ||
     id.endsWith("-search") ||
     id === "tg-cn-deals"
   ) {
@@ -165,7 +176,7 @@ export function groupOfSource(s: Source): SourceGroupKey {
     id.startsWith("github-") ||
     id === "openrouter-free" ||
     id === "bsky-plugins" ||
-    /shareware|tickcoupon|giveawayoftheday|ghxi|appinn|iplaysoft|iapps|apphookup|googleplay|freeebooks/i.test(
+    /shareware|tickcoupon|giveawayoftheday|ghxi|yxssp|freegroup|appinn|iplaysoft|iapps|apphookup|googleplay|freeebooks/i.test(
       id,
     )
   ) {
