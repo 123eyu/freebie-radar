@@ -2,7 +2,14 @@ import type { Hono } from "hono";
 import { all, get, run, type SqlValue } from "./db.ts";
 import { TitleDeduper } from "./enrich/dedup.ts";
 import { aiEnabled, config, pushEnabled } from "./config.ts";
-import { addCustomRssSource, ingestItems, markSourceFailure, runSource } from "./collectors/index.ts";
+import {
+  addCustomRssSource,
+  BUILTIN_SOURCE_IDS,
+  deleteCustomSource,
+  ingestItems,
+  markSourceFailure,
+  runSource,
+} from "./collectors/index.ts";
 import type { RawItem } from "./collectors/types.ts";
 import { lastDigests, runDaily, runWeekly } from "./digest.ts";
 import { buildHotReport, sourceQuality } from "./hot.ts";
@@ -676,6 +683,7 @@ export function registerApi(app: Hono) {
       sources: sourceRows.map((s) => ({
         ...s,
         enabled: s.enabled === 1,
+        builtIn: BUILTIN_SOURCE_IDS.has(String(s.id)),
         config: JSON.parse(String(s.config ?? "{}")),
         items: byId.get(String(s.id))?.n ?? 0,
         latest_item_at: byId.get(String(s.id))?.last_published ?? null,
@@ -684,11 +692,23 @@ export function registerApi(app: Hono) {
   });
 
   app.post("/api/sources", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { name?: string; url?: string; intervalSec?: number } | null;
+    const body = (await c.req.json().catch(() => null)) as {
+      name?: string;
+      url?: string;
+      intervalSec?: number;
+      kindHint?: string;
+      categoryHint?: string;
+    } | null;
     const name = (body?.name ?? "").trim();
     const url = (body?.url ?? "").trim();
     if (!name || !/^https?:\/\//i.test(url)) return c.json({ error: "名称与合法的 http(s) RSS 地址必填" }, 400);
-    const id = addCustomRssSource({ name, url, intervalSec: body?.intervalSec });
+    const id = addCustomRssSource({
+      name,
+      url,
+      intervalSec: body?.intervalSec,
+      kindHint: body?.kindHint,
+      categoryHint: body?.categoryHint,
+    });
     const summary = await runSource(id).catch((err) => ({
       sourceId: id,
       status: "failed" as const,
@@ -704,7 +724,14 @@ export function registerApi(app: Hono) {
 
   app.patch("/api/sources/:id", async (c) => {
     const id = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean; interval_sec?: number };
+    const existing = get<{ id: string; kind: string; config: string }>("SELECT id, kind, config FROM sources WHERE id = ?", id);
+    if (!existing) return c.json({ error: "source not found" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      enabled?: boolean;
+      interval_sec?: number;
+      name?: string;
+      config?: Record<string, unknown>;
+    };
     const sets: string[] = [];
     const params: SqlValue[] = [];
     if (typeof body.enabled === "boolean") {
@@ -715,9 +742,41 @@ export function registerApi(app: Hono) {
       sets.push("interval_sec = ?");
       params.push(Math.round(body.interval_sec));
     }
+    if (typeof body.name === "string") {
+      const nextName = body.name.trim();
+      if (!nextName || nextName.length > 80) return c.json({ error: "名称长度需在 1-80 字之间" }, 400);
+      sets.push("name = ?");
+      params.push(nextName);
+    }
+    if (body.config !== undefined) {
+      if (!body.config || typeof body.config !== "object" || Array.isArray(body.config)) {
+        return c.json({ error: "config 必须为 JSON 对象" }, 400);
+      }
+      if (existing.kind === "rss") {
+        const feeds = (body.config as { feeds?: unknown }).feeds;
+        if (!Array.isArray(feeds) || feeds.length === 0) {
+          return c.json({ error: "RSS 源 config.feeds 必须至少包含一条订阅地址" }, 400);
+        }
+        for (const f of feeds) {
+          const url = typeof (f as { url?: unknown })?.url === "string" ? (f as { url: string }).url.trim() : "";
+          if (!/^https?:\/\//i.test(url)) {
+            return c.json({ error: "RSS 订阅地址必须是合法的 http(s):// URL" }, 400);
+          }
+        }
+      }
+      sets.push("config = ?");
+      params.push(JSON.stringify(body.config));
+    }
     if (!sets.length) return c.json({ error: "nothing to update" }, 400);
     params.push(id);
     run(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`, ...params);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/api/sources/:id", (c) => {
+    const id = c.req.param("id");
+    const res = deleteCustomSource(id);
+    if (!res.ok) return c.json({ error: res.error }, 400);
     return c.json({ ok: true });
   });
 

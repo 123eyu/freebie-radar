@@ -480,7 +480,8 @@ function persist(
   tx(() => {
     for (let index = 0; index < items.length; index += 1) {
       const raw = items[index]!;
-      const e = enrichItem(raw, sourceId);
+      const srcHints = getSourceHints(sourceId);
+      const e = enrichItem(raw, sourceId, srcHints);
       if (!e) {
         skipped += 1;
         continue;
@@ -498,6 +499,7 @@ function persist(
             isFree: e.isFree,
             price: e.price,
             freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
+            kindHint: srcHints.kindHint,
           })
         : e.kind;
       const effectiveQuality =
@@ -785,20 +787,64 @@ export async function runAll(
   return out;
 }
 
-export function addCustomRssSource(input: { id?: string; name: string; url: string; intervalSec?: number }): string {
+export const BUILTIN_SOURCE_IDS = new Set(SEEDS.map((s) => s.id));
+
+export function getSourceHints(sourceId: string): { kindHint: string | null; categoryHint: string | null } {
+  const row = get<{ config: string }>("SELECT config FROM sources WHERE id = ?", sourceId);
+  if (!row?.config) return { kindHint: null, categoryHint: null };
+  try {
+    const cfg = JSON.parse(row.config) as { kindHint?: unknown; categoryHint?: unknown; feeds?: Array<{ categoryHint?: unknown }> };
+    const kindHint = typeof cfg.kindHint === "string" && cfg.kindHint.trim() ? cfg.kindHint.trim() : null;
+    const feedHint = Array.isArray(cfg.feeds) ? cfg.feeds.find((f) => typeof f?.categoryHint === "string")?.categoryHint : undefined;
+    const categoryHint =
+      typeof cfg.categoryHint === "string" && cfg.categoryHint.trim()
+        ? cfg.categoryHint.trim()
+        : typeof feedHint === "string" && feedHint.trim()
+          ? feedHint.trim()
+          : null;
+    return { kindHint, categoryHint };
+  } catch {
+    return { kindHint: null, categoryHint: null };
+  }
+}
+
+export function addCustomRssSource(input: {
+  id?: string;
+  name: string;
+  url: string;
+  intervalSec?: number;
+  kindHint?: string;
+  categoryHint?: string;
+}): string {
   const cleanUrl = input.url.trim();
   const slug = (input.id || input.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32);
   const id = slug.startsWith("rss-") ? slug : "rss-" + (slug || Date.now());
   const feedId = id.replace(/^rss-/, "");
+  const feed: Record<string, unknown> = { id: feedId, url: cleanUrl, limit: 30 };
+  if (input.categoryHint?.trim()) feed.categoryHint = input.categoryHint.trim();
+  const cfg: Record<string, unknown> = { feeds: [feed] };
+  if (input.kindHint?.trim()) cfg.kindHint = input.kindHint.trim();
+  if (input.categoryHint?.trim()) cfg.categoryHint = input.categoryHint.trim();
   run(
     `INSERT INTO sources (id, name, kind, enabled, config, interval_sec, created_at)
      VALUES (?, ?, 'rss', 1, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config, interval_sec = excluded.interval_sec, enabled = 1`,
     id,
     input.name.trim(),
-    JSON.stringify({ feeds: [{ id: feedId, url: cleanUrl, limit: 30 }] }),
+    JSON.stringify(cfg),
     input.intervalSec ?? 1800,
     new Date().toISOString(),
   );
   return id;
+}
+
+export function deleteCustomSource(id: string): { ok: true } | { ok: false; error: string } {
+  if (BUILTIN_SOURCE_IDS.has(id)) {
+    return { ok: false, error: "内置预设源不可删除，如需停用请直接关闭开关" };
+  }
+  const existing = get<{ id: string }>("SELECT id FROM sources WHERE id = ?", id);
+  if (!existing) return { ok: false, error: "数据源不存在" };
+  run("DELETE FROM runs WHERE source_id = ?", id);
+  run("DELETE FROM sources WHERE id = ?", id);
+  return { ok: true };
 }

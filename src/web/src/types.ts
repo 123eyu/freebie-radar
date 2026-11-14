@@ -60,6 +60,7 @@ export type Source = {
   name: string;
   kind: string;
   enabled: boolean;
+  builtIn?: boolean;
   interval_sec: number;
   config: Record<string, unknown>;
   last_run_at: string | null;

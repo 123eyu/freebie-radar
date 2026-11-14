@@ -950,3 +950,69 @@ test("重要新闻严格限定于权威新闻源，禁止什么值得买/社区�
     "news",
   );
 });
+
+
+test("数据源运维支持编辑名称/config/用途频道与删除自定义源", async () => {
+  const { addCustomRssSource, getSourceHints } = await import("../src/server/collectors/index.ts");
+  const { enrichItem } = await import("../src/server/enrich/index.ts");
+
+  const customId = addCustomRssSource({
+    id: "custom-news-test",
+    name: "自定义权威新闻",
+    url: "https://example.com/news.xml",
+    intervalSec: 900,
+    kindHint: "news",
+    categoryHint: "headline",
+  });
+
+  const hints = getSourceHints(customId);
+  assert.equal(hints.kindHint, "news");
+  assert.equal(hints.categoryHint, "headline");
+
+  const enriched = enrichItem(
+    { externalId: "cn1", url: "https://example.com/a1", title: "全国多地推进重大水利与基础设施工程建设", publishedAt: new Date().toISOString() },
+    customId,
+    hints,
+  )!;
+  assert.equal(enriched.kind, "news");
+  assert.equal(enriched.category, "headline");
+
+  // 非法 RSS URL 应被 PATCH 拒绝
+  const badPatch = await app.request(`/api/sources/${customId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config: { feeds: [{ id: "bad", url: "ftp://invalid" }] } }),
+  });
+  assert.equal(badPatch.status, 400);
+
+  // 合法编辑名称、周期与 config
+  const okPatch = await app.request(`/api/sources/${customId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "自定义新闻（已改名）",
+      interval_sec: 3600,
+      config: { kindHint: "info", categoryHint: "finance", feeds: [{ id: "custom-news-test", url: "https://example.com/finance.xml", limit: 15, categoryHint: "finance" }] },
+    }),
+  });
+  assert.equal(okPatch.status, 200);
+
+  const listRes = await app.request("/api/sources");
+  const listJson = (await listRes.json()) as { sources: Array<{ id: string; name: string; interval_sec: number; builtIn: boolean }> };
+  const found = listJson.sources.find((s) => s.id === customId);
+  assert.ok(found);
+  assert.equal(found.name, "自定义新闻（已改名）");
+  assert.equal(found.interval_sec, 3600);
+  assert.equal(found.builtIn, false);
+
+  const builtin = listJson.sources.find((s) => s.id === "cctv-news");
+  assert.equal(builtin?.builtIn, true);
+
+  // 内置源禁止删除
+  const delBuiltin = await app.request("/api/sources/cctv-news", { method: "DELETE" });
+  assert.equal(delBuiltin.status, 400);
+
+  // 自定义源可以删除
+  const delCustom = await app.request(`/api/sources/${customId}`, { method: "DELETE" });
+  assert.equal(delCustom.status, 200);
+});

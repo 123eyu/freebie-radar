@@ -397,7 +397,11 @@ export function scoreItem(input: {
   return { score: Math.max(0, Math.min(100, Math.round(score))), reason: notes.join(" · ") };
 }
 
-export function enrichItem(raw: RawItem, sourceId: string): EnrichedItem | null {
+export function enrichItem(
+  raw: RawItem,
+  sourceId: string,
+  hints?: { kindHint?: string | null; categoryHint?: string | null },
+): EnrichedItem | null {
   const title = cleanText(raw.title, 200);
   if (!title) return null;
   const summary = cleanText(raw.summary ?? "", 400);
@@ -405,7 +409,8 @@ export function enrichItem(raw: RawItem, sourceId: string): EnrichedItem | null 
   if (!url) return null;
 
   const guessed = classify(title, summary);
-  const category: Category = guessed.category === "other" && isCategory(raw.categoryHint) ? raw.categoryHint : guessed.category;
+  const hintCat = raw.categoryHint ?? hints?.categoryHint ?? null;
+  const category: Category = guessed.category === "other" && isCategory(hintCat) ? hintCat : guessed.category;
   const tags = guessed.tags;
   const codes = extractCodes(title, raw.content ?? raw.summary ?? "");
   const priceInfo = extractPrice(title, summary);
@@ -420,6 +425,7 @@ export function enrichItem(raw: RawItem, sourceId: string): EnrichedItem | null 
     isFree: priceInfo.isFree,
     price: priceInfo.price,
     freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
+    kindHint: hints?.kindHint ?? null,
   });
   const { score, reason } = scoreItem({
     title,

@@ -1763,12 +1763,12 @@ export function App() {
                 sources.reload();
                 notify("采集周期已改为 " + formatInterval(sec));
               }}
-              onAddRss={async (name, url, intervalSec) => {
+              onAddRss={async (name, url, intervalSec, kindHint, categoryHint) => {
                 notify("正在添加并试采…");
                 const res = await fetch("/api/sources", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ name, url, intervalSec }),
+                  body: JSON.stringify({ name, url, intervalSec, kindHint, categoryHint }),
                 });
                 const data = (await res.json().catch(() => ({}))) as {
                   error?: string;
@@ -1778,6 +1778,32 @@ export function App() {
                 else if (data.summary?.status === "failed") notify("已添加，但首次采集失败：" + (data.summary.error ?? ""));
                 else notify(`已添加，抓取 ${data.summary?.fetched ?? 0} 条，新增 ${data.summary?.inserted ?? 0}`);
                 refreshAll();
+              }}
+              onUpdateSource={async (id, patch) => {
+                const res = await fetch("/api/sources/" + id, {
+                  method: "PATCH",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify(patch),
+                });
+                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                if (!res.ok) {
+                  notify(data.error ?? "保存失败");
+                  return false;
+                }
+                sources.reload();
+                notify("数据源配置已更新");
+                return true;
+              }}
+              onDeleteSource={async (id) => {
+                const res = await fetch("/api/sources/" + id, { method: "DELETE" });
+                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                if (!res.ok) {
+                  notify(data.error ?? "删除失败");
+                  return false;
+                }
+                refreshAll();
+                notify("已删除自定义数据源");
+                return true;
               }}
               onNotify={notify}
             />

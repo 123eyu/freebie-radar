@@ -47,8 +47,11 @@ export const NEWS_SOURCES = new Set([
   "rss-gnews-world",
 ]);
 
-export function isAuthoritativeNewsSource(sourceId: string | null | undefined): boolean {
-  return Boolean(sourceId && NEWS_SOURCES.has(sourceId));
+export function isAuthoritativeNewsSource(
+  sourceId: string | null | undefined,
+  kindHint?: string | null,
+): boolean {
+  return kindHint === "news" || Boolean(sourceId && NEWS_SOURCES.has(sourceId));
 }
 
 const INFO_SOURCES = new Set([
@@ -81,11 +84,15 @@ export function guessKind(input: {
   isFree?: boolean;
   price?: number | null;
   freebieOnlySource?: boolean;
+  kindHint?: string | null;
 }): ContentKind {
   const title = input.title ?? "";
   const text = `${title} ${input.summary ?? ""}`;
   if (NOISE_TITLE.test(title)) return "noise";
   if (input.freebieOnlySource) return "freebie";
+  if (input.kindHint && isContentKind(input.kindHint) && input.kindHint !== "noise") {
+    return input.kindHint;
+  }
 
   const hasDealWord = DEAL_HINT.test(title);
   const hasPromoWord = PROMO_HINT.test(text);
@@ -157,7 +164,7 @@ export function resolveKind(
       return guessKind(fallbackInput);
     }
     // 重要新闻严格限定于权威新闻源，禁止导购/购物/普通社区（如什么值得买、IT之家等）混入「重要新闻」
-    if (aiKind === "news" && !isAuthoritativeNewsSource(fallbackInput.sourceId)) {
+    if (aiKind === "news" && !isAuthoritativeNewsSource(fallbackInput.sourceId, fallbackInput.kindHint)) {
       return coerceNonNewsKind(fallbackInput);
     }
     return aiKind;

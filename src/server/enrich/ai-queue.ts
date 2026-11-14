@@ -7,6 +7,18 @@ import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
 
+function readSourceKindHint(sourceId: string | undefined): string | null {
+  if (!sourceId) return null;
+  const row = get<{ config: string }>("SELECT config FROM sources WHERE id = ?", sourceId);
+  if (!row?.config) return null;
+  try {
+    const cfg = JSON.parse(row.config) as { kindHint?: unknown };
+    return typeof cfg.kindHint === "string" && cfg.kindHint.trim() ? cfg.kindHint.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * AI 异步审核队列：
  * - 支持「极速抢码先推后审」模式在后台补齐 AI 结论
@@ -97,6 +109,7 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       isFree: cur?.is_free === 1,
       price: cur?.price ?? null,
       freebieOnlySource: Boolean(cur?.source_id && FREEBIE_ONLY_SOURCES.has(cur.source_id)),
+      kindHint: readSourceKindHint(cur?.source_id),
     });
     const effectiveKeep = effectiveKind === "noise" ? false : verdict.keep;
     const keep = effectiveKeep ? 1 : 0;

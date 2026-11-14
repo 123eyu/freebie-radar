@@ -5,6 +5,7 @@ import { isAuthoritativeNewsSource } from "./enrich/kind.ts";
 import { guessObtain } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { aiQueueStats } from "./enrich/ai-queue.ts";
+import { getSourceHints } from "./collectors/index.ts";
 import { finishAiJob, getAiTelemetry, recordAiBatch, startAiJob } from "./enrich/ai-telemetry.ts";
 import {
   aiReady,
@@ -320,6 +321,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
   let updated = 0;
   let movedFromOther = 0;
   for (const r of rows) {
+    const hints = getSourceHints(r.source_id);
     const e = enrichItem(
       {
         externalId: r.external_id ?? String(r.id),
@@ -330,6 +332,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
         expiresAt: r.expires_at,
       },
       r.source_id,
+      hints,
     );
     if (!e) continue;
     // 已人工/AI 审核过的非 other 条目不随意覆盖其 AI 分类，只修复 other / 误判成 news 的 VPS 帖子 / 非权威源的 news
@@ -337,7 +340,9 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     const nextCat =
       r.ai_keep !== null && r.category && r.category !== "other" && !catWasLegacyNews ? r.category : e.category;
     let nextKind = r.ai_keep === null ? e.kind : (r.kind ?? e.kind);
-    if (nextKind === "news" && !isAuthoritativeNewsSource(r.source_id)) {
+    if (hints.kindHint && r.ai_keep !== 0 && nextKind !== hints.kindHint) {
+      nextKind = e.kind;
+    } else if (nextKind === "news" && !isAuthoritativeNewsSource(r.source_id, hints.kindHint)) {
       nextKind = resolveKind("news", r.ai_keep === 1 ? true : r.ai_keep === 0 ? false : null, {
         title: r.title,
         summary: r.summary ?? "",
@@ -346,6 +351,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
         obtain: r.obtain,
         isFree: e.isFree,
         price: e.price,
+        kindHint: hints.kindHint,
       });
     }
     const fallbackObtain = guessObtain(r.title, r.summary ?? "");

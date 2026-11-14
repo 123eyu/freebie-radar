@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Activity, Copy, Database, ExternalLink, Gauge, Loader2, Play, Plus, Rss, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { Activity, Check, Copy, Database, ExternalLink, Gauge, Loader2, Pencil, Play, Plus, Rss, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import { formatInterval, timeAgo } from "../lib/sources.ts";
 import type { RetentionSettings, Run, Source, SourceQuality } from "../types.ts";
 
@@ -14,7 +14,317 @@ const INTERVAL_OPTIONS = [
   { label: "6 小时", sec: 21600 },
 ];
 
+const KIND_HINT_OPTIONS = [
+  { value: "", label: "用途：自动识别" },
+  { value: "news", label: "用途：重要新闻（直入重要新闻频道）" },
+  { value: "info", label: "用途：行业资讯（经济/股票/科技）" },
+  { value: "freebie", label: "用途：白嫖福利" },
+  { value: "deal", label: "用途：特价好价" },
+  { value: "opensource", label: "用途：开源项目" },
+];
+
+const CATEGORY_HINT_OPTIONS = [
+  { value: "", label: "分类：自动识别" },
+  { value: "headline", label: "时政要闻" },
+  { value: "world", label: "国际要闻" },
+  { value: "finance", label: "经济/商业" },
+  { value: "stock", label: "股票/市场" },
+  { value: "tech", label: "科技前沿" },
+  { value: "ai", label: "AI 额度/前沿" },
+  { value: "cloud", label: "云服务" },
+  { value: "vps", label: "VPS/主机" },
+  { value: "software", label: "软件授权" },
+  { value: "game", label: "游戏" },
+  { value: "opensource", label: "开源项目" },
+  { value: "news", label: "综合资讯" },
+];
+
 type OpsTab = "sources" | "runs" | "quality" | "retention";
+
+function SourceInlineEditor({
+  source,
+  onSave,
+  onDelete,
+  onCancel,
+}: {
+  source: Source;
+  onSave: (patch: { name: string; interval_sec: number; config: Record<string, unknown> }) => Promise<boolean>;
+  onDelete?: () => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const cfg = source.config ?? {};
+  const feeds = Array.isArray(cfg.feeds) ? (cfg.feeds as Array<Record<string, unknown>>) : [];
+  const firstFeed = feeds[0] ?? {};
+  const channels = Array.isArray(cfg.channels) ? (cfg.channels as unknown[]).filter((c) => typeof c === "string") : [];
+
+  const [name, setName] = useState(source.name);
+  const [intervalSec, setIntervalSec] = useState(source.interval_sec);
+  const [kindHint, setKindHint] = useState(typeof cfg.kindHint === "string" ? cfg.kindHint : "");
+  const [categoryHint, setCategoryHint] = useState(
+    typeof cfg.categoryHint === "string"
+      ? cfg.categoryHint
+      : typeof firstFeed.categoryHint === "string"
+        ? firstFeed.categoryHint
+        : "",
+  );
+  const [rssUrl, setRssUrl] = useState(typeof firstFeed.url === "string" ? firstFeed.url : "");
+  const [rssLimit, setRssLimit] = useState(typeof firstFeed.limit === "number" ? String(firstFeed.limit) : "30");
+  const [rssKeywords, setRssKeywords] = useState(
+    Array.isArray(firstFeed.titleKeywords) ? (firstFeed.titleKeywords as string[]).join(", ") : "",
+  );
+  const [tgChannels, setTgChannels] = useState(channels.join(", "));
+  const [showJson, setShowJson] = useState(source.kind !== "rss" && source.kind !== "telegram");
+  const [rawJson, setRawJson] = useState(() => JSON.stringify(cfg, null, 2));
+  const [jsonErr, setJsonErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  const buildNextConfig = (): Record<string, unknown> | null => {
+    setJsonErr(null);
+    let base: Record<string, unknown>;
+    if (showJson) {
+      try {
+        const parsed = JSON.parse(rawJson);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setJsonErr("JSON 必须是对象 {}");
+          return null;
+        }
+        base = parsed as Record<string, unknown>;
+      } catch (e) {
+        setJsonErr(e instanceof Error ? e.message : "JSON 语法错误");
+        return null;
+      }
+    } else {
+      base = { ...cfg };
+    }
+
+    if (kindHint.trim()) base.kindHint = kindHint.trim();
+    else delete base.kindHint;
+
+    if (categoryHint.trim()) base.categoryHint = categoryHint.trim();
+    else delete base.categoryHint;
+
+    if (!showJson && source.kind === "rss") {
+      const nextFeed: Record<string, unknown> = {
+        ...firstFeed,
+        id: typeof firstFeed.id === "string" && firstFeed.id ? firstFeed.id : source.id.replace(/^rss-/, ""),
+        url: rssUrl.trim(),
+        limit: Math.max(1, Math.min(100, Number(rssLimit) || 30)),
+      };
+      if (categoryHint.trim()) nextFeed.categoryHint = categoryHint.trim();
+      else delete nextFeed.categoryHint;
+      const kws = rssKeywords
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (kws.length) nextFeed.titleKeywords = kws;
+      else delete nextFeed.titleKeywords;
+      base.feeds = [nextFeed, ...feeds.slice(1)];
+    }
+
+    if (!showJson && source.kind === "telegram") {
+      base.channels = tgChannels
+        .split(/[,，\s]+/)
+        .map((s) => s.replace(/^@/, "").trim())
+        .filter(Boolean);
+    }
+
+    return base;
+  };
+
+  const handleSave = async () => {
+    const nextConfig = buildNextConfig();
+    if (!nextConfig || !name.trim()) return;
+    setSaving(true);
+    try {
+      const ok = await onSave({ name: name.trim(), interval_sec: intervalSec, config: nextConfig });
+      if (ok) onCancel();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-ink-200 bg-surface p-3.5 text-[12.5px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-medium text-ink-950">
+          编辑数据源 <span className="font-mono text-[11px] text-ink-400">{source.id}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (!showJson) {
+              const built = buildNextConfig();
+              if (built) setRawJson(JSON.stringify(built, null, 2));
+            }
+            setShowJson((v) => !v);
+          }}
+          className="text-[11.5px] font-medium text-brand hover:underline"
+        >
+          {showJson ? "切回表单编辑" : "高级 JSON 配置"}
+        </button>
+      </div>
+
+      <div className="grid gap-2.5 sm:grid-cols-12">
+        <label className="space-y-1 sm:col-span-4">
+          <span className="text-[11px] text-ink-500">显示名称</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12.5px] text-ink-950 outline-none focus:border-brand"
+          />
+        </label>
+        <label className="space-y-1 sm:col-span-2">
+          <span className="text-[11px] text-ink-500">采集周期</span>
+          <select
+            value={intervalSec}
+            onChange={(e) => setIntervalSec(Number(e.target.value))}
+            className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
+          >
+            {!INTERVAL_OPTIONS.some((o) => o.sec === intervalSec) && (
+              <option value={intervalSec}>{formatInterval(intervalSec)}</option>
+            )}
+            {INTERVAL_OPTIONS.map((o) => (
+              <option key={o.sec} value={o.sec}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 sm:col-span-3">
+          <span className="text-[11px] text-ink-500">用途频道（新抓取条目生效）</span>
+          <select
+            value={kindHint}
+            onChange={(e) => setKindHint(e.target.value)}
+            className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
+          >
+            {KIND_HINT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 sm:col-span-3">
+          <span className="text-[11px] text-ink-500">默认兜底分类</span>
+          <select
+            value={categoryHint}
+            onChange={(e) => setCategoryHint(e.target.value)}
+            className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
+          >
+            {CATEGORY_HINT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {!showJson && source.kind === "rss" && (
+        <div className="grid gap-2.5 sm:grid-cols-12">
+          <label className="space-y-1 sm:col-span-6">
+            <span className="text-[11px] text-ink-500">RSS / Atom 订阅地址</span>
+            <input
+              value={rssUrl}
+              onChange={(e) => setRssUrl(e.target.value)}
+              placeholder="https://example.com/rss.xml"
+              className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-[11px] text-ink-500">每次条数</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={rssLimit}
+              onChange={(e) => setRssLimit(e.target.value)}
+              className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="space-y-1 sm:col-span-4">
+            <span className="text-[11px] text-ink-500">标题必含关键词（逗号分隔，留空全收）</span>
+            <input
+              value={rssKeywords}
+              onChange={(e) => setRssKeywords(e.target.value)}
+              placeholder="如：免费, 限免, free"
+              className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand"
+            />
+          </label>
+        </div>
+      )}
+
+      {!showJson && source.kind === "telegram" && (
+        <label className="block space-y-1">
+          <span className="text-[11px] text-ink-500">Telegram 公开频道名（逗号或空格分隔）</span>
+          <input
+            value={tgChannels}
+            onChange={(e) => setTgChannels(e.target.value)}
+            placeholder="zaihuapd, vps_offers"
+            className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
+          />
+        </label>
+      )}
+
+      {showJson && (
+        <div className="space-y-1">
+          <span className="text-[11px] text-ink-500">源 config JSON（可直接增删栏目 / feeds / 过滤参数）</span>
+          <textarea
+            rows={5}
+            value={rawJson}
+            onChange={(e) => setRawJson(e.target.value)}
+            className="w-full rounded-lg border border-ink-200 bg-surface p-2 font-mono text-[11.5px] text-ink-900 outline-none focus:border-brand"
+          />
+          {jsonErr && <div className="text-[11.5px] text-alert">{jsonErr}</div>}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <div>
+          {!source.builtIn && onDelete && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirmDel) {
+                  setConfirmDel(true);
+                  return;
+                }
+                const ok = await onDelete();
+                if (ok) onCancel();
+              }}
+              className={
+                "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition-colors " +
+                (confirmDel
+                  ? "border-alert bg-alert text-white"
+                  : "border-ink-200 bg-surface text-alert hover:border-alert/40 hover:bg-alert-subtle")
+              }
+            >
+              <Trash2 size={12} /> {confirmDel ? "再点一次确认删除" : "删除自定义源"}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-1 text-[12px] text-ink-600 hover:bg-ink-100"
+          >
+            <X size={12} /> 取消
+          </button>
+          <button
+            type="button"
+            disabled={saving || !name.trim() || (!showJson && source.kind === "rss" && !/^https?:\/\//i.test(rssUrl.trim()))}
+            onClick={() => void handleSave()}
+            className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} 保存配置
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function OpsPanel({
   sources,
@@ -24,6 +334,8 @@ export function OpsPanel({
   onToggleSource,
   onChangeInterval,
   onAddRss,
+  onUpdateSource,
+  onDeleteSource,
   onNotify,
 }: {
   sources: Source[];
@@ -32,17 +344,22 @@ export function OpsPanel({
   onCollectSource: (id: string) => Promise<void>;
   onToggleSource: (id: string, enabled: boolean) => Promise<void>;
   onChangeInterval: (id: string, sec: number) => Promise<void>;
-  onAddRss: (name: string, url: string, intervalSec: number) => Promise<void>;
+  onAddRss: (name: string, url: string, intervalSec: number, kindHint?: string, categoryHint?: string) => Promise<void>;
+  onUpdateSource: (id: string, patch: { name?: string; interval_sec?: number; config?: Record<string, unknown> }) => Promise<boolean>;
+  onDeleteSource: (id: string) => Promise<boolean>;
   onNotify?: (msg: string) => void;
 }) {
   const [subTab, setSubTab] = useState<OpsTab>("sources");
   const [filterText, setFilterText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "error" | "disabled">("all");
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddRss, setShowAddRss] = useState(false);
   const [rssName, setRssName] = useState("");
   const [rssUrl, setRssUrl] = useState("");
   const [rssInterval, setRssInterval] = useState(1800);
+  const [rssKindHint, setRssKindHint] = useState("");
+  const [rssCategoryHint, setRssCategoryHint] = useState("");
   const [addingRss, setAddingRss] = useState(false);
   const [showIngestGuide, setShowIngestGuide] = useState(false);
   const [helperUrl, setHelperUrl] = useState(() => {
@@ -349,46 +666,81 @@ export function OpsPanel({
               </div>
             )}
             {showAddRss && (
-              <div className="border-b border-ink-100 bg-surface-hover px-4 py-3">
+              <div className="space-y-2 border-b border-ink-100 bg-surface-hover px-4 py-3">
                 <div className="grid gap-2 sm:grid-cols-12">
                   <input
                     value={rssName}
                     onChange={(e) => setRssName(e.target.value)}
-                    placeholder="源名称（如 某博客羊毛）"
+                    placeholder="源名称（如 财联社电报 / 某博客）"
                     className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] text-ink-950 outline-none focus:border-brand sm:col-span-3"
                   />
                   <input
                     value={rssUrl}
                     onChange={(e) => setRssUrl(e.target.value)}
                     placeholder="https://example.com/feed"
-                    className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] text-ink-950 outline-none focus:border-brand sm:col-span-5"
+                    className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] text-ink-950 outline-none focus:border-brand sm:col-span-4"
                   />
                   <select
-                    value={rssInterval}
-                    onChange={(e) => setRssInterval(Number(e.target.value))}
-                    className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand sm:col-span-2"
+                    value={rssKindHint}
+                    onChange={(e) => setRssKindHint(e.target.value)}
+                    className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand sm:col-span-3"
                   >
-                    {INTERVAL_OPTIONS.map((o) => (
-                      <option key={o.sec} value={o.sec}>
-                        每 {o.label}
+                    {KIND_HINT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </select>
+                  <select
+                    value={rssCategoryHint}
+                    onChange={(e) => setRssCategoryHint(e.target.value)}
+                    className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand sm:col-span-2"
+                  >
+                    {CATEGORY_HINT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-[12px] text-ink-500">
+                    <span>采集周期：</span>
+                    <select
+                      value={rssInterval}
+                      onChange={(e) => setRssInterval(Number(e.target.value))}
+                      className="rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[12px] text-ink-800 outline-none focus:border-brand"
+                    >
+                      {INTERVAL_OPTIONS.map((o) => (
+                        <option key={o.sec} value={o.sec}>
+                          每 {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <button
                     type="button"
                     disabled={!rssName.trim() || !/^https?:\/\//i.test(rssUrl.trim()) || addingRss}
                     onClick={async () => {
                       setAddingRss(true);
                       try {
-                        await onAddRss(rssName.trim(), rssUrl.trim(), rssInterval);
+                        await onAddRss(
+                          rssName.trim(),
+                          rssUrl.trim(),
+                          rssInterval,
+                          rssKindHint || undefined,
+                          rssCategoryHint || undefined,
+                        );
                         setRssName("");
                         setRssUrl("");
+                        setRssKindHint("");
+                        setRssCategoryHint("");
                         setShowAddRss(false);
                       } finally {
                         setAddingRss(false);
                       }
                     }}
-                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand px-3 py-2 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40 sm:col-span-2"
+                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand px-3.5 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40"
                   >
                     {addingRss ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
                     加入并采集
@@ -461,12 +813,24 @@ export function OpsPanel({
 
                     {s.last_error && <div className="mt-1.5 font-mono text-[11px] text-alert">{s.last_error}</div>}
 
-                    <div className="mt-2">
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingId((cur) => (cur === s.id ? null : s.id))}
+                        className={
+                          "inline-flex items-center justify-center gap-1 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors " +
+                          (editingId === s.id
+                            ? "border-ink-950 bg-ink-950 text-white"
+                            : "border-ink-200 bg-surface text-ink-700 hover:border-ink-300")
+                        }
+                      >
+                        <Pencil size={11} /> 编辑
+                      </button>
                       {s.kind === "ingest" ? (
                         <button
                           type="button"
                           onClick={() => void startLoopbackLogin(s.id)}
-                          className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-2 text-[12px] font-medium text-brand hover:bg-ink-200/70"
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-2 text-[12px] font-medium text-brand hover:bg-ink-200/70"
                           title="通过本机回环助手扫码登录并采集，Cookie 仅留在本机"
                         >
                           <ExternalLink size={11} />
@@ -484,13 +848,23 @@ export function OpsPanel({
                               setRunningId(null);
                             }
                           }}
-                          className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-2 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-2 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
                         >
                           {runningId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
                           立即采集
                         </button>
                       )}
                     </div>
+                    {editingId === s.id && (
+                      <div className="mt-2.5">
+                        <SourceInlineEditor
+                          source={s}
+                          onSave={(patch) => onUpdateSource(s.id, patch)}
+                          onDelete={!s.builtIn ? () => onDeleteSource(s.id) : undefined}
+                          onCancel={() => setEditingId(null)}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -514,7 +888,8 @@ export function OpsPanel({
                   {visibleSources.map((s) => {
                     const isCustomInterval = !INTERVAL_OPTIONS.some((o) => o.sec === s.interval_sec);
                     return (
-                      <tr key={s.id} className="hover:bg-surface-hover">
+                      <Fragment key={s.id}>
+                      <tr className="hover:bg-surface-hover">
                         <td className="px-4 py-2.5">
                           <div className="font-medium text-ink-950">{s.name}</div>
                           <div className="font-mono text-[11px] text-ink-400">
@@ -578,36 +953,64 @@ export function OpsPanel({
                           {s.last_error ?? "—"}
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          {s.kind === "ingest" ? (
+                          <div className="inline-flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => void startLoopbackLogin(s.id)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-ink-200/70"
-                              title="通过本机回环助手扫码登录并采集，Cookie 仅留在本机"
+                              onClick={() => setEditingId((cur) => (cur === s.id ? null : s.id))}
+                              className={
+                                "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[12px] font-medium transition-colors " +
+                                (editingId === s.id
+                                  ? "border-ink-950 bg-ink-950 text-white"
+                                  : "border-ink-200 bg-surface text-ink-600 hover:border-ink-300 hover:text-ink-950")
+                              }
+                              title="编辑名称、RSS 地址、用途频道或 JSON 配置"
                             >
-                              <ExternalLink size={11} />
-                              扫码登录
+                              <Pencil size={11} /> 编辑
                             </button>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={runningId === s.id}
-                              onClick={async () => {
-                                setRunningId(s.id);
-                                try {
-                                  await onCollectSource(s.id);
-                                } finally {
-                                  setRunningId(null);
-                                }
-                              }}
-                              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
-                            >
-                              {runningId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                              立即采集
-                            </button>
-                          )}
+                            {s.kind === "ingest" ? (
+                              <button
+                                type="button"
+                                onClick={() => void startLoopbackLogin(s.id)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-ink-200/70"
+                                title="通过本机回环助手扫码登录并采集，Cookie 仅留在本机"
+                              >
+                                <ExternalLink size={11} />
+                                扫码登录
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={runningId === s.id}
+                                onClick={async () => {
+                                  setRunningId(s.id);
+                                  try {
+                                    await onCollectSource(s.id);
+                                  } finally {
+                                    setRunningId(null);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
+                              >
+                                {runningId === s.id ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                                立即采集
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
+                      {editingId === s.id && (
+                        <tr className="bg-surface-hover/70">
+                          <td colSpan={8} className="px-4 py-3">
+                            <SourceInlineEditor
+                              source={s}
+                              onSave={(patch) => onUpdateSource(s.id, patch)}
+                              onDelete={!s.builtIn ? () => onDeleteSource(s.id) : undefined}
+                              onCancel={() => setEditingId(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
