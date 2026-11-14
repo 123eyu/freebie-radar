@@ -66,6 +66,10 @@ export const config = {
   aiMaxItems: num("AI_MAX_ITEMS", 60),
 
   ingestToken: str("INGEST_TOKEN"),
+  /** VPS 按需无头 Cookie 执行器地址（仅内网/网桥监听，平时 0 MB 浏览器内存） */
+  cookieRunnerUrl: str("COOKIE_RUNNER_URL", "http://172.17.0.1:18790"),
+  /** 小红书国内代理出口（如 http://47.110.65.20:8888），供香港/海外 VPS 绕开国际版跳转 */
+  xhsProxyUrl: str("XHS_PROXY_URL"),
   /** 管理端密码；留空则管理接口全部开放（向后兼容） */
   adminToken: str("ADMIN_TOKEN"),
 } as const;

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { Activity, Check, Copy, Database, ExternalLink, Gauge, Loader2, Pencil, Play, Plus, Rss, Search, ShieldCheck, Trash2, X } from "lucide-react";
+import { Activity, Check, Copy, Database, ExternalLink, Gauge, KeyRound, Loader2, Pencil, Play, Plus, Rss, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import { formatInterval, timeAgo } from "../lib/sources.ts";
 import type { RetentionSettings, Run, Source, SourceQuality } from "../types.ts";
 
@@ -362,6 +362,82 @@ export function OpsPanel({
   const [rssCategoryHint, setRssCategoryHint] = useState("");
   const [addingRss, setAddingRss] = useState(false);
   const [showIngestGuide, setShowIngestGuide] = useState(false);
+  const [cookieStatus, setCookieStatus] = useState<{
+    runnerUrl: string;
+    xhsProxy: string;
+    sites: Record<
+      "zhihu" | "xhs" | "xiaoheihe",
+      { site: "zhihu" | "xhs" | "xiaoheihe"; configured: boolean; count: number; keyNames: string[]; hasAuthHint: boolean; updatedAt: string | null }
+    >;
+  } | null>(null);
+  const [cookieInputs, setCookieInputs] = useState<Record<"zhihu" | "xhs" | "xiaoheihe", string>>({
+    zhihu: "",
+    xhs: "",
+    xiaoheihe: "",
+  });
+  const [runnerUrlInput, setRunnerUrlInput] = useState("http://172.17.0.1:18790");
+  const [xhsProxyInput, setXhsProxyInput] = useState("");
+  const [cookieBusy, setCookieBusy] = useState<string | null>(null);
+  const [runnerTest, setRunnerTest] = useState<{ ok?: boolean; busy?: boolean; chrome?: boolean; error?: string } | null>(null);
+
+  const loadCookieStatus = async () => {
+    try {
+      const r = await fetch("/api/cookies");
+      if (!r.ok) return;
+      const d = (await r.json()) as NonNullable<typeof cookieStatus>;
+      setCookieStatus(d);
+      setRunnerUrlInput(d.runnerUrl || "http://172.17.0.1:18790");
+      setXhsProxyInput(d.xhsProxy || "");
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    void loadCookieStatus();
+  }, []);
+
+  const saveCookiePatch = async (
+    patch: { runnerUrl?: string; xhsProxy?: string; cookies?: Partial<Record<"zhihu" | "xhs" | "xiaoheihe", string>> },
+    busyKey: string,
+    clearKey?: "zhihu" | "xhs" | "xiaoheihe",
+  ): Promise<boolean> => {
+    setCookieBusy(busyKey);
+    try {
+      const r = await fetch("/api/cookies", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const d = (await r.json().catch(() => ({}))) as NonNullable<typeof cookieStatus> & { error?: string };
+      if (!r.ok) {
+        onNotify?.(d.error ?? "保存失败");
+        return false;
+      }
+      setCookieStatus(d);
+      setRunnerUrlInput(d.runnerUrl || "");
+      setXhsProxyInput(d.xhsProxy || "");
+      if (clearKey) setCookieInputs((prev) => ({ ...prev, [clearKey]: "" }));
+      onNotify?.("Cookie 托管配置已保存");
+      return true;
+    } finally {
+      setCookieBusy(null);
+    }
+  };
+
+  const testCookieRunner = async () => {
+    setCookieBusy("test-runner");
+    try {
+      const r = await fetch("/api/cookies/test-runner", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runnerUrl: runnerUrlInput }),
+      });
+      const d = (await r.json().catch(() => ({}))) as NonNullable<typeof runnerTest>;
+      setRunnerTest(d);
+      onNotify?.(d.ok ? "VPS Cookie 执行器在线且已就绪" : "执行器未连接：" + (d.error ?? "检查端口/服务"));
+    } finally {
+      setCookieBusy(null);
+    }
+  };
   const [helperUrl, setHelperUrl] = useState(() => {
     try {
       return localStorage.getItem("radar_loopback_helper") || "http://127.0.0.1:18789";
@@ -589,7 +665,7 @@ export function OpsPanel({
                   onClick={() => setShowIngestGuide((v) => !v)}
                   className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:text-brand"
                 >
-                  <ShieldCheck size={13} /> {showIngestGuide ? "收起登录态接入" : "登录态接入（零 Cookie 上传）"}
+                  <KeyRound size={13} /> {showIngestGuide ? "收起 Cookie 托管" : "Cookie 托管（知乎/小红书/小黑盒）"}
                 </button>
               <button
                 type="button"
@@ -602,14 +678,155 @@ export function OpsPanel({
               </div>
 
             {showIngestGuide && (
-              <div className="space-y-3 border-b border-ink-100 bg-brand-subtle/60 px-4 py-3 text-[12.5px] text-ink-700">
+              <div className="space-y-3.5 border-b border-ink-100 bg-brand-subtle/50 px-4 py-3.5 text-[12.5px] text-ink-700">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 font-medium text-ink-900">
-                    <ShieldCheck size={14} className="text-brand" />
-                    知乎 / 小红书 / 小黑盒采集（Cookie 永远只留在本机，绝不上传服务端）
+                  <div className="flex items-center gap-1.5 font-medium text-ink-950">
+                    <KeyRound size={14} className="text-brand" />
+                    VPS Cookie 托管采集（按需拉起无头 Chrome，抓完立即释放，平时 0 MB 内存）
                   </div>
-                  <span className="text-[11.5px] text-ink-500">点下方对应源的「扫码登录」→ 弹本地窗扫码 → 自动采集并跳回本页</span>
+                  {runnerTest && (
+                    <span
+                      className={
+                        "rounded px-2 py-0.5 text-[11px] font-medium " +
+                        (runnerTest.ok ? "bg-deal-subtle text-deal" : "bg-alert-subtle text-alert")
+                      }
+                    >
+                      {runnerTest.ok ? `执行器在线${runnerTest.chrome ? " · Chrome 就绪" : ""}` : `未连通：${runnerTest.error ?? "离线"}`}
+                    </span>
+                  )}
                 </div>
+
+                {/* 执行器地址与小红书代理 */}
+                <div className="grid gap-2 sm:grid-cols-12">
+                  <label className="space-y-1 sm:col-span-5">
+                    <span className="text-[11px] text-ink-500">VPS 执行器地址（仅内网/Docker 网桥监听）</span>
+                    <input
+                      value={runnerUrlInput}
+                      onChange={(e) => setRunnerUrlInput(e.target.value)}
+                      placeholder="http://172.17.0.1:18790"
+                      className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
+                    />
+                  </label>
+                  <label className="space-y-1 sm:col-span-4">
+                    <span className="text-[11px] text-ink-500">小红书国内代理出口（海外 VPS 必填，如 http://47.110.65.20:8888）</span>
+                    <input
+                      value={xhsProxyInput}
+                      onChange={(e) => setXhsProxyInput(e.target.value)}
+                      placeholder="http://47.110.65.20:8888"
+                      className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
+                    />
+                  </label>
+                  <div className="flex items-end gap-1.5 sm:col-span-3">
+                    <button
+                      type="button"
+                      disabled={cookieBusy !== null}
+                      onClick={() => void saveCookiePatch({ runnerUrl: runnerUrlInput, xhsProxy: xhsProxyInput }, "save-net")}
+                      className="inline-flex h-8 flex-1 items-center justify-center rounded-lg bg-ink-950 px-2.5 text-[12px] font-medium text-white hover:bg-ink-800 disabled:opacity-40"
+                    >
+                      {cookieBusy === "save-net" ? <Loader2 size={12} className="animate-spin" /> : "保存线路"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={cookieBusy !== null}
+                      onClick={() => void testCookieRunner()}
+                      className="inline-flex h-8 items-center justify-center rounded-lg border border-ink-200 bg-surface px-2.5 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:text-brand disabled:opacity-40"
+                    >
+                      {cookieBusy === "test-runner" ? <Loader2 size={12} className="animate-spin" /> : "测连通"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 三站 Cookie 粘贴卡 */}
+                <div className="grid gap-2.5 lg:grid-cols-3">
+                  {(
+                    [
+                      { key: "zhihu" as const, sourceId: "zhihu-search", title: "知乎（zhihu.com）", hint: "关键字段：z_c0 / d_c0" },
+                      { key: "xhs" as const, sourceId: "xhs-search", title: "小红书（xiaohongshu.com）", hint: "关键字段：web_session / a1" },
+                      { key: "xiaoheihe" as const, sourceId: "xiaoheihe-search", title: "小黑盒（xiaoheihe.cn）", hint: "关键字段：user_token / x_app_id" },
+                    ] as const
+                  ).map((site) => {
+                    const st = cookieStatus?.sites[site.key];
+                    const draft = cookieInputs[site.key];
+                    return (
+                      <div key={site.key} className="space-y-2 rounded-lg border border-ink-200 bg-surface p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-ink-950">{site.title}</span>
+                          {st?.configured ? (
+                            <span
+                              className={
+                                "rounded px-1.5 py-0.5 text-[10.5px] font-medium " +
+                                (st.hasAuthHint ? "bg-deal-subtle text-deal" : "bg-code-subtle text-amber-800")
+                              }
+                              title={`已保存字段：${st.keyNames.join(", ")}`}
+                            >
+                              已托管 {st.count} 项{st.hasAuthHint ? " · 含登录态" : " · 待核对"}
+                            </span>
+                          ) : (
+                            <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10.5px] text-ink-500">未配置</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-ink-400">
+                          {st?.configured && st.updatedAt ? `更新于 ${timeAgo(st.updatedAt)} · ${st.keyNames.slice(0, 4).join(", ")}` : site.hint}
+                        </div>
+                        <textarea
+                          rows={2}
+                          value={draft}
+                          onChange={(e) => setCookieInputs((prev) => ({ ...prev, [site.key]: e.target.value }))}
+                          placeholder="粘贴 Request Cookie 字符串（a=1; b=2）或 Cookie-Editor 导出的 JSON 数组（保存后不回显明文）"
+                          className="w-full rounded-md border border-ink-200 bg-canvas/50 p-2 font-mono text-[11px] text-ink-900 outline-none focus:border-brand"
+                        />
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={!draft.trim() || cookieBusy !== null}
+                              onClick={() => void saveCookiePatch({ cookies: { [site.key]: draft } }, `save-${site.key}`, site.key)}
+                              className="inline-flex h-7 items-center gap-1 rounded-md bg-brand px-2.5 text-[11.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
+                            >
+                              {cookieBusy === `save-${site.key}` ? <Loader2 size={11} className="animate-spin" /> : "保存"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={(!draft.trim() && !st?.configured) || cookieBusy !== null}
+                              onClick={async () => {
+                                if (draft.trim()) {
+                                  const ok = await saveCookiePatch({ cookies: { [site.key]: draft } }, `run-${site.key}`, site.key);
+                                  if (!ok) return;
+                                }
+                                setRunningId(site.sourceId);
+                                try {
+                                  await onCollectSource(site.sourceId);
+                                } finally {
+                                  setRunningId(null);
+                                }
+                              }}
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2.5 text-[11.5px] font-medium text-ink-800 hover:border-brand-border hover:text-brand disabled:opacity-40"
+                            >
+                              {runningId === site.sourceId ? <Loader2 size={11} className="animate-spin" /> : <Play size={10} />}
+                              立即采集
+                            </button>
+                          </div>
+                          {st?.configured && (
+                            <button
+                              type="button"
+                              disabled={cookieBusy !== null}
+                              onClick={() => void saveCookiePatch({ cookies: { [site.key]: "" } }, `del-${site.key}`, site.key)}
+                              className="text-[11px] text-alert hover:underline"
+                            >
+                              清空
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <details className="rounded-lg border border-ink-200/80 bg-surface/80 px-3 py-2 text-[11.5px] text-ink-600">
+                  <summary className="cursor-pointer font-medium text-ink-700">
+                    备用：本机回环助手 / 油猴脚本（Cookie 留在本机时使用）
+                  </summary>
+                  <div className="mt-2 space-y-2">
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="space-y-1">
                     <span className="text-[11.5px] text-ink-500">本机回环助手地址</span>
@@ -663,6 +880,8 @@ export function OpsPanel({
                     <Copy size={11} /> 复制油猴脚本（方式 B · 免装 Node）
                   </button>
                 </div>
+                  </div>
+                </details>
               </div>
             )}
             {showAddRss && (
@@ -826,15 +1045,15 @@ export function OpsPanel({
                       >
                         <Pencil size={11} /> 编辑
                       </button>
-                      {s.kind === "ingest" ? (
+                      {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
                         <button
                           type="button"
-                          onClick={() => void startLoopbackLogin(s.id)}
+                          onClick={() => setShowIngestGuide(true)}
                           className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-2 text-[12px] font-medium text-brand hover:bg-ink-200/70"
-                          title="通过本机回环助手扫码登录并采集，Cookie 仅留在本机"
+                          title="先贴入 Cookie 或启用本机回环采集"
                         >
-                          <ExternalLink size={11} />
-                          扫码登录
+                          <KeyRound size={11} />
+                          配置 Cookie
                         </button>
                       ) : (
                         <button
@@ -967,16 +1186,26 @@ export function OpsPanel({
                             >
                               <Pencil size={11} /> 编辑
                             </button>
-                            {s.kind === "ingest" ? (
-                              <button
-                                type="button"
-                                onClick={() => void startLoopbackLogin(s.id)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-ink-200/70"
-                                title="通过本机回环助手扫码登录并采集，Cookie 仅留在本机"
-                              >
-                                <ExternalLink size={11} />
-                                扫码登录
-                              </button>
+                            {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowIngestGuide(true)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-ink-200/70"
+                                  title="粘贴 Cookie 开启 VPS 全链路采集"
+                                >
+                                  <KeyRound size={11} />
+                                  配 Cookie
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void startLoopbackLogin(s.id)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[12px] text-ink-600 hover:border-brand-border hover:text-brand"
+                                  title="备用：通过本机回环助手扫码登录采集"
+                                >
+                                  <ExternalLink size={11} />
+                                </button>
+                              </>
                             ) : (
                               <button
                                 type="button"

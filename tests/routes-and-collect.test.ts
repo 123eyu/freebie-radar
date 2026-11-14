@@ -1016,3 +1016,106 @@ test("数据源运维支持编辑名称/config/用途频道与删除自定义源
   const delCustom = await app.request(`/api/sources/${customId}`, { method: "DELETE" });
   assert.equal(delCustom.status, 200);
 });
+
+
+test("VPS Cookie 托管：支持 Header/JSON 解析、脱敏查询及触发 xhs-search 带代理采集", async () => {
+  const { createServer } = await import("node:http");
+  const { parseCookieInput } = await import("../src/server/cookie-store.ts");
+
+  // 1. 解析 Request Header 字符串与 Cookie-Editor JSON
+  const fromHeader = parseCookieInput("Cookie: a=1; z_c0=\"secret-token\"; d_c0=abc", "zhihu");
+  assert.equal(fromHeader.length, 3);
+  assert.equal(fromHeader.find((c) => c.name === "z_c0")?.value, "secret-token");
+  assert.equal(fromHeader[0]?.domain, ".zhihu.com");
+
+  const fromJson = parseCookieInput(
+    JSON.stringify([{ name: "web_session", value: "xhs-sess-123", domain: ".xiaohongshu.com", path: "/" }]),
+    "xhs",
+  );
+  assert.equal(fromJson.length, 1);
+  assert.equal(fromJson[0]?.name, "web_session");
+
+  // 2. 起一个本地 mock runner 验证服务端调用、代理透传与入库
+  let receivedPayload: { site?: string; proxy?: string; cookies?: Array<{ name: string }> } | null = null;
+  let expireMode = false;
+  const mockSrv = createServer((req, res) => {
+    if (req.url === "/health") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, chrome: true }));
+      return;
+    }
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      receivedPayload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as typeof receivedPayload;
+      res.writeHead(200, { "content-type": "application/json" });
+      if (expireMode) {
+        res.end(JSON.stringify({ ok: false, needLogin: true, error: "小红书 Cookie 已失效" }));
+      } else {
+        res.end(
+          JSON.stringify({
+            ok: true,
+            items: [
+              {
+                externalId: "https://www.xiaohongshu.com/explore/abc123",
+                url: "https://www.xiaohongshu.com/explore/abc123",
+                title: "免费领取天翼云 4核8G 云电脑 30 天",
+                summary: "实测免费领",
+              },
+            ],
+          }),
+        );
+      }
+    });
+  });
+  await new Promise<void>((resolve) => mockSrv.listen(0, "127.0.0.1", () => resolve()));
+  const addr = mockSrv.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+
+  try {
+    const patchRes = await app.request("/api/cookies", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        runnerUrl: `http://127.0.0.1:${port}`,
+        xhsProxy: "http://47.110.65.20:8888",
+        cookies: {
+          xhs: "web_session=secret_xhs_val; a1=a1_val",
+        },
+      }),
+    });
+    assert.equal(patchRes.status, 200);
+    const statusJson = (await patchRes.json()) as {
+      sites: { xhs: { configured: boolean; count: number; hasAuthHint: boolean; keyNames: string[] } };
+    };
+    assert.equal(statusJson.sites.xhs.configured, true);
+    assert.equal(statusJson.sites.xhs.count, 2);
+    assert.equal(statusJson.sites.xhs.hasAuthHint, true);
+    assert.ok(!JSON.stringify(statusJson).includes("secret_xhs_val"), "GET/PATCH 不得回传明文 Cookie 值");
+
+    const healthRes = await app.request("/api/cookies/test-runner", { method: "POST", body: "{}" });
+    const healthJson = (await healthRes.json()) as { ok: boolean; chrome: boolean };
+    assert.equal(healthJson.ok, true);
+    assert.equal(healthJson.chrome, true);
+
+    run("DELETE FROM items WHERE source_id = 'xhs-search'");
+    const colRes = await app.request("/api/sources/xhs-search/collect", { method: "POST" });
+    assert.equal(colRes.status, 200);
+    const colJson = (await colRes.json()) as { ok: boolean; summary: { fetched: number; inserted: number } };
+    assert.equal(colJson.ok, true);
+    assert.equal(colJson.summary.fetched, 1);
+    assert.equal(colJson.summary.inserted, 1);
+    const got = receivedPayload as { site?: string; proxy?: string } | null;
+    assert.equal(got?.site, "xhs");
+    assert.equal(got?.proxy, "http://47.110.65.20:8888");
+
+    // Cookie 过期时应明确报失败并提示更新 Cookie
+    expireMode = true;
+    const expRes = await app.request("/api/sources/xhs-search/collect", { method: "POST" });
+    const expJson = (await expRes.json()) as { ok: boolean; error: string };
+    assert.equal(expJson.ok, false);
+    assert.match(expJson.error, /Cookie 已失效/);
+  } finally {
+    mockSrv.close();
+  }
+});

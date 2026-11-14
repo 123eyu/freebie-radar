@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { all, get, run, type SqlValue } from "./db.ts";
 import { TitleDeduper } from "./enrich/dedup.ts";
 import { aiEnabled, config, pushEnabled } from "./config.ts";
+import { getCookieSettings, toPublicCookieStatus, updateCookieSettings, type CookieSiteKey } from "./cookie-store.ts";
 import {
   addCustomRssSource,
   BUILTIN_SOURCE_IDS,
@@ -784,9 +785,44 @@ export function registerApi(app: Hono) {
     const id = c.req.param("id");
     const src = get<{ id: string; kind: string }>("SELECT id, kind FROM sources WHERE id = ?", id);
     if (!src) return c.json({ error: "source not found" }, 404);
-    if (src.kind === "ingest") return c.json({ error: "该源由本机 Playwright 定时采集，无法从服务端直采" }, 400);
-    const summary = await runSource(id);
-    return c.json({ ok: true, summary });
+    try {
+      const summary = await runSource(id);
+      return c.json({ ok: summary.status !== "failed", summary, error: summary.error });
+    } catch (err) {
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  // ---- VPS Cookie 托管与执行器状态（受 ADMIN_TOKEN 保护，不返回明文 Cookie）----
+  app.get("/api/cookies", (c) => {
+    return c.json(toPublicCookieStatus());
+  });
+
+  app.patch("/api/cookies", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      runnerUrl?: string;
+      xhsProxy?: string;
+      cookies?: Partial<Record<CookieSiteKey, string>>;
+    } | null;
+    if (!body) return c.json({ error: "invalid json" }, 400);
+    try {
+      return c.json(updateCookieSettings(body));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.post("/api/cookies/test-runner", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { runnerUrl?: string };
+    const url = (body.runnerUrl ?? getCookieSettings().runnerUrl).replace(/\/+$/, "");
+    if (!url) return c.json({ ok: false, error: "未配置执行器地址" }, 400);
+    try {
+      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(4000) });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; busy?: boolean; chrome?: boolean };
+      return c.json({ ok: res.ok && Boolean(data.ok), ...data });
+    } catch (err) {
+      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   app.get("/api/runs", (c) => {

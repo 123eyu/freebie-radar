@@ -7,6 +7,7 @@ import { enqueueForAi, reviewFreshNow, setPostReviewHandler } from "../enrich/ai
 import { guessObtain, type ObtainMode } from "../enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "../enrich/blocklist.ts";
 import { getRetention } from "../retention.ts";
+import { hasCookieConfiguredForSource } from "../cookie-store.ts";
 import { getPushSettings, pushInstant, pushReviewedByIds } from "../instant.ts";
 
 setPostReviewHandler(pushReviewedByIds);
@@ -25,11 +26,12 @@ import { cheapsharkCollector } from "./cheapshark.ts";
 import { openrouterCollector } from "./openrouter.ts";
 import { bskyCollector } from "./bsky.ts";
 import { cctvCollector } from "./cctv.ts";
+import { cookieIngestCollector } from "./cookie.ts";
 import type { Collector, RawItem, SourceSeed } from "./types.ts";
 
 export const COLLECTORS: Collector[] = [
   mockCollector, linuxdoCollector, v2exCollector, githubCollector, rssCollector, telegramCollector,
-  gamerpowerCollector, epicCollector, gogCollector, steamCollector, cheapsharkCollector, bskyCollector, openrouterCollector, cctvCollector,
+  gamerpowerCollector, epicCollector, gogCollector, steamCollector, cheapsharkCollector, bskyCollector, openrouterCollector, cctvCollector, cookieIngestCollector,
 ];
 const BY_KIND = new Map(COLLECTORS.map((c) => [c.kind, c]));
 
@@ -798,10 +800,9 @@ export async function runAll(
   options: { http?: HttpClient; maxItems?: number; log?: (message: string) => void } = {},
 ): Promise<RunSummary[]> {
   ensureSources();
-  // kind 没有对应 collector 的源（例如 kind="ingest"，由本机采集器回传）不参与服务器调度，
-  // 否则每轮都会产生 "no collector registered" 的无意义失败。
+  // kind="ingest" 仅在服务端托管了对应站点 Cookie 且配置了执行器时才参与定时调度，否则留给本机回传
   const rows = all<{ id: string; kind: string }>("SELECT id, kind FROM sources WHERE enabled = 1 ORDER BY id")
-    .filter((r) => BY_KIND.has(r.kind))
+    .filter((r) => BY_KIND.has(r.kind) && (r.kind !== "ingest" || hasCookieConfiguredForSource(r.id)))
     .map((r) => r.id);
   const filter = config.enabledSources;
   const targets = filter.length ? rows.filter((id) => filter.includes(id)) : rows;

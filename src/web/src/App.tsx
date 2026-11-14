@@ -1738,11 +1738,15 @@ export function App() {
                 notify("正在采集…");
                 const res = await fetch(`/api/sources/${id}/collect`, { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as {
+                  ok?: boolean;
                   error?: string;
                   summary?: { inserted: number; fetched: number; status: string };
                 };
-                if (!res.ok) notify(data.error ?? "采集失败");
-                else notify(`完成：抓取 ${data.summary?.fetched ?? 0}，新增 ${data.summary?.inserted ?? 0}`);
+                if (!res.ok || data.ok === false || data.summary?.status === "failed") {
+                  notify(data.error ?? "采集失败");
+                } else {
+                  notify(`完成：抓取 ${data.summary?.fetched ?? 0}，新增 ${data.summary?.inserted ?? 0}`);
+                }
                 refreshAll();
               }}
               onToggleSource={async (id, enabled) => {
