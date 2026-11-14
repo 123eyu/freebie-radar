@@ -156,131 +156,114 @@ def collect_zhihu(page, keywords):
 
 def collect_xhs(page, keywords):
     seen = {}
-    feed_notes = {}
-    detail_budget = 10
+    detail_budget = 12
+    last_err = None
 
-    def on_xhs_response(resp):
-        if "/api/sns/web/v1/feed" not in resp.url:
-            return
+    for kw in keywords:
+        if len(seen) >= 45:
+            break
+        url = (
+            "https://www.xiaohongshu.com/search_result?keyword="
+            + urllib.parse.quote(str(kw))
+            + "&source=web_search_result_notes"
+        )
         try:
-            data = json.loads(resp.text())
-            for row in (data.get("data") or {}).get("items") or []:
-                nid = str(row.get("id") or "").strip()
-                nc = row.get("note_card") or {}
-                desc = str(nc.get("desc") or "").strip()
-                if nid and desc:
-                    tags = [t.get("name") for t in (nc.get("tag_list") or []) if isinstance(t, dict) and t.get("name")]
-                    ts = nc.get("time")
-                    feed_notes[nid] = {"desc": desc, "tags": tags, "time": ts}
+            page.goto(url, wait_until="domcontentloaded", timeout=35000)
+            page.wait_for_timeout(1800)
+        except Exception as err:
+            last_err = err
+            continue
+        try:
+            page.locator("text=最新").first.click(timeout=1500)
+            page.wait_for_timeout(800)
         except Exception:
             pass
+        page.mouse.wheel(0, 1600)
+        page.wait_for_timeout(700)
+        state = page.evaluate(
+            """() => {
+              const text = document.body?.innerText || '';
+              const needLogin = /登录后查看搜索结果|扫码登录|手机号登录/.test(text);
+              const items = Array.from(document.querySelectorAll('section.note-item')).map((c) => {
+                const a = c.querySelector('a.cover, a[href*="/explore/"], a[href*="/search_result/"]');
+                const t = c.querySelector('.title span, .footer .title, .title');
+                const au = c.querySelector('.author .name, .name');
+                const img = c.querySelector('img');
+                const rawHref = (a && a.href) || '';
+                const m = rawHref.match(/\\/(?:explore|search_result)\\/([0-9a-zA-Z]+)/);
+                const canonical = m ? `https://www.xiaohongshu.com/explore/${m[1]}` : rawHref;
+                return {
+                  title: ((t && t.textContent) || '').trim(),
+                  url: canonical,
+                  fetchUrl: rawHref,
+                  author: ((au && au.textContent) || '').trim(),
+                  imageUrl: img ? (img.getAttribute('src') || '') : '',
+                };
+              }).filter((x) => x.title && x.url);
+              return { needLogin, items };
+            }"""
+        )
+        if state.get("needLogin") and not state.get("items"):
+            raise PermissionError("小红书 Cookie 已失效或被跳转国际版/验证")
 
-    page.on("response", on_xhs_response)
-    try:
-        for kw in keywords:
-            if len(seen) >= 45:
-                break
-            url = (
-                "https://www.xiaohongshu.com/search_result?keyword="
-                + urllib.parse.quote(str(kw))
-                + "&source=web_search_result_notes"
-            )
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(2400)
+        batch_targets = []
+        for it in state.get("items", []):
+            seen.setdefault(it["url"], it)
+            if (
+                detail_budget > 0
+                and len(batch_targets) < 4
+                and not seen[it["url"]].get("content")
+                and not CHATTER_RE.search(it["title"])
+                and it.get("fetchUrl")
+            ):
+                batch_targets.append({"url": it["url"], "fetchUrl": it["fetchUrl"]})
+                detail_budget -= 1
+
+        # 并发 fetch 笔记 SSR HTML（精确按 URL 一一对应，彻底无弹窗错位）
+        if batch_targets:
             try:
-                page.locator("text=最新").first.click(timeout=1500)
-                page.wait_for_timeout(900)
+                details = page.evaluate(
+                    """async (targets) => {
+                      const out = {};
+                      await Promise.all(targets.map(async ({ url, fetchUrl }) => {
+                        try {
+                          const r = await fetch(fetchUrl, { credentials: 'include' });
+                          if (!r.ok) return;
+                          const html = await r.text();
+                          const dMatch = html.match(/"desc":"((?:\\\\.|[^"])*)"/);
+                          let desc = '';
+                          if (dMatch) {
+                            try { desc = JSON.parse('"' + dMatch[1] + '"'); } catch { desc = dMatch[1]; }
+                          }
+                          if (!desc) {
+                            const m = html.match(/<meta\\s+name="description"\\s+content="([^"]*)"/i)
+                              || html.match(/<meta\\s+content="([^"]*)"\\s+name="description"/i);
+                            if (m) desc = m[1];
+                          }
+                          const tMatch = html.match(/"time":(\\d{10,13})/);
+                          const ts = tMatch ? Number(tMatch[1]) : 0;
+                          if (desc && desc.trim()) {
+                            out[url] = { desc: desc.trim().slice(0, 3500), ts: Number.isFinite(ts) ? ts : 0 };
+                          }
+                        } catch {}
+                      }));
+                      return out;
+                    }""",
+                    batch_targets,
+                )
+                for u, d in (details or {}).items():
+                    if u in seen and d.get("desc"):
+                        seen[u]["content"] = d["desc"]
+                        seen[u]["summary"] = _clean_text(d["desc"], 380)
+                        ts = d.get("ts") or 0
+                        if ts > 0:
+                            sec = ts / 1000.0 if ts > 1e12 else float(ts)
+                            seen[u]["publishedAt"] = datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()
             except Exception:
                 pass
-            page.mouse.wheel(0, 1600)
-            page.wait_for_timeout(800)
-            state = page.evaluate(
-                """() => {
-                  const text = document.body?.innerText || '';
-                  const needLogin = /登录后查看搜索结果|扫码登录|手机号登录/.test(text);
-                  const items = Array.from(document.querySelectorAll('section.note-item')).map((c, idx) => {
-                    const a = c.querySelector('a.cover, a[href*="/explore/"], a[href*="/search_result/"]');
-                    const t = c.querySelector('.title span, .footer .title, .title');
-                    const au = c.querySelector('.author .name, .name');
-                    const img = c.querySelector('img');
-                    return {
-                      idx,
-                      title: ((t && t.textContent) || '').trim(),
-                      url: (a && a.href) || '',
-                      author: ((au && au.textContent) || '').trim(),
-                      imageUrl: img ? (img.getAttribute('src') || '') : '',
-                    };
-                  }).filter((x) => x.title && x.url);
-                  return { needLogin, items };
-                }"""
-            )
-            if state.get("needLogin") and not state.get("items"):
-                raise PermissionError("小红书 Cookie 已失效或被跳转国际版/验证")
 
-            for it in state.get("items", []):
-                seen.setdefault(it["url"], it)
-
-            # 按精确 note_id 点开若干有潜力的笔记弹窗抓正文（校验 URL/feed ID 严格对齐，防止错位）
-            if detail_budget > 0:
-                for it in state.get("items", []):
-                    if detail_budget <= 0:
-                        break
-                    u = it["url"]
-                    if seen[u].get("content") or CHATTER_RE.search(it["title"]):
-                        continue
-                    nid_m = re.search(r"/(?:explore|search_result)/([0-9a-zA-Z]+)", u)
-                    nid = nid_m.group(1) if nid_m else ""
-                    if not nid:
-                        continue
-                    detail_budget -= 1
-                    try:
-                        link = page.locator(f'section.note-item:has(a[href*="{nid}"]) a.cover').first
-                        link.click(timeout=2500, no_wait_after=True)
-                        for _ in range(12):
-                            if nid in feed_notes:
-                                break
-                            page.wait_for_timeout(200)
-                        modal_info = page.evaluate(
-                            """(nid) => {
-                              if (!location.href.includes(nid)) return '';
-                              const el = document.querySelector('#detail-desc, .note-content .desc, .note-text');
-                              return el ? el.innerText.trim() : '';
-                            }""",
-                            nid,
-                        )
-                        fn = feed_notes.get(nid)
-                        full_desc = (fn.get("desc") if fn else "") or modal_info or ""
-                        if full_desc:
-                            if fn and fn.get("tags"):
-                                tag_str = " ".join(f"#{t}" for t in fn["tags"][:8])
-                                full_body = f"{full_desc}\n{tag_str}".strip()
-                            else:
-                                full_body = full_desc
-                            seen[u]["content"] = full_body[:3500]
-                            seen[u]["summary"] = _clean_text(full_desc, 380)
-                            ts = fn.get("time") if fn else None
-                            if isinstance(ts, (int, float)) and ts > 0:
-                                sec = ts / 1000.0 if ts > 1e12 else float(ts)
-                                seen[u]["publishedAt"] = datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()
-                        try:
-                            close_btn = page.locator(".close-circle:visible, .close-box:visible").first
-                            if close_btn.count() > 0:
-                                close_btn.click(timeout=1200, no_wait_after=True)
-                            else:
-                                page.keyboard.press("Escape")
-                        except Exception:
-                            page.keyboard.press("Escape")
-                        page.wait_for_timeout(350)
-                    except Exception:
-                        try:
-                            page.keyboard.press("Escape")
-                        except Exception:
-                            pass
-    finally:
-        try:
-            page.remove_listener("response", on_xhs_response)
-        except Exception:
-            pass
+    if not seen and last_err is not None:
+        raise last_err
 
     return [
         {
@@ -304,10 +287,7 @@ def collect_xiaoheihe(page, keywords):
 
     def on_response(resp):
         if "general/search" in resp.url:
-            try:
-                captured.append(resp.text())
-            except Exception:
-                pass
+            captured.append(resp)
 
     page.on("response", on_response)
     try:
@@ -326,8 +306,10 @@ def collect_xiaoheihe(page, keywords):
                 if captured:
                     break
                 page.wait_for_timeout(1000)
-            for txt in captured:
+            page.wait_for_timeout(350)
+            for resp in list(captured):
                 try:
+                    txt = resp.text()
                     parsed = json.loads(txt)
                     for it in (parsed.get("result") or {}).get("items") or []:
                         if it.get("type") != "link" or not isinstance(it.get("info"), dict):
