@@ -234,9 +234,8 @@ def collect_xhs(page, keywords):
                         continue
                     detail_budget -= 1
                     try:
-                        link = page.locator(f'section.note-item a[href*="{nid}"]').first
-                        link.scroll_into_view_if_needed(timeout=1500)
-                        link.click(timeout=2500)
+                        link = page.locator(f'section.note-item:has(a[href*="{nid}"]) a.cover').first
+                        link.click(timeout=3000)
                         for _ in range(10):
                             if nid in feed_notes:
                                 break
@@ -365,15 +364,22 @@ def collect_xiaoheihe(page, keywords):
     detail_targets = [it for it in items if not CHATTER_RE.search(it.get("title", ""))][:8]
     for it in detail_targets:
         try:
-            page.goto(it["url"], wait_until="domcontentloaded", timeout=18000)
-            page.wait_for_timeout(1600)
-            body = page.evaluate(
-                """() => {
-                  const el = document.querySelector('.article-content, .link-content, .post-content, article, main');
-                  return el ? el.innerText.trim() : '';
-                }"""
-            )
-            trimmed = re.sub(r"^返回[\s\S]*?Lv\.\d+[\s\S]*?关注\s*", "", body or "")
+            page.goto(it["url"], wait_until="domcontentloaded", timeout=20000)
+            body = ""
+            for _ in range(14):
+                page.wait_for_timeout(350)
+                body = page.evaluate(
+                    """() => {
+                      const el = document.querySelector('.article-content, .link-content, .post-content, article, main');
+                      const txt = el ? el.innerText.trim() : '';
+                      return txt;
+                    }"""
+                )
+                if len(body or "") > 280 and "立即下载小黑盒APP" not in (body or "")[:80]:
+                    break
+            if not body or "立即下载小黑盒APP" in body[:80]:
+                continue
+            trimmed = re.sub(r"^返回[\s\S]*?Lv\.\d+[\s\S]*?关注\s*", "", body)
             trimmed = re.sub(r"^返回\s+.*?关注\s+", "", trimmed)
             cleaned = _clean_text(trimmed, 3500)
             if len(cleaned) > len(it.get("summary") or ""):
