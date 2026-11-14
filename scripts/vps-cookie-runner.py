@@ -235,8 +235,8 @@ def collect_xhs(page, keywords):
                     detail_budget -= 1
                     try:
                         link = page.locator(f'section.note-item:has(a[href*="{nid}"]) a.cover').first
-                        link.click(timeout=3000)
-                        for _ in range(10):
+                        link.click(timeout=2500, no_wait_after=True)
+                        for _ in range(12):
                             if nid in feed_notes:
                                 break
                             page.wait_for_timeout(200)
@@ -262,8 +262,15 @@ def collect_xhs(page, keywords):
                             if isinstance(ts, (int, float)) and ts > 0:
                                 sec = ts / 1000.0 if ts > 1e12 else float(ts)
                                 seen[u]["publishedAt"] = datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()
-                        page.keyboard.press("Escape")
-                        page.wait_for_timeout(300)
+                        try:
+                            close_btn = page.locator(".close-circle:visible, .close-box:visible").first
+                            if close_btn.count() > 0:
+                                close_btn.click(timeout=1200, no_wait_after=True)
+                            else:
+                                page.keyboard.press("Escape")
+                        except Exception:
+                            page.keyboard.press("Escape")
+                        page.wait_for_timeout(350)
                     except Exception:
                         try:
                             page.keyboard.press("Escape")
@@ -375,9 +382,9 @@ def collect_xiaoheihe(page, keywords):
                       return txt;
                     }"""
                 )
-                if len(body or "") > 280 and "立即下载小黑盒APP" not in (body or "")[:80]:
+                if len(body or "") > 350 and "京ICP备" not in (body or "")[:180]:
                     break
-            if not body or "立即下载小黑盒APP" in body[:80]:
+            if not body or len(body) <= 260 or "京ICP备" in body[:180]:
                 continue
             trimmed = re.sub(r"^返回[\s\S]*?Lv\.\d+[\s\S]*?关注\s*", "", body)
             trimmed = re.sub(r"^返回\s+.*?关注\s+", "", trimmed)
