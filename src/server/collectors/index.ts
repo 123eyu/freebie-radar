@@ -121,10 +121,10 @@ export const SEEDS: SourceSeed[] = [
   { id: "rss-freestufftimes", name: "FreeStuffTimes · 0元样品", kind: "rss", enabled: true, intervalSec: 3600, config: { kindHint: "freebie", feeds: [{ id: "freestufftimes", url: "https://www.freestufftimes.com/feed", limit: 25 }] } },
   { id: "rss-freeflys", name: "FreeFlys · 0元样品", kind: "rss", enabled: true, intervalSec: 3600, config: { kindHint: "freebie", feeds: [{ id: "freeflys", url: "https://www.freeflys.com/feed/", limit: 20 }] } },
 
-  // === 登录态站点（零 Cookie 上传 · 本机回环或油猴脚本回传）===
-  { id: "zhihu-search", name: "知乎 · 福利搜索", kind: "ingest", enabled: true, config: { keyword: "免费领取" } },
-  { id: "xhs-search", name: "小红书 · 福利搜索", kind: "ingest", enabled: true, config: { keyword: "免费领取" } },
-  { id: "xiaoheihe-search", name: "小黑盒 · 福利搜索", kind: "ingest", enabled: true, config: { keyword: "免费" } },
+  // === 登录态站点（VPS Cookie 托管定时采集 / 或本机油猴脚本回传）===
+  { id: "zhihu-search", name: "知乎 · 福利搜索", kind: "ingest", enabled: true, intervalSec: 3600, config: { keyword: "免费领取" } },
+  { id: "xhs-search", name: "小红书 · 福利搜索", kind: "ingest", enabled: true, intervalSec: 3600, config: { keyword: "免费领取" } },
+  { id: "xiaoheihe-search", name: "小黑盒 · 福利搜索", kind: "ingest", enabled: true, intervalSec: 3600, config: { keyword: "免费" } },
 
   // === 按需选开的低纯度 / 需代理 / 扩展源（默认关闭以保持低噪与轻量化）===
   { id: "tg-cn-deals", name: "TG · 中文科技/VPS/羊毛", kind: "telegram", enabled: false, intervalSec: 300, config: { channels: ["zaihuapd", "zaihuanews", "v2ex_channel", "appinnfeed"] } },

@@ -1016,8 +1016,8 @@ export function OpsPanel({
                           }
                         />
                       </button>
-                      {s.kind === "ingest" ? (
-                        <span className="text-[12px] text-ink-500">本机定时</span>
+                      {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
+                        <span className="text-[12px] text-ink-500">待配 Cookie</span>
                       ) : (
                         <select
                           value={s.interval_sec}
@@ -1130,8 +1130,8 @@ export function OpsPanel({
                           </button>
                         </td>
                         <td className="px-2 py-2.5">
-                          {s.kind === "ingest" ? (
-                            <span className="text-[12px] text-ink-500">本机定时</span>
+                          {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
+                            <span className="text-[12px] text-ink-500">待配 Cookie</span>
                           ) : (
                             <select
                               value={s.interval_sec}

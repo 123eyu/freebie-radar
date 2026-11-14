@@ -1093,6 +1093,13 @@ test("VPS Cookie 托管：支持 Header/JSON 解析、脱敏查询及触发 xhs-
     assert.equal(statusJson.sites.xhs.hasAuthHint, true);
     assert.ok(!JSON.stringify(statusJson).includes("secret_xhs_val"), "GET/PATCH 不得回传明文 Cookie 值");
 
+
+    // 已配置 Cookie 的站点自动进入服务端按周期调度队列，未配 Cookie 的站点跳过不报错
+    const { listDueSourceIds } = await import("../src/server/cron.ts");
+    run("UPDATE sources SET last_run_at = NULL WHERE id IN ('xhs-search', 'zhihu-search')");
+    const dueIds = listDueSourceIds();
+    assert.ok(dueIds.includes("xhs-search"), "已配置 Cookie 的 xhs-search 应纳入定时调度");
+    assert.ok(!dueIds.includes("zhihu-search"), "未配置 Cookie 的 zhihu-search 应跳过定时调度");
     const healthRes = await app.request("/api/cookies/test-runner", { method: "POST", body: "{}" });
     const healthJson = (await healthRes.json()) as { ok: boolean; chrome: boolean };
     assert.equal(healthJson.ok, true);

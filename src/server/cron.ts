@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
 import { all } from "./db.ts";
+import { hasCookieConfiguredForSource } from "./cookie-store.ts";
 import { runSource } from "./collectors/index.ts";
 
 /** 极简 5 段 cron 匹配：分 时 日 月 周；支持 * , - /。 */
@@ -33,9 +34,26 @@ export function matchField(field: string, value: number, min: number, max: numbe
 }
 
 
+export function listDueSourceIds(): string[] {
+  const due = all<{ id: string; kind: string; interval_sec: number; last_run_at: string | null }>(
+    `SELECT id, kind, interval_sec, last_run_at FROM sources
+      WHERE enabled = 1
+        AND (last_run_at IS NULL OR datetime(last_run_at, '+' || interval_sec || ' seconds') <= datetime('now'))
+      ORDER BY last_run_at IS NOT NULL, last_run_at ASC`,
+  );
+  const filter = config.enabledSources;
+  return due
+    .filter((s) => {
+      if (filter.length && !filter.includes(s.id)) return false;
+      if (s.kind === "ingest" && !hasCookieConfiguredForSource(s.id)) return false;
+      return true;
+    })
+    .map((s) => s.id);
+}
+
 /**
  * 按每个源自己的 interval_sec 轮询：到点就跑，串行执行避免打爆上游。
- * 送码类源设 60-120 秒，日报/清单类源设几小时。
+ * 送码类源设 60-120 秒，日报/清单/Cookie 托管源设半小时至数小时。
  */
 export function startIntervalScheduler(task: {
   log?: (m: string) => void;
@@ -49,19 +67,11 @@ export function startIntervalScheduler(task: {
     if (busy) return;
     busy = true;
     try {
-      const due = all<{ id: string; interval_sec: number; last_run_at: string | null }>(
-        `SELECT id, interval_sec, last_run_at FROM sources
-          WHERE enabled = 1 AND kind != 'ingest'
-            AND (last_run_at IS NULL OR datetime(last_run_at, '+' || interval_sec || ' seconds') <= datetime('now'))
-          ORDER BY last_run_at IS NOT NULL, last_run_at ASC`,
-      );
-      const filter = config.enabledSources;
-      for (const s of due) {
-        if (filter.length && !filter.includes(s.id)) continue;
+      for (const id of listDueSourceIds()) {
         try {
-          await runSource(s.id);
+          await runSource(id);
         } catch (err) {
-          log(`[cron] ${s.id} 失败: ${err instanceof Error ? err.message : String(err)}`);
+          log(`[cron] ${id} 失败: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     } catch (err) {
