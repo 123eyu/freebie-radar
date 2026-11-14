@@ -32,6 +32,7 @@ export type AiQueueJob = {
   url: string;
   title: string;
   summary: string;
+  content?: string | null;
   pushOnApprove?: boolean;
 };
 
@@ -239,6 +240,7 @@ async function drain(): Promise<void> {
         url: j.url,
         title: j.title,
         summary: j.summary,
+        content: j.content ?? null,
       })) as RawItem[];
 
       const jobId = startAiJob({

@@ -1061,6 +1061,7 @@ test("VPS Cookie 托管：支持 Header/JSON 解析、脱敏查询及触发 xhs-
                 url: "https://www.xiaohongshu.com/explore/abc123",
                 title: "免费领取天翼云 4核8G 云电脑 30 天",
                 summary: "实测免费领",
+                content: "详细正文内容：按教程登录控制台即可免费领 30 天，无套路",
               },
             ],
           }),
@@ -1112,6 +1113,8 @@ test("VPS Cookie 托管：支持 Header/JSON 解析、脱敏查询及触发 xhs-
     assert.equal(colJson.ok, true);
     assert.equal(colJson.summary.fetched, 1);
     assert.equal(colJson.summary.inserted, 1);
+    const savedItem = get<{ content: string | null }>("SELECT content FROM items WHERE source_id = 'xhs-search' LIMIT 1");
+    assert.match(savedItem?.content ?? "", /详细正文内容/);
     const got = receivedPayload as { site?: string; proxy?: string } | null;
     assert.equal(got?.site, "xhs");
     assert.equal(got?.proxy, "http://47.110.65.20:8888");

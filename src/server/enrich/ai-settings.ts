@@ -74,9 +74,9 @@ const DEFAULT_PROMPT = [
   "",
   "判 keep=false（同时 kind='noise'）的噪音（真正无价值的才拦截）：",
   "- 求助/提问/求推荐/求拼车/纯收鸡求购（如「谁有优惠券」「求推荐便宜VPS」「求一个ChatGPT拼车」「收一台RN传家宝」「报错429怎么解决」）",
-  "- 语焉不详的代购引流或纯硬广卖课",
+  "- 语焉不详的代购引流、卖课或推广软广（尤其注意标题看似免费/白嫖，但正文或末尾要求加微/私信/评论区扣1/关注领/返利链接/付费解锁才给的标题党）",
   "- 毫无亮点的游戏常规微调补丁说明（如「修复若干闪退」，且本体仍需原价购买）",
-  "- 八卦吐槽、吵架引战水贴、无实质内容的标题党软文",
+  "- 八卦吐槽、吵架引战水贴、纯感慨/讨论帖（如「怎么看待白嫖」「如何评价…」）或无实际可领路径的空泛软文",
   "- 毫无折扣亮点的普通原价推广",
   "",
   "分类 category 只能是：ai | cloud | vps | domain | opensource | software | dev | design | security | hardware | media | game | carpool | trade | headline | world | finance | stock | tech | news | goods | invite | edu | other",
@@ -339,6 +339,12 @@ export type ReviewBatchEvent = {
   error?: string;
 };
 
+function aiSummaryExcerpt(it: { summary?: string | null; content?: string | null }): string {
+  const raw = (it.content || it.summary || "").replace(/\s+/g, " ").trim();
+  if (raw.length <= 420) return raw;
+  return `${raw.slice(0, 240)} … ${raw.slice(-170)}`;
+}
+
 /**
  * 送审并返回 index → verdict 的映射。未启用或全部失败返回 null。
  * 条目多于 maxItems 时按 maxItems 截断送审，按 batchSize / concurrency 并发执行。
@@ -365,7 +371,7 @@ export async function reviewItems(
       payload: chunk.map((it, i) => ({
         index: start + i,
         title: (it.title ?? "").slice(0, 140),
-        summary: (it.summary ?? "").slice(0, 200),
+        summary: aiSummaryExcerpt(it),
       })),
     });
   }

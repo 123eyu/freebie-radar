@@ -279,7 +279,7 @@ async function dispatchFresh(
     const syncBatch = ranked.slice(0, limit);
     const restBatch = ranked.slice(limit);
     const verdicts = await reviewFreshNow(
-      syncBatch.map((f) => ({ itemId: f.id, sourceId, url: f.url, title: f.title, summary: f.summary ?? "" })),
+      syncBatch.map((f) => ({ itemId: f.id, sourceId, url: f.url, title: f.title, summary: f.summary ?? "", content: f.content ?? null })),
     );
     for (const f of syncBatch) {
       const v = verdicts.get(f.id);
@@ -301,6 +301,7 @@ async function dispatchFresh(
           url: f.url,
           title: f.title,
           summary: f.summary ?? "",
+          content: f.content ?? null,
           pushOnApprove: pushSettings.pushAfterBackfill,
         })),
       );
@@ -317,6 +318,7 @@ async function dispatchFresh(
       url: f.url,
       title: f.title,
       summary: f.summary ?? "",
+      content: f.content ?? null,
       pushOnApprove: pushSettings.pushAfterBackfill,
     })),
   );
@@ -493,6 +495,8 @@ export type FreshItem = {
   obtain?: string | null;
   /** 摘要文本，用于订阅关键词匹配 */
   summary?: string | null;
+  /** 正文全文（知乎/小红书/小黑盒详情抓取等），供详情展示与防标题党审核 */
+  content?: string | null;
   /** 发布时间，用于拦截历史旧帖重复推送 */
   publishedAt?: string | null;
 };
@@ -605,6 +609,7 @@ function persist(
              kind = COALESCE(?, kind),
              ai_quality = COALESCE(?, ai_quality),
              image_url = COALESCE(?, image_url),
+             content = COALESCE(?, content),
              status = CASE WHEN status = 'ignored' THEN 'ignored' ELSE ? END
            WHERE id = ?`,
           e.url,
@@ -628,6 +633,7 @@ function persist(
           verdict ? effectiveKind : existing.ai_keep === null ? e.kind : null,
           effectiveQuality,
           e.imageUrl,
+          e.content ?? null,
           status,
           existing.id,
         );
@@ -690,6 +696,7 @@ function persist(
           category: verdict?.category || e.category,
           obtain: effectiveObtain,
           summary: e.summary ?? null,
+          content: e.content ?? null,
           publishedAt: e.publishedAt ?? null,
         });
       } catch (err) {

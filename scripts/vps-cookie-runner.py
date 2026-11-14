@@ -61,6 +61,15 @@ def normalize_cookies(raw_cookies, default_domain: str):
     return out
 
 
+CHATTER_RE = re.compile(
+    r"^(?:怎么看待|如何评价|怎样做才|为什么|为何|男生|女生|请问|有人知道)|被白嫖|白嫖怪|相亲|考研|骑手|求推荐|求一个|求个|求购"
+)
+
+
+def _clean_text(text: str, limit: int = 3500) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()[:limit]
+
+
 def collect_zhihu(page, keywords):
     seen = {}
     for kw in keywords:
@@ -68,7 +77,7 @@ def collect_zhihu(page, keywords):
             break
         url = "https://www.zhihu.com/search?type=content&q=" + urllib.parse.quote(str(kw))
         page.goto(url, wait_until="domcontentloaded", timeout=25000)
-        page.wait_for_timeout(2200)
+        page.wait_for_timeout(2000)
         state = page.evaluate(
             """() => {
               const text = document.body?.innerText || '';
@@ -90,12 +99,55 @@ def collect_zhihu(page, keywords):
             raise PermissionError("知乎登录态已失效或触发安全验证")
         for it in state.get("items", []):
             seen.setdefault(it["url"], it)
+
+    candidates = [u for u, it in seen.items() if not CHATTER_RE.search(it["title"])][:18]
+    if candidates:
+        try:
+            details = page.evaluate(
+                """async (urls) => {
+                  const out = {};
+                  for (const u of urls) {
+                    const mAns = u.match(/answer\\/(\\d+)/);
+                    const mArt = u.match(/zhuanlan\\.zhihu\\.com\\/p\\/(\\d+)/);
+                    const api = mAns
+                      ? `https://www.zhihu.com/api/v4/answers/${mAns[1]}?include=content`
+                      : (mArt ? `https://zhuanlan.zhihu.com/api/articles/${mArt[1]}` : '');
+                    if (!api) continue;
+                    try {
+                      const r = await fetch(api, { credentials: 'include' });
+                      if (!r.ok) continue;
+                      const j = await r.json();
+                      const txt = String(j.content || '')
+                        .replace(/<br\\s*\\/?>/gi, '\\n')
+                        .replace(/<\\/p>/gi, '\\n')
+                        .replace(/<[^>]+>/g, ' ')
+                        .replace(/\\s+/g, ' ')
+                        .trim();
+                      const ts = Number(j.updated_time || j.created_time || 0);
+                      if (txt) out[u] = { content: txt.slice(0, 3500), ts: Number.isFinite(ts) && ts > 0 ? ts : 0 };
+                    } catch {}
+                  }
+                  return out;
+                }""",
+                candidates,
+            )
+            for u, d in (details or {}).items():
+                if u in seen and d.get("content"):
+                    seen[u]["content"] = d["content"]
+                    seen[u]["summary"] = _clean_text(d["content"], 380)
+                    if d.get("ts"):
+                        seen[u]["publishedAt"] = datetime.fromtimestamp(d["ts"], tz=timezone.utc).isoformat()
+        except Exception:
+            pass
+
     return [
         {
             "externalId": it["url"],
             "url": it["url"],
             "title": it["title"],
             "summary": it.get("summary", ""),
+            "content": it.get("content") or None,
+            "publishedAt": it.get("publishedAt") or None,
             "tags": ["zhihu", "cookie-vps"],
         }
         for it in seen.values()
@@ -104,53 +156,127 @@ def collect_zhihu(page, keywords):
 
 def collect_xhs(page, keywords):
     seen = {}
-    for kw in keywords:
-        if len(seen) >= 45:
-            break
-        url = (
-            "https://www.xiaohongshu.com/search_result?keyword="
-            + urllib.parse.quote(str(kw))
-            + "&source=web_search_result_notes"
-        )
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(2500)
+    feed_notes = {}
+    detail_budget = 10
+
+    def on_xhs_response(resp):
+        if "/api/sns/web/v1/feed" not in resp.url:
+            return
         try:
-            page.locator("text=最新").first.click(timeout=1500)
-            page.wait_for_timeout(1000)
+            data = json.loads(resp.text())
+            for row in (data.get("data") or {}).get("items") or []:
+                nid = str(row.get("id") or "").strip()
+                nc = row.get("note_card") or {}
+                desc = str(nc.get("desc") or "").strip()
+                if nid and desc:
+                    tags = [t.get("name") for t in (nc.get("tag_list") or []) if isinstance(t, dict) and t.get("name")]
+                    ts = nc.get("time")
+                    feed_notes[nid] = {"desc": desc, "tags": tags, "time": ts}
         except Exception:
             pass
-        page.mouse.wheel(0, 1800)
-        page.wait_for_timeout(900)
-        state = page.evaluate(
-            """() => {
-              const text = document.body?.innerText || '';
-              const needLogin = /登录后查看搜索结果|扫码登录|手机号登录/.test(text);
-              const items = Array.from(document.querySelectorAll('section.note-item')).map((c) => {
-                const a = c.querySelector('a.cover, a[href*="/explore/"], a[href*="/search_result/"]');
-                const t = c.querySelector('.title span, .footer .title, .title');
-                const au = c.querySelector('.author .name, .name');
-                const img = c.querySelector('img');
-                return {
-                  title: ((t && t.textContent) || '').trim(),
-                  url: (a && a.href) || '',
-                  author: ((au && au.textContent) || '').trim(),
-                  imageUrl: img ? (img.getAttribute('src') || '') : '',
-                };
-              }).filter((x) => x.title && x.url);
-              return { needLogin, items };
-            }"""
-        )
-        if state.get("needLogin") and not state.get("items"):
-            raise PermissionError("小红书 Cookie 已失效或被跳转国际版/验证")
-        for it in state.get("items", []):
-            seen.setdefault(it["url"], it)
+
+    page.on("response", on_xhs_response)
+    try:
+        for kw in keywords:
+            if len(seen) >= 45:
+                break
+            url = (
+                "https://www.xiaohongshu.com/search_result?keyword="
+                + urllib.parse.quote(str(kw))
+                + "&source=web_search_result_notes"
+            )
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2400)
+            try:
+                page.locator("text=最新").first.click(timeout=1500)
+                page.wait_for_timeout(900)
+            except Exception:
+                pass
+            page.mouse.wheel(0, 1600)
+            page.wait_for_timeout(800)
+            state = page.evaluate(
+                """() => {
+                  const text = document.body?.innerText || '';
+                  const needLogin = /登录后查看搜索结果|扫码登录|手机号登录/.test(text);
+                  const items = Array.from(document.querySelectorAll('section.note-item')).map((c, idx) => {
+                    const a = c.querySelector('a.cover, a[href*="/explore/"], a[href*="/search_result/"]');
+                    const t = c.querySelector('.title span, .footer .title, .title');
+                    const au = c.querySelector('.author .name, .name');
+                    const img = c.querySelector('img');
+                    return {
+                      idx,
+                      title: ((t && t.textContent) || '').trim(),
+                      url: (a && a.href) || '',
+                      author: ((au && au.textContent) || '').trim(),
+                      imageUrl: img ? (img.getAttribute('src') || '') : '',
+                    };
+                  }).filter((x) => x.title && x.url);
+                  return { needLogin, items };
+                }"""
+            )
+            if state.get("needLogin") and not state.get("items"):
+                raise PermissionError("小红书 Cookie 已失效或被跳转国际版/验证")
+
+            for it in state.get("items", []):
+                seen.setdefault(it["url"], it)
+
+            # 点开若干有潜力的笔记弹窗抓正文（不整页跳转，每条 ~1.3s），识别标题党/隐藏广告
+            if detail_budget > 0:
+                covers = page.locator("section.note-item a.cover")
+                for it in state.get("items", []):
+                    if detail_budget <= 0:
+                        break
+                    u = it["url"]
+                    if seen[u].get("content") or CHATTER_RE.search(it["title"]):
+                        continue
+                    nid_m = re.search(r"/explore/([0-9a-zA-Z]+)", u)
+                    nid = nid_m.group(1) if nid_m else ""
+                    detail_budget -= 1
+                    try:
+                        covers.nth(it["idx"]).click(timeout=2500)
+                        page.wait_for_timeout(1300)
+                        modal_desc = page.evaluate(
+                            """() => {
+                              const el = document.querySelector('#detail-desc, .note-content .desc, .note-text');
+                              return el ? el.innerText.trim() : '';
+                            }"""
+                        )
+                        fn = feed_notes.get(nid) if nid else None
+                        full_desc = (fn.get("desc") if fn else "") or modal_desc or ""
+                        if full_desc:
+                            if fn and fn.get("tags"):
+                                tag_str = " ".join(f"#{t}" for t in fn["tags"][:8])
+                                full_body = f"{full_desc}\n{tag_str}".strip()
+                            else:
+                                full_body = full_desc
+                            seen[u]["content"] = full_body[:3500]
+                            seen[u]["summary"] = _clean_text(full_desc, 380)
+                            ts = fn.get("time") if fn else None
+                            if isinstance(ts, (int, float)) and ts > 0:
+                                sec = ts / 1000.0 if ts > 1e12 else float(ts)
+                                seen[u]["publishedAt"] = datetime.fromtimestamp(sec, tz=timezone.utc).isoformat()
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(300)
+                    except Exception:
+                        try:
+                            page.keyboard.press("Escape")
+                        except Exception:
+                            pass
+    finally:
+        try:
+            page.remove_listener("response", on_xhs_response)
+        except Exception:
+            pass
+
     return [
         {
             "externalId": it["url"],
             "url": it["url"],
             "title": it["title"],
-            "summary": "",
+            "summary": it.get("summary", ""),
+            "content": it.get("content") or None,
             "author": it.get("author") or None,
+            "publishedAt": it.get("publishedAt") or None,
             "imageUrl": it.get("imageUrl") or None,
             "tags": ["xiaohongshu", "cookie-vps"],
         }
@@ -210,6 +336,7 @@ def collect_xiaoheihe(page, keywords):
                                 "url": f"https://www.xiaoheihe.cn/app/bbs/link/{linkid}",
                                 "title": title,
                                 "summary": summary,
+                                "content": None,
                                 "publishedAt": published_at,
                                 "tags": ["xiaoheihe", *topics[:2]],
                             },
@@ -226,7 +353,25 @@ def collect_xiaoheihe(page, keywords):
         need_login = page.evaluate("() => /登录\\/注册/.test(document.body?.innerText || '') && !document.querySelector('.user-info, .avatar, .el-avatar')")
         if need_login:
             raise PermissionError("小黑盒 Cookie 已失效或未抓取到搜索响应")
-    return list(seen.values())
+    items = list(seen.values())
+    detail_targets = [it for it in items if not CHATTER_RE.search(it.get("title", ""))][:8]
+    for it in detail_targets:
+        try:
+            page.goto(it["url"], wait_until="domcontentloaded", timeout=18000)
+            page.wait_for_timeout(1600)
+            body = page.evaluate(
+                """() => {
+                  const el = document.querySelector('.article-content, .link-content, .post-content, article, main');
+                  return el ? el.innerText.trim() : '';
+                }"""
+            )
+            cleaned = _clean_text(re.sub(r"^返回\s+.*?关注\s+", "", body or ""), 3500)
+            if len(cleaned) > len(it.get("summary") or ""):
+                it["content"] = cleaned
+                it["summary"] = cleaned[:380]
+        except Exception:
+            pass
+    return items
 
 
 def run_collect(site: str, raw_cookies, keywords, proxy_url: str):

@@ -15,6 +15,7 @@ type RunnerItem = {
   url?: string;
   title?: string;
   summary?: string;
+  content?: string | null;
   author?: string | null;
   publishedAt?: string | null;
   imageUrl?: string | null;
@@ -86,6 +87,7 @@ export const cookieIngestCollector: Collector = {
         url,
         title,
         summary: String(it.summary ?? ""),
+        content: typeof it.content === "string" && it.content.trim() ? it.content.trim().slice(0, 4000) : null,
         author: it.author ?? null,
         publishedAt: it.publishedAt ?? null,
         imageUrl: it.imageUrl ?? null,

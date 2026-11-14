@@ -149,13 +149,14 @@ export async function backfillAi(
     external_id: string;
     title: string;
     summary: string | null;
+    content: string | null;
     url: string;
     score: number;
     category: string | null;
     published_at: string | null;
     expires_at: string | null;
   }>(
-    `SELECT id, source_id, external_id, title, summary, url, score, category, published_at, expires_at
+    `SELECT id, source_id, external_id, title, summary, content, url, score, category, published_at, expires_at
      FROM items WHERE status = 'active' ${whereExtra}
      ORDER BY COALESCE(published_at, first_seen_at) DESC LIMIT ?`,
     scanLimit,
@@ -193,6 +194,7 @@ export async function backfillAi(
         url: r.url,
         title: r.title,
         summary: r.summary ?? "",
+        content: r.content ?? null,
       }));
       let map;
       try {
