@@ -156,7 +156,7 @@ def collect_zhihu(page, keywords):
 
 def collect_xhs(page, keywords):
     seen = {}
-    detail_budget = 8
+    detail_budget = 6
     last_err = None
 
     for kw in keywords:
@@ -168,8 +168,12 @@ def collect_xhs(page, keywords):
             + "&source=web_search_result_notes"
         )
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=35000)
-            page.wait_for_timeout(1800)
+            page.goto(url, wait_until="commit", timeout=25000)
+            for _ in range(20):
+                if page.locator("section.note-item").count() > 0:
+                    break
+                page.wait_for_timeout(450)
+            page.wait_for_timeout(800)
         except Exception as err:
             last_err = err
             continue
@@ -286,8 +290,11 @@ def collect_xiaoheihe(page, keywords):
     captured = []
 
     def on_response(resp):
-        if "general/search" in resp.url:
-            captured.append(resp)
+        if "general/search" in resp.url and resp.request.method != "OPTIONS" and resp.status == 200:
+            try:
+                captured.append(resp.text())
+            except Exception:
+                pass
 
     page.on("response", on_response)
     try:
@@ -306,10 +313,8 @@ def collect_xiaoheihe(page, keywords):
                 if captured:
                     break
                 page.wait_for_timeout(1000)
-            page.wait_for_timeout(350)
-            for resp in list(captured):
+            for txt in list(captured):
                 try:
-                    txt = resp.text()
                     parsed = json.loads(txt)
                     for it in (parsed.get("result") or {}).get("items") or []:
                         if it.get("type") != "link" or not isinstance(it.get("info"), dict):

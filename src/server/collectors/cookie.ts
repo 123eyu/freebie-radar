@@ -7,7 +7,14 @@ function keywordsForSite(site: CookieSiteKey, maxKeywords = 4): string[] {
   const base = BASE_SITE_KEYWORDS[site];
   if (site === "xiaoheihe") return base;
   const extra = all<{ keyword: string }>("SELECT keyword FROM subscriptions ORDER BY keyword").map((r) => r.keyword.trim()).filter(Boolean);
-  return [...new Set([...base, ...extra])].slice(0, maxKeywords);
+  const pool = [...new Set([...base, ...extra])].slice(0, maxKeywords);
+  // 小红书需走国内代理逐页渲染：每轮保底搜核心词 + 1 个轮换词（2 词约 35-55 秒完赛），避免 4 词连抓超 3 分钟
+  if (site === "xhs" && pool.length > 2) {
+    const rot = pool.slice(1);
+    const idx = Math.floor(Date.now() / 3_600_000) % rot.length;
+    return [pool[0]!, rot[idx]!];
+  }
+  return pool;
 }
 
 type RunnerItem = {
