@@ -156,7 +156,7 @@ def collect_zhihu(page, keywords):
 
 def collect_xhs(page, keywords):
     seen = {}
-    detail_budget = 12
+    detail_budget = 8
     last_err = None
 
     for kw in keywords:
@@ -185,7 +185,7 @@ def collect_xhs(page, keywords):
               const text = document.body?.innerText || '';
               const needLogin = /登录后查看搜索结果|扫码登录|手机号登录/.test(text);
               const items = Array.from(document.querySelectorAll('section.note-item')).map((c) => {
-                const a = c.querySelector('a.cover, a[href*="/explore/"], a[href*="/search_result/"]');
+                const a = c.querySelector('a.cover') || c.querySelector('a[href*="/search_result/"]') || c.querySelector('a[href*="/explore/"]');
                 const t = c.querySelector('.title span, .footer .title, .title');
                 const au = c.querySelector('.author .name, .name');
                 const img = c.querySelector('img');
@@ -211,7 +211,7 @@ def collect_xhs(page, keywords):
             seen.setdefault(it["url"], it)
             if (
                 detail_budget > 0
-                and len(batch_targets) < 4
+                and len(batch_targets) < 3
                 and not seen[it["url"]].get("content")
                 and not CHATTER_RE.search(it["title"])
                 and it.get("fetchUrl")
@@ -227,7 +227,7 @@ def collect_xhs(page, keywords):
                       const out = {};
                       await Promise.all(targets.map(async ({ url, fetchUrl }) => {
                         try {
-                          const r = await fetch(fetchUrl, { credentials: 'include' });
+                          const r = await fetch(fetchUrl, { credentials: 'include', signal: AbortSignal.timeout(8000) });
                           if (!r.ok) return;
                           const html = await r.text();
                           const dMatch = html.match(/"desc":"((?:\\\\.|[^"])*)"/);
