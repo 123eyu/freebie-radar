@@ -1,4 +1,5 @@
 import { getAiSettings, reviewItems, type AiVerdict } from "./ai-settings.ts";
+import { dedupeKeptItemsWithAi } from "./ai-dedup.ts";
 import { FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "./index.ts";
 import { calibrateScoreByObtain } from "./alias.ts";
 import type { RawItem } from "../collectors/types.ts";
@@ -209,6 +210,7 @@ export async function reviewFreshNow(items: AiQueueJob[]): Promise<Map<number, A
       finishAiJob(jobId, { error: batchErr ?? "模型未返回有效结论" });
       return out;
     }
+    const keptIds: number[] = [];
     for (const [idx, verdict] of map) {
       const job = items[idx];
       if (!job) continue;
@@ -216,8 +218,16 @@ export async function reviewFreshNow(items: AiQueueJob[]): Promise<Map<number, A
       if (applied) {
         processed += 1;
         out.set(job.itemId, applied);
+        if (applied.aiKeep) keptIds.push(job.itemId);
       } else {
         dropped += 1;
+      }
+    }
+    if (keptIds.length) {
+      try {
+        await dedupeKeptItemsWithAi(keptIds);
+      } catch (err) {
+        console.log("[ai-queue] 语义去重失败:", err instanceof Error ? err.message : String(err));
       }
     }
     finishAiJob(jobId);
@@ -296,7 +306,7 @@ async function drain(): Promise<void> {
         continue;
       }
       finishAiJob(jobId);
-
+      const keptIds: number[] = [];
       const approvedBySource = new Map<string, number[]>();
       for (const [idx, verdict] of map) {
         const job = batch[idx];
@@ -304,6 +314,7 @@ async function drain(): Promise<void> {
         const applied = applyVerdictToItem(job.itemId, verdict);
         if (applied) {
           processed += 1;
+          if (applied.aiKeep) keptIds.push(job.itemId);
           if (applied.aiKeep && job.pushOnApprove && job.sourceId) {
             const list = approvedBySource.get(job.sourceId) ?? [];
             list.push(job.itemId);
@@ -311,6 +322,15 @@ async function drain(): Promise<void> {
           }
         } else {
           dropped += 1;
+        }
+      }
+
+      // 先聚类去重再补推：避免同一活动被多个源各推一次（B站大会员 / 喜加一 尤甚）
+      if (keptIds.length) {
+        try {
+          await dedupeKeptItemsWithAi(keptIds);
+        } catch (err) {
+          console.error("[ai-queue] 语义去重失败:", err instanceof Error ? err.message : String(err));
         }
       }
 

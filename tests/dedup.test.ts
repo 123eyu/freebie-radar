@@ -225,3 +225,125 @@ test("TitleDeduper：同事件跨媒体不同措辞（CAR-T 进医保）自动�
   assert.equal(r2, r3, "CAR-T 报道 #2 与 #3 应聚为同一事件");
   assert.notEqual(deduper.rootOf(newsCluster[3]!), deduper.rootOf(newsCluster[4]!), "同品牌不同事件不得误并");
 });
+
+
+test("TitleDeduper：B站 BLG 夺冠送大会员 的多种措辞收敛为同一活动，合作方活动不误并", () => {
+  const now = new Date().toISOString();
+  const titles = [
+    "b站免费领大会员",
+    "B站免费送所有人大会员",
+    "BLG夺冠，B站送所有人7天大会员",
+    "BLG夺冠B站送7天大会员11.15 12:00-----11.16 12:00",
+    "哔哩哔哩为庆祝BLG夺冠，决定免费赠送大会员",
+    "B站“BLG 夺冠时刻”赠送大会员活动细则公布：可领 7 天、每位用户限领一次",
+    "B站领取7天大会员",
+    "B站免费大会员羊毛",
+  ];
+  const entries = titles.map((title, i) => ({
+    id: 200 + i,
+    title,
+    category: "media",
+    kind: "freebie",
+    publishedAt: now,
+  }));
+  const deduper = new TitleDeduper(entries, [], { maxGapHours: 48 });
+  const root = deduper.rootOf(entries[0]!);
+  for (const e of entries.slice(1)) {
+    assert.equal(deduper.rootOf(e), root, `「${e.title}」应与「${entries[0]!.title}」聚为同一活动`);
+  }
+});
+
+test("TitleDeduper：B站大会员与联名卡/合作方活动、以及同夺冠不同奖品不得误并", () => {
+  const now = new Date().toISOString();
+  const entries = [
+    { id: 300, title: "B站免费送所有人大会员", category: "media", kind: "freebie", publishedAt: now },
+    { id: 301, title: "中国银行2233卡领b站会员", category: "media", kind: "freebie", publishedAt: now },
+    { id: 302, title: "雷鸟GT Max bilibili限定版加赠B站大会员年卡", category: "goods", kind: "deal", publishedAt: now },
+    { id: 303, title: "BLG夺冠庆典开启，免费白嫖皮肤和臻彩", category: "game", kind: "freebie", publishedAt: now },
+  ];
+  const deduper = new TitleDeduper(entries, [], { maxGapHours: 48 });
+  const base = deduper.rootOf(entries[0]!);
+  assert.notEqual(deduper.rootOf(entries[1]!), base, "银行联名卡活动不应并入全站送会员");
+  assert.notEqual(deduper.rootOf(entries[2]!), base, "硬件联名赠送不应并入全站送会员");
+  assert.notEqual(deduper.rootOf(entries[3]!), base, "同夺冠但奖品是游戏皮肤，不应并入送大会员");
+});
+
+test("TitleDeduper：canonicalId 相同的条目即使标题完全不同也强制聚为一类", () => {
+  const now = new Date().toISOString();
+  const entries = [
+    { id: 400, title: "B站免费送所有人大会员", canonicalId: 400, category: "media", kind: "freebie", publishedAt: now },
+    { id: 401, title: "庆祝夺冠，哔哩哔哩请你看番", canonicalId: 400, category: "media", kind: "freebie", publishedAt: now },
+    { id: 402, title: "Epic 喜加一：某游戏", canonicalId: 402, category: "game", kind: "freebie", publishedAt: now },
+  ];
+  const deduper = new TitleDeduper(entries, [], { maxGapHours: 48 });
+  assert.equal(deduper.rootOf(entries[0]!), deduper.rootOf(entries[1]!));
+  assert.notEqual(deduper.rootOf(entries[2]!), deduper.rootOf(entries[0]!));
+});
+
+
+test("AI 语义去重：canonical 聚类键零成本拦截已推送的同一活动，AI 命中后落库并拦截推送", async () => {
+  const { linkCanonicalCluster, filterPushDuplicatesWithAi } = await import("../src/server/enrich/ai-dedup.ts");
+  const { get } = await import("../src/server/db.ts");
+  const now = new Date().toISOString();
+  const insert = (id: number, title: string) =>
+    run(
+      `INSERT INTO items (id, source_id, external_id, url, url_key, title, summary, category, kind, score, status,
+                          first_seen_at, last_seen_at, ai_keep)
+       VALUES (?, 'linuxdo-welfare', ?, ?, ?, ?, '', 'media', 'freebie', 80, 'active', ?, ?, 1)`,
+      id,
+      `ext-${id}`,
+      `https://example.com/${id}`,
+      `example.com/${id}`,
+      title,
+      now,
+      now,
+    );
+  insert(901, "B站免费送所有人大会员");
+  insert(902, "BLG夺冠，B站送所有人7天大会员");
+  insert(903, "哔哩哔哩为庆祝夺冠免费赠送大会员");
+
+  // 1) 聚类键已落库：同簇已推送过 → 零 Token 直接拦截
+  linkCanonicalCluster(902, 901);
+  assert.equal(get<{ canonical_id: number }>("SELECT canonical_id FROM items WHERE id = 902")?.canonical_id, 901);
+
+  const ruleOnly = await filterPushDuplicatesWithAi(
+    [{ id: 902, title: "BLG夺冠，B站送所有人7天大会员", canonicalId: 901 }],
+    [{ id: 901, title: "B站免费送所有人大会员", canonicalId: 901 }],
+    { settings: { aiDedupEnabled: false } as never },
+  );
+  assert.equal(ruleOnly.kept.length, 0);
+  assert.equal(ruleOnly.intercepted[0]?.duplicateOfId, 901);
+
+  // 2) 规则抓不到的不同措辞：交给 AI 判定，命中后写回 canonical_id 并拦截
+  const fakeFetch = (async () =>
+    new Response(
+      JSON.stringify({
+        choices: [{ message: { content: '[{"index":0,"duplicateOfId":901,"reason":"同为B站夺冠送大会员"}]' } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as unknown as typeof fetch;
+
+  const aiResult = await filterPushDuplicatesWithAi(
+    [{ id: 903, title: "哔哩哔哩为庆祝夺冠免费赠送大会员" }],
+    [{ id: 901, title: "B站免费送所有人大会员" }],
+    {
+      settings: {
+        enabled: true,
+        baseUrl: "https://example.com/v1",
+        apiKey: "",
+        model: "test-model",
+        timeoutSec: 10,
+        aiDedupEnabled: true,
+        aiDedupWindowHours: 48,
+      } as never,
+      fetchImpl: fakeFetch,
+    },
+  );
+  assert.equal(aiResult.kept.length, 0, "AI 判定重复后不应再推送");
+  assert.equal(aiResult.intercepted[0]?.duplicateOfId, 901);
+  assert.equal(
+    get<{ canonical_id: number }>("SELECT canonical_id FROM items WHERE id = 903")?.canonical_id,
+    901,
+    "AI 命中的重复条目应写回聚类键",
+  );
+});

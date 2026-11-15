@@ -37,7 +37,9 @@ import {
   testAiConnection,
   reclassifyStoredItems,
   type AiSettings,
-  type BackfillMode,
+type BackfillMode,
+  aiDedupClusterStats,
+  runAiDedupBackfill,
 } from "./ai-admin.ts";
 import {
   getRetention,
@@ -84,6 +86,7 @@ export type ItemRow = {
   pushed_at?: string | null;
   first_seen_at: string;
   last_seen_at: string;
+  canonical_id?: number | null;
 };
 
 /** 订阅命中的关键词（都转小写比较），用于前端高亮与筛选。 */
@@ -347,12 +350,15 @@ export function registerApi(app: Hono) {
       // 代表条目只算一次：旧写法是逐行相关子查询（每行都要重跑一遍全表过滤 + 排序），5000 行时单次请求要 2-13 秒。
       // 现在改成一次窗口函数：按 title_key + 48 小时时间桶分组，每组取 score 最高的一条当代表。
       const groupKey = "CASE WHEN category = 'game' THEN 'game' ELSE CAST(julianday(COALESCE(published_at, first_seen_at)) / 2 AS INTEGER) END";
-      const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
+      // 分组键：优先用 AI 语义去重落库的 canonical_id（同活动不同措辞也能收敛），否则退回 title_key
+      const clusterKey =
+        "COALESCE(CASE WHEN canonical_id IS NOT NULL AND canonical_id > 0 THEN 'c' || canonical_id END, 't' || COALESCE(title_key, ''))";
+      const keyOk = "(LENGTH(CAST(title_key AS BLOB)) >= 6 OR canonical_id IS NOT NULL)";
       const innerClause = where.length ? `${where.join(" AND ")} AND ` : "";
       where.push(
-        `(title_key IS NULL OR title_key = '' OR LENGTH(CAST(title_key AS BLOB)) < 6 OR id IN (
+        `((canonical_id IS NULL AND (title_key IS NULL OR title_key = '' OR LENGTH(CAST(title_key AS BLOB)) < 6)) OR id IN (
            SELECT rid FROM (
-             SELECT id AS rid, ROW_NUMBER() OVER (PARTITION BY title_key, ${groupKey} ORDER BY score DESC, id ASC) AS rn
+             SELECT id AS rid, ROW_NUMBER() OVER (PARTITION BY ${clusterKey}, ${groupKey} ORDER BY score DESC, id ASC) AS rn
                FROM items WHERE ${innerClause}${keyOk}
            ) WHERE rn = 1))`,
       );
@@ -385,9 +391,12 @@ export function registerApi(app: Hono) {
     // 收拢不同措辞的同一事件（如多家媒体报道同一条新闻/优惠），并累加同组来源数。
     const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const candidates = all<ItemRow & { dup_count?: number }>(
-      `SELECT items.*, (SELECT COUNT(*) FROM items d INDEXED BY idx_items_title_key
-            WHERE d.title_key = items.title_key AND d.status = 'active'
-              AND LENGTH(CAST(items.title_key AS BLOB)) >= 6
+      `SELECT items.*, (SELECT COUNT(*) FROM items d
+            WHERE d.status = 'active'
+              AND (
+                (items.canonical_id IS NOT NULL AND d.canonical_id = items.canonical_id)
+                OR (items.canonical_id IS NULL AND d.title_key = items.title_key AND LENGTH(CAST(items.title_key AS BLOB)) >= 6)
+              )
               AND (items.category = 'game' OR ABS(julianday(COALESCE(d.published_at, d.first_seen_at)) - julianday(COALESCE(items.published_at, items.first_seen_at))) <= 2)) AS dup_count
          FROM items ${clause} ORDER BY ${order} LIMIT ?`,
       ...params,
@@ -398,6 +407,7 @@ export function registerApi(app: Hono) {
       row: r,
       title: r.title,
       urlKey: r.url_key,
+      canonicalId: r.canonical_id ?? null,
       category: r.category,
       kind: r.kind,
       publishedAt: r.published_at ?? r.first_seen_at,
@@ -476,11 +486,25 @@ export function registerApi(app: Hono) {
     const byId = new Map<number, ItemRow & { source_name?: string }>();
     for (const r of exactRows) byId.set(r.id, r);
 
+    // AI 语义去重落库的聚类兄弟（跨 title_key 也能召回，如 B站大会员 的十几种说法）
+    if (self.canonical_id != null) {
+      const canonicalRows = all<ItemRow & { source_name?: string }>(
+        `SELECT items.*, s.name AS source_name
+           FROM items LEFT JOIN sources s ON s.id = items.source_id
+          WHERE items.canonical_id = ? AND items.status = 'active' AND items.id != ?
+          ORDER BY items.score DESC, items.id ASC LIMIT 40`,
+        self.canonical_id,
+        id,
+      );
+      for (const r of canonicalRows) byId.set(r.id, r);
+    }
+
     if (windowRows.length) {
       const selfEntry = {
         row: self,
         title: self.title,
         urlKey: self.url_key,
+        canonicalId: self.canonical_id ?? null,
         category: self.category,
         kind: self.kind,
         publishedAt: anchorTime,
@@ -489,6 +513,7 @@ export function registerApi(app: Hono) {
         row: r,
         title: r.title,
         urlKey: r.url_key,
+        canonicalId: r.canonical_id ?? null,
         category: r.category,
         kind: r.kind,
         publishedAt: r.published_at ?? r.first_seen_at,
@@ -1025,6 +1050,11 @@ export function registerApi(app: Hono) {
     return c.json(reclassifyStoredItems(scope));
   });
 
+  app.post("/api/ai/dedup", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
+    const limit = Math.min(Math.max(Number(body.limit ?? 80), 10), 200);
+    return c.json(await runAiDedupBackfill(limit));
+  });
   /* ---------------------------------------------------------------- *
    * 数据保留：过期条目、推送日志、日报的自动清理
    * ---------------------------------------------------------------- */

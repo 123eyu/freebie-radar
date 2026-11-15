@@ -7,6 +7,7 @@ import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { aiQueueStats } from "./enrich/ai-queue.ts";
 import { getSourceHints } from "./collectors/index.ts";
 import { finishAiJob, getAiTelemetry, recordAiBatch, startAiJob } from "./enrich/ai-telemetry.ts";
+import { aiDedupStats, dedupeKeptItemsWithAi } from "./enrich/ai-dedup.ts";
 import {
   aiReady,
   DEFAULT_PROMPT,
@@ -95,6 +96,7 @@ export function aiStats() {
     telemetry: getAiTelemetry(),
     byCategory,
     byKind,
+    dedup: aiDedupStats(),
     recent: recent.map((r) => {
       let v: { keep?: boolean; kind?: string; reason?: string; category?: string; obtain?: string; quality?: number } = {};
       try {
@@ -181,7 +183,8 @@ export async function backfillAi(
   });
 
   let reviewed = 0;
-  let rejected = 0;
+let rejected = 0;
+  const keptIds: number[] = [];
   let lastError: string | undefined;
   const CHUNK = Math.max(s.batchSize * s.concurrency, 24);
 
@@ -239,7 +242,8 @@ export async function backfillAi(
         const v = map.get(i);
         if (!v) continue;
         reviewed += 1;
-        if (!v.keep) rejected += 1;
+if (!v.keep) rejected += 1;
+        else keptIds.push(row.id);
         const obtain = v.obtain ?? guessObtain(row.title, row.summary ?? "");
         // 重审时重算一次基础分再校准，避免多次叠加乘除失真
         const baseEnriched = enrichItem(
@@ -286,6 +290,15 @@ export async function backfillAi(
       error: err instanceof Error ? err.message : String(err),
     });
     throw err;
+  }
+
+// 补审/重审通过后顺带走一次 AI 语义去重聚类，避免历史库继续留着同活动多条
+  if (keptIds.length && getAiSettings().aiDedupEnabled) {
+    try {
+      await dedupeKeptItemsWithAi(keptIds);
+    } catch (err) {
+      console.log("[ai] 补审后语义去重失败:", err instanceof Error ? err.message : String(err));
+    }
   }
 
   return { reviewed, rejected, skippedBlocked, scanned: rows.length, mode };
@@ -377,4 +390,5 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
 }
 
 export { publicAiSettings, saveAiSettings, testAiConnection, DEFAULT_PROMPT, aiReady, getAiSettings, feedbackStats };
+export { aiDedupStats as aiDedupClusterStats, runAiDedupBackfill } from "./enrich/ai-dedup.ts";
 export type { AiSettings };

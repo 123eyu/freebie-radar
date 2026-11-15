@@ -222,8 +222,12 @@ export type AiSettings = {
   extraPrompt: string;
   /** 空字符串表示用内置默认 */
   systemPrompt: string;
-  learnFromFeedback: boolean;
+learnFromFeedback: boolean;
   feedbackLimit: number;
+  /** AI 语义去重总开关 */
+  aiDedupEnabled: boolean;
+  /** 语义去重对比窗口（小时） */
+  aiDedupWindowHours: number;
   hasKey: boolean;
   keyHint: string;
   ready: boolean;
@@ -253,7 +257,8 @@ export type AiStats = {
     quality?: number | null;
     reviewedAt?: string;
   }[];
-  blockedSkipped?: number;
+blockedSkipped?: number;
+  dedup?: { mergedItems: number; clusterCount: number };
   telemetry?: AiTelemetry;
 };
 

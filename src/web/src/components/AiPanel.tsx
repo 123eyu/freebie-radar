@@ -111,6 +111,8 @@ export function AiPanel({
   const [test, setTest] = useState<TestResult | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
+  const [deduping, setDeduping] = useState(false);
+  const [dedupResult, setDedupResult] = useState<{ scanned: number; merged: number; clusters: number; skippedReason?: string } | null>(null);
   const [backfillMode, setBackfillMode] = useState<BackfillMode>("pending");
   const [backfillLimit, setBackfillLimit] = useState(200);
   const [backfill, setBackfill] = useState<{
@@ -146,6 +148,8 @@ export function AiPanel({
             enabled: data.settings.enabled,
             learnFromFeedback: data.settings.learnFromFeedback,
             preFilterEnabled: data.settings.preFilterEnabled,
+            aiDedupEnabled: data.settings.aiDedupEnabled,
+            aiDedupWindowHours: data.settings.aiDedupWindowHours,
             skipFreebieSources: data.settings.skipFreebieSources,
             sourceMode: data.settings.sourceMode,
             sourceIds: data.settings.sourceIds,
@@ -297,6 +301,28 @@ export function AiPanel({
       onNotify?.(`已扫描 ${j.scanned} 条「其它」，成功归类 ${j.movedFromOther} 条（零 Token）`);
     } finally {
       setReclassifying(false);
+    }
+  }
+
+  async function runDedup() {
+    setDeduping(true);
+    setDedupResult(null);
+    try {
+      const r = await fetch("/api/ai/dedup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ limit: 80 }),
+      });
+      const j = (await r.json()) as { scanned: number; merged: number; clusters: number; skippedReason?: string };
+      setDedupResult(j);
+      reload();
+      onNotify?.(
+        j.skippedReason
+          ? j.skippedReason
+          : `已比对 ${j.scanned} 条，合并 ${j.merged} 条重复（当前共 ${j.clusters} 个聚类）`,
+      );
+    } finally {
+      setDeduping(false);
     }
   }
 
@@ -703,7 +729,68 @@ export function AiPanel({
           />
         </div>
 
-        <div className="rounded-lg border border-ink-200 bg-surface-hover px-3.5 py-2.5 text-[12px] leading-relaxed text-ink-600">
+        <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[12.5px] font-medium text-ink-900">AI 语义去重（同活动不同措辞也能合并）</div>
+              <div className="mt-0.5 text-[11px] leading-snug text-ink-500">
+                规则去重只能抓同标题；开启后由大模型判断「B站免费领7天大会员 / BLG夺冠送七天大会员 / 哔哩哔哩赠送大会员」是否为同一个活动，
+                命中即写入聚类 ID，列表折叠为 1 条、Telegram 只推 1 次。
+                {st?.dedup ? ` 当前已合并 ${st.dedup.mergedItems} 条、${st.dedup.clusterCount} 个聚类。` : ""}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <label className="flex items-center gap-1 text-[11.5px] text-ink-600">
+                对比窗口
+                <input
+                  type="number"
+                  min={6}
+                  max={168}
+                  value={form.aiDedupWindowHours}
+                  onChange={(e) => setForm({ ...form, aiDedupWindowHours: Number(e.target.value) })}
+                  onBlur={() => void save({ aiDedupWindowHours: form.aiDedupWindowHours })}
+                  className="w-14 rounded border border-ink-200 bg-surface px-1.5 py-0.5 text-center font-mono text-[12px]"
+                />
+                小时
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !form.aiDedupEnabled;
+                  setForm({ ...form, aiDedupEnabled: next });
+                  void save({ aiDedupEnabled: next }, next ? "已开启 AI 语义去重" : "已关闭 AI 语义去重");
+                }}
+                className={
+                  "rounded-lg border px-3 py-1 text-[12px] font-medium transition-colors " +
+                  (form.aiDedupEnabled
+                    ? "border-deal-border bg-deal-subtle text-deal"
+                    : "border-ink-200 bg-ink-100 text-ink-600")
+                }
+              >
+                {form.aiDedupEnabled ? "已开启" : "已关闭"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runDedup()}
+                disabled={deduping || !s.ready}
+                title="对近 N 小时已入库条目跑一次语义聚类，历史重复也会被折叠"
+                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100 disabled:opacity-50"
+              >
+                {deduping ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                立即聚类去重
+              </button>
+            </div>
+          </div>
+          {dedupResult && (
+            <div className="mt-1 text-[11.5px] text-ink-600">
+              {dedupResult.skippedReason
+                ? dedupResult.skippedReason
+                : `已比对 ${dedupResult.scanned} 条，合并 ${dedupResult.merged} 条重复，当前共 ${dedupResult.clusters} 个聚类。`}
+            </div>
+          )}
+        </div>
+
+<div className="rounded-lg border border-ink-200 bg-surface-hover px-3.5 py-2.5 text-[12px] leading-relaxed text-ink-600">
           自定义拦截词已与「<span className="font-medium text-ink-900">订阅与屏蔽</span>」合并为统一规则：命中全局屏蔽词或正则的条目，同样会在入库送 AI 前直接跳过、节省审核额度。
         </div>
 

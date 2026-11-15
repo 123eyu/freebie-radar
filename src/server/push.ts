@@ -3,6 +3,8 @@ import { all, get, run } from "./db.ts";
 import { matchesEntryNoise, shouldReview } from "./enrich/ai.ts";
 import { mergeKey, TitleDeduper, type DedupeEntry } from "./enrich/index.ts";
 import { hasValueSignal, URGENT } from "./enrich/noise.ts";
+import { filterPushDuplicatesWithAi, type DedupCandidate } from "./enrich/ai-dedup.ts";
+import { getAiSettings } from "./enrich/ai-settings.ts";
 import { KIND_LABEL, type ContentKind } from "./enrich/kind.ts";
 import { OBTAIN_LABEL } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
@@ -642,13 +644,29 @@ function canEnterBatch(item: FreshItem, s: PushSettings, d: Decision): boolean {
   return item.score >= batchGate || d.push;
 }
 
-function recentPushedSeeds(includeQueue = true): DedupeEntry[] {
-  const rows = all<{ title: string; urlKey: string | null }>(
-    "SELECT title, url_key AS urlKey FROM items WHERE pushed_at IS NOT NULL AND pushed_at >= ?",
-    new Date(Date.now() - 86_400_000).toISOString(),
+/** 近 N 小时已推送条目（带 canonical_id 聚类键），供 AI 语义去重与规则去重共用。 */
+function recentPushedEntries(windowHours = 48): DedupCandidate[] {
+  return all<{
+    id: number;
+    title: string;
+    summary: string | null;
+    urlKey: string | null;
+    canonicalId: number | null;
+    category: string | null;
+    kind: string | null;
+    publishedAt: string | null;
+  }>(
+    `SELECT id, title, summary, url_key AS urlKey, canonical_id AS canonicalId, category, kind,
+            COALESCE(published_at, first_seen_at) AS publishedAt
+       FROM items WHERE pushed_at IS NOT NULL AND pushed_at >= ?`,
+    new Date(Date.now() - Math.max(windowHours, 6) * 3_600_000).toISOString(),
   );
+}
+
+function recentPushedSeeds(includeQueue = true): DedupeEntry[] {
+  const rows = recentPushedEntries(24);
   if (!includeQueue || !queue.length) return rows;
-  return [...rows, ...queue.map((q) => ({ title: q.item.title }))];
+  return [...rows, ...queue.map((q) => ({ title: q.item.title, canonicalId: q.item.canonicalId ?? null }))];
 }
 
 function pushedLastHour(): number {
@@ -811,6 +829,32 @@ export async function pushInstant(sourceId: string, fresh: FreshItem[]): Promise
     }
   }
 
+  // AI 语义去重兜底：规则聚类抓不到的「同活动不同措辞」（如 B站 BLG 夺冠送大会员 的十几种说法）
+  if (instant.length || batched.length) {
+    const targets = [...instant.map((x) => x.it), ...batched.map((q) => q.item)];
+    const { intercepted } = await filterPushDuplicatesWithAi(
+      targets.map((it) => ({
+        id: it.id,
+        title: it.title,
+        summary: it.summary ?? null,
+        kind: it.kind ?? null,
+        category: it.category ?? null,
+        canonicalId: it.canonicalId ?? null,
+      })),
+      recentPushedEntries(getAiSettings().aiDedupWindowHours),
+    );
+    if (intercepted.length) {
+      const dropIds = new Set(intercepted.map((x) => x.item.id));
+      for (let i = instant.length - 1; i >= 0; i -= 1) {
+        if (dropIds.has(instant[i]!.it.id)) instant.splice(i, 1);
+      }
+      for (let i = batched.length - 1; i >= 0; i -= 1) {
+        if (dropIds.has(batched[i]!.item.id)) batched.splice(i, 1);
+      }
+      console.log(`[push] ${sourceId} AI 语义去重拦截 ${intercepted.length} 条重复`);
+    }
+  }
+
   if (batched.length && s.batchIntervalMin > 0) enqueue(batched);
   if (quiet && (instant.length || batched.length)) {
     console.log(
@@ -874,10 +918,11 @@ export async function pushReviewedByIds(sourceId: string, itemIds: number[]): Pr
     is_free: number;
     obtain: string | null;
     expires_at: string | null;
-    published_at: string | null;
+published_at: string | null;
     ai: string | null;
+    canonical_id: number | null;
   }>(
-    `SELECT id, title, summary, url, category, kind, score, codes, price, is_free, obtain, expires_at, published_at, ai
+    `SELECT id, title, summary, url, category, kind, score, codes, price, is_free, obtain, expires_at, published_at, ai, canonical_id
        FROM items
       WHERE id IN (${ph}) AND status = 'active' AND pushed_at IS NULL`,
     ...itemIds,
@@ -908,6 +953,7 @@ export async function pushReviewedByIds(sourceId: string, itemIds: number[]): Pr
       category: r.category,
       obtain: r.obtain,
       summary: r.summary,
+      canonicalId: r.canonical_id,
     };
   });
 
@@ -949,10 +995,11 @@ export async function flushBatch(force = false): Promise<number> {
     expires_at: string | null;
     published_at: string | null;
     pushed_at: string | null;
-    status: string;
+status: string;
     ai: string | null;
+    canonical_id: number | null;
   }>(
-    `SELECT id, source_id, title, summary, url, category, kind, score, codes, price, is_free, obtain, expires_at, published_at, pushed_at, status, ai
+    `SELECT id, source_id, title, summary, url, category, kind, score, codes, price, is_free, obtain, expires_at, published_at, pushed_at, status, ai, canonical_id
        FROM items WHERE id IN (${ph})`,
     ...ids,
   );
@@ -990,6 +1037,7 @@ export async function flushBatch(force = false): Promise<number> {
       category: r.category,
       obtain: r.obtain,
       summary: r.summary,
+      canonicalId: r.canonical_id,
     };
     if (!passesPushFilters({ ...fresh, sourceId: r.source_id }, s)) continue;
     const subHits = matchSubscriptions(fresh, subKeywords);
@@ -1008,6 +1056,25 @@ export async function flushBatch(force = false): Promise<number> {
       if (deduper.isDuplicate(entry)) continue;
       deduper.markSeen(entry);
       take.push(entry.q);
+    }
+  }
+// AI 语义去重：攒批发送前再与已推送记录比对一次，防「同活动不同措辞」重复轰炸
+  if (take.length) {
+    const { intercepted } = await filterPushDuplicatesWithAi(
+      take.map((q) => ({
+        id: q.id,
+        title: q.item.title,
+        summary: q.item.summary ?? null,
+        kind: q.item.kind ?? null,
+        category: q.item.category ?? null,
+        canonicalId: q.item.canonicalId ?? null,
+      })),
+      recentPushedEntries(getAiSettings().aiDedupWindowHours),
+    );
+    if (intercepted.length) {
+      const dropIds = new Set(intercepted.map((x) => x.item.id));
+      take = take.filter((q) => !dropIds.has(q.id));
+      console.log(`[push] 攒批 AI 语义去重拦截 ${intercepted.length} 条重复`);
     }
   }
   if (!take.length) return 0;
@@ -1165,10 +1232,11 @@ export function previewPush(limit = 6): {
     obtain: string | null;
     expires_at: string | null;
     pushed_at: string | null;
-    published_at: string | null;
+published_at: string | null;
     ai: string | null;
+    canonical_id: number | null;
   }>(
-    `SELECT id, source_id, title, summary, url, category, kind, score, codes, price, is_free, obtain, expires_at, pushed_at, published_at, ai
+    `SELECT id, source_id, title, summary, url, category, kind, score, codes, price, is_free, obtain, expires_at, pushed_at, published_at, ai, canonical_id
      FROM items WHERE status = 'active' AND pushed_at IS NULL AND COALESCE(published_at, first_seen_at) >= ?
      ORDER BY score DESC LIMIT 180`,
     new Date(Date.now() - lookbackHours * 3_600_000).toISOString(),
@@ -1206,6 +1274,18 @@ export function previewPush(limit = 6): {
     if (deduper?.isDuplicate(r)) {
       rejectedBy.duplicate += 1;
       continue;
+}
+    // 零成本复用 AI 语义去重落库的聚类键：同簇已推送过的条目在预览里也如实显示为重复
+    if (r.canonical_id != null) {
+      const pushedSibling = get<{ id: number }>(
+        "SELECT id FROM items WHERE pushed_at IS NOT NULL AND canonical_id = ? AND id != ? LIMIT 1",
+        r.canonical_id,
+        r.id,
+      );
+      if (pushedSibling) {
+        rejectedBy.duplicate += 1;
+        continue;
+      }
     }
     let codes: string[] = [];
     try {
@@ -1230,6 +1310,7 @@ export function previewPush(limit = 6): {
       category: r.category,
       obtain: r.obtain,
       summary: r.summary,
+      canonicalId: r.canonical_id,
     };
     const reject = checkPushFilter({ ...fresh, sourceId: r.source_id }, s);
     if (reject) {

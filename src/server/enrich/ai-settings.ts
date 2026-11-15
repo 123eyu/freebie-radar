@@ -57,6 +57,10 @@ export type AiSettings = {
   learnFromFeedback: boolean;
   /** 正负样本各抽取最近几条（1-15，默认 6） */
   feedbackLimit: number;
+  /** 是否启用 AI 语义去重（审核入库后 & Telegram 推送前防重复） */
+  aiDedupEnabled: boolean;
+  /** AI 语义去重对比窗口（小时，6-168，默认 48） */
+  aiDedupWindowHours: number;
 };
 
 const SETTINGS_KEY = "ai";
@@ -113,6 +117,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   systemPrompt: "",
   learnFromFeedback: true,
   feedbackLimit: 6,
+  aiDedupEnabled: true,
+  aiDedupWindowHours: 48,
 };
 
 function numOr(v: unknown, fallback: number, min: number, max: number): number {
@@ -159,6 +165,8 @@ function normalizeSettings(raw: Partial<AiSettings>, base: AiSettings): AiSettin
     systemPrompt: typeof raw.systemPrompt === "string" ? raw.systemPrompt : base.systemPrompt,
     learnFromFeedback: typeof raw.learnFromFeedback === "boolean" ? raw.learnFromFeedback : base.learnFromFeedback,
     feedbackLimit: numOr(raw.feedbackLimit, base.feedbackLimit, 1, 15),
+    aiDedupEnabled: typeof raw.aiDedupEnabled === "boolean" ? raw.aiDedupEnabled : base.aiDedupEnabled,
+    aiDedupWindowHours: numOr(raw.aiDedupWindowHours, base.aiDedupWindowHours, 6, 168),
   };
 }
 
@@ -253,6 +261,8 @@ export function publicAiSettings(s = getAiSettings()) {
     systemPrompt: s.systemPrompt,
     learnFromFeedback: s.learnFromFeedback,
     feedbackLimit: s.feedbackLimit,
+    aiDedupEnabled: s.aiDedupEnabled,
+    aiDedupWindowHours: s.aiDedupWindowHours,
     hasKey: Boolean(s.apiKey),
     keyHint: s.apiKey ? "••••" + s.apiKey.slice(-4) : "",
     ready: aiReady(s),

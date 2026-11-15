@@ -262,7 +262,12 @@ const MIGRATIONS: string[] = [
   UPDATE items
      SET kind = 'news'
    WHERE kind = 'info'
-     AND category IN ('headline', 'world');
+    AND category IN ('headline', 'world');
+  `,
+  /* v21：AI 语义去重聚类 ID（同一活动/福利/事件共享 canonical_id，根条目自身也置为 rootId） */
+  `
+  ALTER TABLE items ADD COLUMN canonical_id INTEGER;
+  CREATE INDEX IF NOT EXISTS idx_items_canonical_id ON items(canonical_id);
   `,
 ];
 

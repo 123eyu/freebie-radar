@@ -46,6 +46,17 @@ const EMOJI_RE = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
 const CN_FILLER_RE =
   /(?:免费领取|免费领|免费送|限时免费|限免|免费|白嫖|喜加一|移动版|手游版|无aff|攻略|教程|活动|本周|本月|今日|今天|游戏|的)/gi;
 
+function normalizeDedupSynonyms(title: string): string {
+  return title
+    .replace(/(?:哔哩哔哩|bilibili|小破站)/gi, "b站")
+    .replace(/免费赠送|赠送/g, "送")
+    .replace(/七天/g, "7天")
+    .replace(/三天/g, "3天")
+    .replace(/五天/g, "5天")
+    .replace(/一个月/g, "1个月")
+    .replace(/一年/g, "1年");
+}
+
 function utf8ByteLength(s: string): number {
   let bytes = 0;
   for (let i = 0; i < s.length; i += 1) {
@@ -78,7 +89,7 @@ function extractCjkFromBook(text: string): string {
 }
 
 function normalizeCnTitle(title: string, stripFiller: boolean): string {
-  let s = title
+  let s = normalizeDedupSynonyms(title)
     .replace(BRACKET_TAG_RE, " ")
     .replace(PAREN_TAG_RE, " ")
     .replace(/《([^》]{1,40})》/g, (_, inner: string) => {
@@ -269,6 +280,9 @@ const EXCLUSIVE_BRANDS = new Set([
   "英伟达", "nvidia", "amd", "intel", "英特尔", "高通", "arm",
   "steam", "epic", "gog", "ubisoft", "育碧", "ea", "索尼", "sony", "任天堂", "nintendo",
   "netflix", "奈飞", "spotify", "adobe", "jetbrains",
+  "b站", "爱奇艺", "优酷", "腾讯视频", "芒果tv", "网易云", "qq音乐",
+  "京东", "淘宝", "天猫", "拼多多", "美团", "饿了么", "支付宝", "微信", "雷鸟",
+  "中国银行", "招商银行", "建设银行", "工商银行", "农业银行", "交通银行", "中信银行",
   "racknerd", "dmit", "搬瓦工", "bandwagon", "ovh", "hetzner", "netcup", "dedirock", "inmotion", "deluxhost",
   "cloudflare", "github", "gitlab", "aws", "azure", "oracle", "甲骨文",
 ]);
@@ -286,7 +300,7 @@ type TopicProfile = {
 };
 
 function extractTopicProfile(title: string): TopicProfile | null {
-  const cleaned = title
+  const cleaned = normalizeDedupSynonyms(title)
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(BRACKET_TAG_RE, " ")
     .replace(EMOJI_RE, " ");
@@ -301,6 +315,15 @@ function extractTopicProfile(title: string): TopicProfile | null {
     tokens.add(tok);
     specifics.add(tok);
     if (EXCLUSIVE_BRANDS.has(tok)) brands.add(tok);
+  }
+
+  // 1b. 先抓取中英混排短实体（如 B站 / Q币 / A股 / U盘 / 7天 / 1个月），防止分词器拆成单字丢弃
+  for (const m of cleaned.matchAll(/[A-Za-z]{1,4}[\u4e00-\u9fff]{1,3}/g)) {
+    const tok = m[0]!.toLowerCase();
+    if (TOPIC_STOP.has(tok)) continue;
+    tokens.add(tok);
+    if (EXCLUSIVE_BRANDS.has(tok)) brands.add(tok);
+    else specifics.add(tok);
   }
 
   // 2. 用内置分词器做中英文切词，并把相邻的非虚词单字（如「医」+「保」→「医保」）拼回双字词
@@ -335,14 +358,14 @@ function extractTopicProfile(title: string): TopicProfile | null {
       if (GENERIC_ENTITIES.has(raw)) continue;
       tokens.add(raw);
       if (EXCLUSIVE_BRANDS.has(raw)) brands.add(raw);
-      else if (raw.length >= 4) specifics.add(raw);
+      else if (raw.length >= 3) specifics.add(raw);
     } else if (HAS_CJK_RE.test(raw)) {
       tokens.add(raw);
       if (EXCLUSIVE_BRANDS.has(raw)) brands.add(raw);
     }
   }
 
-  // 3. 兜底匹配复合品牌名（如「阿里云」「华为云」「天翼云」可能被分词切开）
+  // 3. 兜底匹配复合品牌名（如「阿里云」「华为云」「天翼云」「中国银行」可能被分词切开）
   const lower = cleaned.toLowerCase();
   for (const b of EXCLUSIVE_BRANDS) {
     if (HAS_CJK_RE.test(b) && lower.includes(b)) {
@@ -351,20 +374,27 @@ function extractTopicProfile(title: string): TopicProfile | null {
     }
   }
 
-  return tokens.size >= 3 ? { tokens, brands, specifics } : null;
+  // 有明确品牌锚点（如「b站 + 大会员」）时允许 2 词轮廓，纯通用词仍要求 >= 3 词
+  const minTokens = brands.size > 0 ? 2 : 3;
+  return tokens.size >= minTokens ? { tokens, brands, specifics } : null;
 }
 
 function hasBrandConflict(a: Set<string>, b: Set<string>): boolean {
   if (!a.size || !b.size) return false;
+  let shared = 0;
   for (const brand of a) {
-    if (b.has(brand)) return false;
+    if (b.has(brand)) shared += 1;
   }
-  return true;
+  if (shared === 0) return true;
+  // 若任一方额外带了合作/联名/发卡商户品牌（如「雷鸟+B站」vs 纯「B站」，或「中国银行+B站」vs 纯「B站」），视为不同活动
+  if (a.size !== b.size) return true;
+  return shared !== a.size;
 }
 
 export type DedupeEntry = {
   title: string;
   urlKey?: string | null;
+  canonicalId?: number | null;
   category?: string | null;
   kind?: string | null;
   publishedAt?: string | null;
@@ -399,6 +429,7 @@ export class TitleDeduper<T extends DedupeEntry> {
 
     const byKey = new Map<string, number[]>();
     const byUrl = new Map<string, number>();
+    const byCanonical = new Map<number, number>();
     const byToken = new Map<string, number[]>();
     const tokensList: (Set<string> | null)[] = new Array(n).fill(null);
     const byTopicTok = new Map<string, number[]>();
@@ -414,6 +445,12 @@ export class TitleDeduper<T extends DedupeEntry> {
         const prev = byUrl.get(item.urlKey);
         if (prev !== undefined) this.union(prev, i);
         else byUrl.set(item.urlKey, i);
+      }
+
+      if (item.canonicalId != null && item.canonicalId > 0) {
+        const prev = byCanonical.get(item.canonicalId);
+        if (prev !== undefined) this.union(prev, i);
+        else byCanonical.set(item.canonicalId, i);
       }
 
       for (const k of extractMergeKeys(item.title)) {
@@ -484,7 +521,13 @@ export class TitleDeduper<T extends DedupeEntry> {
               for (const sp of prof.specifics) {
                 if (otherProf.specifics.has(sp)) sharedSpec += 1;
               }
-              if ((overlap >= 0.5 && (sharedSpec >= 1 || shared >= 3)) || (shared >= 3 && overlap >= 0.6)) {
+              const brandPairMatch =
+                minSize === 2 && shared >= 2 && prof.brands.size > 0 && otherProf.brands.size > 0;
+              if (
+                brandPairMatch ||
+                (overlap >= 0.5 && (sharedSpec >= 1 || shared >= 3)) ||
+                (shared >= 3 && overlap >= 0.6)
+              ) {
                 this.union(j, i);
               }
             }

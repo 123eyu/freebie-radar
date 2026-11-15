@@ -497,6 +497,8 @@ export type FreshItem = {
   summary?: string | null;
   /** 正文全文（知乎/小红书/小黑盒详情抓取等），供详情展示与防标题党审核 */
   content?: string | null;
+  /** AI 语义去重聚类 ID：同活动/同事件的多源报道共享同一 canonicalId */
+  canonicalId?: number | null;
   /** 发布时间，用于拦截历史旧帖重复推送 */
   publishedAt?: string | null;
 };
@@ -564,8 +566,9 @@ function persist(
         ai: string | null;
         kind: string | null;
         ai_quality: number | null;
+        canonical_id: number | null;
       }>(
-        "SELECT id, title, ai_keep, obtain, ai, kind, ai_quality FROM items WHERE source_id = ? AND external_id = ?",
+        "SELECT id, title, ai_keep, obtain, ai, kind, ai_quality, canonical_id FROM items WHERE source_id = ? AND external_id = ?",
         sourceId,
         e.externalId,
       );
@@ -697,6 +700,7 @@ function persist(
           obtain: effectiveObtain,
           summary: e.summary ?? null,
           content: e.content ?? null,
+canonicalId: null,
           publishedAt: e.publishedAt ?? null,
         });
       } catch (err) {
