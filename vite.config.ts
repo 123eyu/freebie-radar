@@ -20,5 +20,13 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL("./dist/web", import.meta.url)),
     emptyOutDir: true,
+    // React 单独成块：发版后业务代码变了，vendor 还能命中浏览器缓存
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-dom/client"],
+        },
+      },
+    },
   },
 });

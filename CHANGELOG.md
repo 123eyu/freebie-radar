@@ -1,5 +1,13 @@
 # 变更记录
 
+### 移动端顶栏瘦身、首屏体积与接口压缩
+
+- **拒绝安卓自动深色**：`styles.css` 的 `color-scheme` 由 `light` 改为 `only light`，并在 `index.html` 补 `<meta name="color-scheme" content="only light">`。此前手机开深色模式时 Chrome 的「自动深色」会把整站反相成纯黑底 + 灰描边，浅色设计被彻底毁掉；CSS 里只写 `light` 不足以拒绝自动反相，必须是 `only light`（实测 computed `light only` 后停止反相）
+- **移动端顶栏 9 行 → 5 行**：说明/RSS/GitHub/导出/刷新收进品牌行（纯图标），账号并入 Tab 行右端，场景与数据源（快捷视图 + 数据源树）折进「筛选」面板，筛选条件整条按钮与视图切换两键各合成一个图标，统计并进分类行右端；顶栏高度 320px → 203px（−37%）
+- **GitHub 入口**：品牌行与桌面侧栏新增 GitHub 图标，新窗口跳 `https://github.com/ZiChuanLan/freebie-radar`
+- **面板按需加载**：`DigestPanel` / `HotPanel` / `RulesPanel` / `PushPanel` / `AiPanel` / `OpsPanel` / `SiteAdminPanel` / `UserPushPanel` 改 `lazy` + `Suspense`，React 单独成 vendor chunk（`vite.config.ts` 的 `manualChunks`）。首屏 JS 528KB → 334KB（未压缩），首次进入管理区才拉对应面板
+- **接口压缩**：服务端加 `compress()` 中间件（此前 `/api/items?limit=100` 77KB 明文裸传）。实测该接口 77218 → 7197 字节，整页传输 648KB → 123KB
+- **实测**（Playwright 390×844，4x CPU 降速）：FCP 472ms → 372ms；滚动帧 p95 7.8ms、无 >50ms 掉帧；标签页来回切 20 轮 DOM 节点稳定 840、堆内存锯齿不增长（无泄漏）；`pnpm typecheck`、`pnpm test` 87/87、`vite build` 均通过
 ### 多登录渠道、名额上限与 Webhook 推送
 
 - **GitHub 登录**：新增 `/api/auth/github/login|callback`，与 LINUX DO 共用一套准入收尾 `finishLogin()`（登录开关 / 名额上限 / 邀请码 / 封禁 / 老用户直登），避免两套逻辑跑偏；GitHub 无 `trust_level` 概念，最低信任等级门槛对它不生效（按 0 处理）；内部用负数 `linuxdo_id` 做命名空间，两个渠道 id 互不冲突。凭据：`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_REDIRECT_URI` / `GITHUB_PROXY`

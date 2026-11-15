@@ -5,6 +5,7 @@ import { relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
+import { compress } from "hono/compress";
 import { config } from "./config.ts";
 import { getDb, migrate, run } from "./db.ts";
 import { registerApi } from "./routes.ts";
@@ -26,6 +27,8 @@ run(
   new Date().toISOString(),
 );
 const app = new Hono();
+// JSON 接口动辄几十 KB，先压缩再发；/api/items?limit=100 从 75KB 降到 ~15KB
+app.use("*", compress());
 app.use("*", logger());
 
 app.get("/health", async (c) => {
