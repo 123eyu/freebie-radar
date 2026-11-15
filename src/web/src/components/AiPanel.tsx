@@ -732,11 +732,10 @@ export function AiPanel({
         <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[12.5px] font-medium text-ink-900">AI 语义去重（同活动不同措辞也能合并）</div>
+              <div className="text-[12.5px] font-medium text-ink-900">AI 语义去重（自动）</div>
               <div className="mt-0.5 text-[11px] leading-snug text-ink-500">
-                规则去重只能抓同标题；开启后由大模型判断「B站免费领7天大会员 / BLG夺冠送七天大会员 / 哔哩哔哩赠送大会员」是否为同一个活动，
-                命中即写入聚类 ID，列表折叠为 1 条、Telegram 只推 1 次。
-                {st?.dedup ? ` 当前已合并 ${st.dedup.mergedItems} 条、${st.dedup.clusterCount} 个聚类。` : ""}
+开启后全自动运行：入库审核通过时比对一次，Telegram 推送前再比对一次。同一活动/事件即使各家措辞完全不同，也只保留 1 条、只推 1 次。
+                {st?.dedup ? ` 已合并 ${st.dedup.mergedItems} 条、${st.dedup.clusterCount} 个聚类。` : ""}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">

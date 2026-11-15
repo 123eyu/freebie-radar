@@ -19,7 +19,6 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
-  Tag,
   Wrench,
   X,
   Zap,
@@ -135,8 +134,7 @@ function Toast({ message }: { message: string | null }) {
 type Preset = { key: string; label: string; icon: typeof Sparkles };
 
 const PRIMARY_CHANNELS: Preset[] = [
-  { key: "verified", label: "真福利精选", icon: Sparkles },
-  { key: "free", label: "完全白嫖", icon: Tag },
+  { key: "verified", label: "真福利", icon: Sparkles },
   { key: "deal", label: "黑五/好价", icon: Flame },
   { key: "opensource", label: "开源项目", icon: Code },
   { key: "news", label: "重要新闻", icon: Newspaper },
@@ -334,12 +332,6 @@ export function App() {
       if (kindFilter === "auto") p.set("kind", "freebie");
       if (obtain === "auto") p.set("obtain", "free,conditional");
       if (range === "auto") p.set("maxAgeDays", "7");
-    } else if (preset === "free") {
-      p.set("unexpired", "1");
-      if (kindFilter === "auto") p.set("kind", "freebie");
-      if (range === "auto") p.set("maxAgeDays", "14");
-      if (priceCap === "auto") p.set("freeOnly", "1");
-      if (obtain === "auto") p.set("obtain", "free");
     } else if (preset === "deal") {
       p.set("unexpired", "1");
       if (kindFilter === "auto") p.set("kind", "deal");
@@ -1154,7 +1146,7 @@ export function App() {
                     className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
                     title="内容形态"
                   >
-                    <option value="auto">形态：{preset === "verified" ? "真福利" : preset === "free" ? "白嫖" : preset === "deal" ? "好价" : preset === "opensource" ? "开源" : preset === "news" ? "要闻" : preset === "info" ? "资讯" : "全部"}</option>
+                    <option value="auto">形态：{preset === "verified" ? "真福利" : preset === "deal" ? "好价" : preset === "opensource" ? "开源" : preset === "news" ? "要闻" : preset === "info" ? "资讯" : "全部"}</option>
                     <option value="all">形态：全部（含其它）</option>
                     {KIND_ORDER.map((k) => (
                       <option key={k} value={k}>
@@ -1184,7 +1176,7 @@ export function App() {
                         title="价格上限"
                       >
                         <option value="auto">
-                          价格：{preset === "free" ? "白嫖" : "不限"}
+                          价格：不限
                         </option>
                         <option value="all">价格：不限</option>
                         <option value="free">仅白嫖 (0 元)</option>
@@ -1201,7 +1193,7 @@ export function App() {
                         title={OBTAIN_HINT[obtain] ?? "获取方式"}
                       >
                         <option value="auto">
-                          方式：{preset === "verified" ? "白嫖+条件" : preset === "free" ? "直领" : "不限"}
+                          方式：{preset === "verified" ? "白嫖+条件" : "不限"}
                         </option>
                         <option value="all">方式：全部（含抽奖/试用）</option>
                         <option value="free">仅直接白嫖</option>
@@ -1220,7 +1212,7 @@ export function App() {
                     title="发布时间窗口"
                   >
                     <option value="auto">
-                      时间：{preset === "verified" ? "7天内" : preset === "free" ? "14天内" : "不限"}
+                      时间：{preset === "verified" ? "7天内" : "不限"}
                     </option>
                     <option value="all">时间：不限</option>
                     <option value="1d">24 小时内</option>

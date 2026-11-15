@@ -264,6 +264,21 @@ const MIGRATIONS: string[] = [
    WHERE kind = 'info'
     AND category IN ('headline', 'world');
   `,
+  /* v22：网盘资源与网课教程独立成类，历史条目按标题关键词重新落位 */
+  `
+  UPDATE items SET category = 'pan'
+   WHERE status = 'active'
+     AND COALESCE(category, '') IN ('media', 'cloud', 'other', '')
+     AND title NOT LIKE '%浏览器%'
+     AND (title LIKE '%网盘%' OR title LIKE '%云盘%' OR title LIKE '%阿里云盘%' OR title LIKE '%百度网盘%'
+          OR title LIKE '%夸克%' OR title LIKE '%提取码%' OR title LIKE '%转存%' OR title LIKE '%115%');
+
+  UPDATE items SET category = 'course'
+   WHERE status = 'active'
+     AND COALESCE(category, '') IN ('edu', 'other', '')
+     AND (title LIKE '%网课%' OR title LIKE '%课程%' OR title LIKE '%公开课%' OR title LIKE '%训练营%'
+          OR title LIKE '%课件%' OR title LIKE '%讲义%' OR title LIKE '%视频教程%');
+  `,
   /* v21：AI 语义去重聚类 ID（同一活动/福利/事件共享 canonical_id，根条目自身也置为 rootId） */
   `
   ALTER TABLE items ADD COLUMN canonical_id INTEGER;

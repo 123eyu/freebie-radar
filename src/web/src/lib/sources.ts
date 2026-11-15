@@ -55,7 +55,9 @@ export const CATEGORY_LABEL: Record<string, string> = {
   news: "综合资讯",
   goods: "实物/优惠",
   invite: "邀请码",
-  edu: "教育",
+edu: "教育/考试",
+  pan: "网盘资源",
+  course: "网课/教程",
   other: "其它",
 };
 
@@ -76,20 +78,24 @@ export const NEWS_CATEGORY_LABEL: Record<string, string> = {
   software: "软件/应用",
   game: "游戏动态",
   design: "设计体验",
-  edu: "深度/教程",
+edu: "教育/考试",
+  pan: "网盘资源",
+  course: "网课/教程",
   news: "综合资讯",
   other: "其它资讯",
 };
-
+const FREEBIE_CATEGORY_KEYS = [
+  "ai", "software", "game", "cloud", "vps", "domain", "media", "pan", "course", "design", "dev", "edu", "goods", "invite", "opensource", "security", "hardware", "other",
+];
 const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABEL);
 
 const PRESET_CATEGORIES: Record<string, string[]> = {
-  verified: ["ai", "software", "game", "cloud", "vps", "domain", "media", "design", "dev", "edu", "goods", "invite", "opensource", "security", "hardware", "other"],
-  free: ["ai", "software", "game", "cloud", "vps", "domain", "media", "design", "dev", "edu", "goods", "invite", "opensource", "security", "hardware", "other"],
-  deal: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "hardware", "goods", "design", "dev", "security", "edu", "other"],
-  opensource: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "edu", "other"],
+  verified: FREEBIE_CATEGORY_KEYS,
+  free: FREEBIE_CATEGORY_KEYS,
+  deal: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "pan", "course", "hardware", "goods", "design", "dev", "security", "edu", "other"],
+  opensource: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "course", "edu", "other"],
   news: ["headline", "world", "finance", "tech", "stock", "news", "security", "other"],
-  info: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "edu", "news", "other"],
+  info: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "course", "edu", "news", "other"],
 };
 
 export function categoriesForPreset(preset: string): string[] {

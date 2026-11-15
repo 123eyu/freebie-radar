@@ -9,11 +9,12 @@ import { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind } f
 
 export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type Category =
-  | "ai" | "cloud" | "vps" | "domain" | "opensource" | "software" | "dev" | "design" | "security" | "hardware" | "media" | "game" | "carpool" | "trade" | "headline" | "world" | "finance" | "stock" | "tech" | "news" | "goods" | "invite" | "edu" | "other";
+  | "ai" | "cloud" | "vps" | "domain" | "opensource" | "software" | "dev" | "design" | "security" | "hardware" | "media" | "game" | "carpool" | "trade" | "headline" | "world" | "finance" | "stock" | "tech" | "news" | "goods" | "invite" | "edu" | "pan" | "course" | "other";
 
 const CATEGORIES = new Set<string>([
   "ai", "cloud", "vps", "domain", "opensource", "software", "dev", "design", "security", "hardware",
-  "media", "game", "carpool", "trade", "headline", "world", "finance", "stock", "tech", "news", "goods", "invite", "edu", "other",
+  "media", "game", "carpool", "trade", "headline", "world", "finance", "stock", "tech", "news", "goods", "invite", "edu",
+  "pan", "course", "other",
 ]);
 
 export function isCategory(value: unknown): value is Category {
@@ -43,7 +44,9 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   news: "综合资讯",
   goods: "实物/优惠",
   invite: "邀请码",
-  edu: "教育",
+  edu: "教育/考试",
+  pan: "网盘资源",
+  course: "网课/教程",
   other: "其它",
 };
 
@@ -104,7 +107,7 @@ const RULES: Rule[] = [
   {
     category: "media",
     weight: 1.05,
-    keywords: ["会员", "影音", "netflix", "奈飞", "spotify", "youtube", "bilibili", "爱奇艺", "优酷", "腾讯视频", "芒果", "emby", "plex", "音乐", "vip", "网盘", "115", "阿里云盘", "夸克", "影视", "韩剧", "美剧", "日剧", "剧集", "电影", "4k", "1080p", "更至", "配音", "动漫", "短剧", "short drama", "short dramas", "听书", "漫画", "小说"],
+    keywords: ["会员", "影音", "netflix", "奈飞", "spotify", "youtube", "bilibili", "爱奇艺", "优酷", "腾讯视频", "芒果", "emby", "plex", "音乐", "vip", "影视", "韩剧", "美剧", "日剧", "剧集", "电影", "4k", "1080p", "更至", "配音", "动漫", "短剧", "short drama", "short dramas", "听书", "漫画", "小说"],
   },
   {
     category: "game",
@@ -162,9 +165,21 @@ const RULES: Rule[] = [
     keywords: ["邀请码", "邀请链接", "注册码", "开放注册", "注册送", "新用户", "内测", "资格", "名额"],
   },
   {
+    // 网盘资源：强调「网盘/云盘/资源合集」本体，避免与影音会员、云服务混在一起
+    category: "pan",
+    weight: 1.12,
+    keywords: ["网盘", "云盘", "夸克网盘", "阿里云盘", "百度网盘", "百度云", "天翼云盘", "115网盘", "迅雷网盘", "uc网盘", "资源合集", "资源分享", "网盘资源", "不限速", "转存", "提取码", "分享链接"],
+  },
+  {
+    // 网课/教程：课程内容本体；部署/安装类技术教程仍归 dev
+    category: "course",
+    weight: 1.0,
+    keywords: ["网课", "课程", "公开课", "训练营", "视频教程", "系列教程", "教学视频", "配套课件", "课件", "讲义", "mooc", "udemy", "coursera", "极客时间", "拉钩", "慕课"],
+  },
+  {
     category: "edu",
     weight: 0.95,
-    keywords: ["课程", "课", "教程", "电子书", "教材", "考试", "题库", "证书", "公开课", "学习", "资料", "论文", "ebook", "ebooks", "audiobook", "audiobooks", "podcast", "course", "courses"],
+    keywords: ["考试", "题库", "真题", "教材", "电子书", "ebook", "ebooks", "audiobook", "audiobooks", "论文", "学习资料", "证书", "备考", "考研", "四六级", "雅思", "托福"],
   },
 ];
 
