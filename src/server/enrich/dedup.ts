@@ -501,13 +501,18 @@ export class TitleDeduper<T extends DedupeEntry> {
               const list = byTopicTok.get(tok);
               if (list) {
                 for (const j of list) peerShared.set(j, (peerShared.get(j) ?? 0) + 1);
-                if (list.length < 80) list.push(i);
+                if (list.length < 40) list.push(i);
               } else {
                 byTopicTok.set(tok, [i]);
               }
             }
-            const topicCapMs = maxGapMs ? Math.min(maxGapMs, 72 * 3_600_000) : 72 * 3_600_000;
-            for (const [j, shared] of peerShared) {
+const topicCapMs = maxGapMs ? Math.min(maxGapMs, 72 * 3_600_000) : 72 * 3_600_000;
+            // 只跟共享词最多的前 24 条比：全量两两比较在 500+ 条候选时会把单次请求拖到秒级。
+            const peers = [...peerShared.entries()]
+              .filter(([, shared]) => shared >= 2)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 24);
+            for (const [j, shared] of peers) {
               if (shared < 2) continue;
               const otherItem = allItems[j]!;
               if (otherItem.category === "trade" || otherItem.category === "carpool") continue;
