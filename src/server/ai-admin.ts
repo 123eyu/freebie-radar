@@ -7,7 +7,7 @@ import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { aiQueueStats } from "./enrich/ai-queue.ts";
 import { getSourceHints } from "./collectors/index.ts";
 import { finishAiJob, getAiTelemetry, recordAiBatch, startAiJob } from "./enrich/ai-telemetry.ts";
-import { aiDedupStats, dedupeKeptItemsWithAi } from "./enrich/ai-dedup.ts";
+import { aiDedupDegradation, aiDedupStats, dedupeKeptItemsWithAi } from "./enrich/ai-dedup.ts";
 import {
   aiReady,
   DEFAULT_PROMPT,
@@ -96,7 +96,7 @@ export function aiStats() {
     telemetry: getAiTelemetry(),
     byCategory,
     byKind,
-    dedup: aiDedupStats(),
+    dedup: { ...aiDedupStats(), degraded: aiDedupDegradation() },
     recent: recent.map((r) => {
       let v: { keep?: boolean; kind?: string; reason?: string; category?: string; obtain?: string; quality?: number } = {};
       try {

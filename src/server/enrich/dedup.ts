@@ -501,7 +501,7 @@ export class TitleDeduper<T extends DedupeEntry> {
               const list = byTopicTok.get(tok);
               if (list) {
                 for (const j of list) peerShared.set(j, (peerShared.get(j) ?? 0) + 1);
-                list.push(i);
+                if (list.length < 80) list.push(i);
               } else {
                 byTopicTok.set(tok, [i]);
               }

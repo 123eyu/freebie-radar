@@ -32,6 +32,21 @@ const DEDUP_SYSTEM_PROMPT = [
   "",
   '只输出 JSON 数组，每个元素形如 {"index":0,"duplicateOfId":12345,"reason":"同为B站BLG夺冠送大会员"}；若无重复则 duplicateOfId 为 null。不要输出任何多余文字。',
 ].join("\n");
+/**
+ * AI 语义去重降级计数：模型不可用/超时/额度耗尽时，去重会静默退回纯规则，
+ * 这里记录次数与最近一次原因，供「AI 审核」面板显示，避免误以为去重一直在生效。
+ */
+const degradation = { count: 0, lastAt: null as string | null, lastReason: null as string | null };
+
+export function aiDedupDegradation(): { count: number; lastAt: string | null; lastReason: string | null } {
+  return { ...degradation };
+}
+
+function noteDegraded(reason: string): void {
+  degradation.count += 1;
+  degradation.lastAt = new Date().toISOString();
+  degradation.lastReason = reason.slice(0, 120);
+}
 
 function compactExcerpt(it: { summary?: string | null }, maxLen = 90): string {
   const txt = (it.summary ?? "").replace(/\s+/g, " ").trim();
@@ -156,7 +171,9 @@ export async function findSemanticDuplicatesWithAi(
       out.set(idx, { index: idx, duplicateOfId: dupId, reason });
     }
   } catch (err) {
-    console.log("[ai-dedup] 语义去重降级跳过:", err instanceof Error ? err.message : String(err));
+    const msg = err instanceof Error ? err.message : String(err);
+    noteDegraded(msg);
+    console.log("[ai-dedup] 语义去重降级跳过:", msg);
   } finally {
     clearTimeout(timer);
   }
@@ -213,6 +230,8 @@ export async function dedupeKeptItemsWithAi(
 
   for (const [kind, cands] of byKind) {
     const excludeSet = new Set(cands.map((c) => c.id));
+    // 只有 1-2 条时用 LLM 比对不划算（单次 2-3 秒），留给推送前的按需比对
+    if (cands.length < 3) continue;
     const anchorRows = all<{
       id: number;
       title: string;

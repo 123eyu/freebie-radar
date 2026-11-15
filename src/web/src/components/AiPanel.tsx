@@ -736,6 +736,9 @@ export function AiPanel({
               <div className="mt-0.5 text-[11px] leading-snug text-ink-500">
 开启后全自动运行：入库审核通过时比对一次，Telegram 推送前再比对一次。同一活动/事件即使各家措辞完全不同，也只保留 1 条、只推 1 次。
                 {st?.dedup ? ` 已合并 ${st.dedup.mergedItems} 条、${st.dedup.clusterCount} 个聚类。` : ""}
+                {st?.dedup?.degraded && st.dedup.degraded.count > 0
+                  ? ` ⚠ 已降级 ${st.dedup.degraded.count} 次（最近：${st.dedup.degraded.lastReason ?? "未知"}），期间仅规则去重生效。`
+                  : ""}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">

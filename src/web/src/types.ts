@@ -258,7 +258,11 @@ export type AiStats = {
     reviewedAt?: string;
   }[];
 blockedSkipped?: number;
-  dedup?: { mergedItems: number; clusterCount: number };
+dedup?: {
+    mergedItems: number;
+    clusterCount: number;
+    degraded?: { count: number; lastAt: string | null; lastReason: string | null };
+  };
   telemetry?: AiTelemetry;
 };
 
