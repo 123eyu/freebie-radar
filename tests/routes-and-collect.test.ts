@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { Hono } from "hono";
 
+// 测试要可重复：不读本机 .env 的站点模式与管理令牌（否则本机配了 public/ADMIN_TOKEN 就会 401/403）
 process.env.DATABASE_PATH = ":memory:";
+process.env.SITE_MODE = "selfhost";
+process.env.ADMIN_TOKEN = "";
+// 测试默认在「无管理令牌」的开放模式下跑；本机 .env 若设了 ADMIN_TOKEN，这里显式清空，
+// 否则所有管理接口都会 401（那是生产行为，不是测试想要的）。
+process.env.ADMIN_TOKEN = "";
 
 const { migrate, run, get, closeDb } = await import("../src/server/db.ts");
 const { registerApi } = await import("../src/server/routes.ts");

@@ -29,12 +29,31 @@ import {
   Newspaper,
   TrendingUp,
   MapPin,
+  User,
+  Globe2,
+  BookOpen,
+  LogOut,
 } from "lucide-react";
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { DigestPanel } from "./components/DigestPanel.tsx";
 import { AiPanel } from "./components/AiPanel.tsx";
 import { AdminGate } from "./components/AdminGate.tsx";
 import { getToken } from "./lib/auth.ts";
+import {
+  guestAddBlock,
+  guestBatch,
+  guestBlocks,
+  guestPatch,
+  importGuestToAccount,
+  readGuest,
+  useBootstrap,
+  type GuestState,
+} from "./lib/session.ts";
+import { AuthModal } from "./components/AuthModal.tsx";
+import { WelcomeModal } from "./components/WelcomeModal.tsx";
+import { RssModal } from "./components/RssModal.tsx";
+import { UserPushPanel } from "./components/UserPushPanel.tsx";
+import { SiteAdminPanel } from "./components/SiteAdminPanel.tsx";
 import { RulesPanel } from "./components/RulesPanel.tsx";
 import { OpsPanel } from "./components/OpsPanel.tsx";
 import { PushPanel } from "./components/PushPanel.tsx";
@@ -87,7 +106,7 @@ const SOURCE_LABEL: Record<string, string> = {
 let SOURCE_NAMES: Record<string, string> = { ...SOURCE_LABEL };
 const sourceName = (id: string) => SOURCE_NAMES[id] ?? SOURCE_LABEL[id] ?? id;
 
-type Tab = "feed" | "hot" | "digest" | "rules" | "push" | "ai" | "ops";
+type Tab = "feed" | "hot" | "digest" | "me" | "rules" | "push" | "ai" | "ops";
 
 function useApi<T>(url: string | null): { data: T | null; loading: boolean; error: string | null; reload: () => void } {
   const [data, setData] = useState<T | null>(null);
@@ -163,7 +182,9 @@ export function App() {
   const initialTab = (): Tab => {
     if (typeof location === "undefined") return "feed";
     const h = location.hash.replace("#", "");
-    return h === "hot" || h === "digest" || h === "rules" || h === "push" || h === "ai" || h === "ops" ? (h as Tab) : "feed";
+    return h === "hot" || h === "digest" || h === "me" || h === "rules" || h === "push" || h === "ai" || h === "ops"
+      ? (h as Tab)
+      : "feed";
   };
 
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -207,6 +228,57 @@ export function App() {
       .finally(() => setAuthChecked(true));
   }, []);
   const adminReady = authChecked && (!protectedMode || adminAuthed);
+
+  const boot = useBootstrap();
+  const bootData = boot.data;
+  const me = bootData?.user ?? null;
+  const isPublicSite = bootData?.siteMode === "public";
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authHash, setAuthHash] = useState<string | null>(null);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [rssOpen, setRssOpen] = useState(false);
+  const [guest, setGuest] = useState<GuestState>(() => readGuest());
+
+  // 公开站未登录时，个人状态全部落 localStorage；登录后用 /api/me/* 云同步
+  const guestMode = isPublicSite && !me;
+  const syncGuest = useCallback(() => setGuest(readGuest()), []);
+
+  // 入站公告：按 version 记一次，站长改内容后自增版本号即可重新弹出
+  useEffect(() => {
+    if (!bootData?.onboarding?.enabled) return;
+    const key = "radar_onboarding_seen_v" + bootData.onboarding.version;
+    try {
+      if (!localStorage.getItem(key)) setWelcomeOpen(true);
+    } catch {
+      /* 隐私模式下每次都会弹，可以接受 */
+    }
+  }, [bootData?.onboarding?.enabled, bootData?.onboarding?.version]);
+
+  // OAuth 回跳带 #invite-required / #login-* 时自动开登录弹窗并显示对应错误
+  useEffect(() => {
+    const h = location.hash.replace("#", "");
+    if (!h) return;
+    if (h === "invite-required" || h.startsWith("login-") || h.startsWith("register-") || h === "invite-invalid") {
+      setAuthHash(h);
+      setAuthOpen(true);
+    }
+  }, []);
+
+  const closeWelcome = useCallback(() => {
+    setWelcomeOpen(false);
+    if (bootData?.onboarding) {
+      try {
+        localStorage.setItem("radar_onboarding_seen_v" + bootData.onboarding.version, "1");
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [bootData?.onboarding]);
+
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    boot.reload();
+  }, [boot]);
 
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -441,11 +513,15 @@ export function App() {
   }, []);
   const stats = useApi<Stats>(statsQuery ? `/api/stats?${statsQuery}` : "/api/stats");
   const items = useApi<{ total: number; items: Item[] }>(`/api/items?${query}`);
-  const subs = useApi<{ subscriptions: Subscription[] }>(adminReady ? "/api/subscriptions" : null);
+  // 公开站登录用户读写的是自己的订阅与屏蔽词；自建站与管理区沿用全局接口
+  const rulesBase = adminReady ? "/api" : isPublicSite && me ? "/api/me" : null;
+  // 推送规则同样分两套：站长改全局，登录用户改自己的（同一套面板，只是接口不同）
+  const pushBase = adminReady ? "/api/push" : isPublicSite && me ? "/api/me/push" : null;
+  const subs = useApi<{ subscriptions: Subscription[] }>(rulesBase ? rulesBase + "/subscriptions" : null);
   const sources = useApi<{ sources: Source[] }>("/api/sources");
   const runs = useApi<{ runs: Run[] }>(adminReady ? "/api/runs?limit=40" : null);
   const blockRules = useApi<{ rules: BlockRule[]; totalBlocked: number; presets: BlockPreset[] }>(
-    adminReady ? "/api/block-rules" : null,
+    rulesBase ? rulesBase + "/block-rules" : null,
   );
   const digests = useApi<{ digests: { date: string; created_at: string; pushed_at: string | null; kind: string; count: number }[] }>(
     "/api/digests",
@@ -454,9 +530,9 @@ export function App() {
   const [hotScope, setHotScope] = useState<HotScope>("all");
   const hot = useApi<HotReport>(tab === "hot" ? `/api/hot?hours=${hotHours}&scope=${hotScope}` : null);
   // 管理接口只在就绪后请求，避免公开区刷出一堆 401，也避免无密码模式卡住加载
-  const push = useApi<PushPayload>(adminReady ? "/api/push" : null);
+  const push = useApi<PushPayload>(pushBase);
   const ai = useApi<AiPayload>(adminReady && tab === "ai" ? "/api/ai" : null);
-  const pushLogs = useApi<{ logs: PushLogItem[] }>(adminReady && tab === "push" ? "/api/push/log?limit=40" : null);
+  const pushLogs = useApi<{ logs: PushLogItem[] }>(pushBase && tab === "push" ? pushBase + "/log?limit=40" : null);
   const [pushPreview, setPushPreview] = useState<PushPreview | null>(null);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const activeDate = pickedDate ?? digests.data?.digests?.[0]?.date ?? null;
@@ -473,11 +549,31 @@ export function App() {
 
   const patch = useCallback(
     async (id: number, body: Record<string, unknown>) => {
-      await fetch(`/api/items/${id}`, {
+      // 公开站未登录：只改本机 localStorage，不发请求，谁也不影响
+      if (guestMode) {
+        guestPatch(id, body as { starred?: boolean; read?: boolean; status?: string });
+        syncGuest();
+        if (detail && detail.id === id) {
+          const next = readGuest();
+          setDetail({
+            ...detail,
+            starred: next.starred.includes(id),
+            read: next.read.includes(id),
+          });
+        }
+        return;
+      }
+      const url = isPublicSite ? `/api/me/items/${id}` : `/api/items/${id}`;
+      const res = await fetch(url, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        notify(err.error ?? "操作失败");
+        return;
+      }
       items.reload();
       stats.reload();
       if (detail && detail.id === id) {
@@ -485,12 +581,21 @@ export function App() {
         setDetail(next as Item);
       }
     },
-    [items, stats, detail],
+    [items, stats, detail, guestMode, isPublicSite, syncGuest, notify],
   );
 
   const addRule = useCallback(
     async (pattern: string, mode: "keyword" | "regex", scope: string) => {
-      const res = await fetch("/api/block-rules", {
+      // 公开站：登录用户写自己的规则，访客写本机 localStorage
+      if (guestMode) {
+        guestAddBlock(pattern);
+        syncGuest();
+        notify("已在本机屏蔽「" + pattern + "」");
+        items.reload();
+        return;
+      }
+      const ruleUrl = isPublicSite ? "/api/me/block-rules" : "/api/block-rules";
+      const res = await fetch(ruleUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ pattern, mode, scope }),
@@ -507,7 +612,7 @@ export function App() {
       setBlockedPreview(null);
       setRelatedMap({});
     },
-    [blockRules, items, stats, notify],
+    [blockRules, items, stats, notify, guestMode, isPublicSite, syncGuest],
   );
 
   const quickBlockAdd = useCallback(
@@ -519,7 +624,11 @@ export function App() {
 
   const addSubscription = useCallback(
     async (kw: string) => {
-      await fetch("/api/subscriptions", {
+      if (guestMode) {
+        notify("登录后才能订阅关键词（访客偏好只存在本机）");
+        return;
+      }
+      await fetch(isPublicSite ? "/api/me/subscriptions" : "/api/subscriptions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ keyword: kw }),
@@ -528,16 +637,16 @@ export function App() {
       items.reload();
       notify("已订阅「" + kw + "」");
     },
-    [subs, items, notify],
+    [subs, items, notify, guestMode, isPublicSite],
   );
 
   const removeSubscription = useCallback(
     async (id: number) => {
-      await fetch("/api/subscriptions/" + id, { method: "DELETE" });
+      await fetch((isPublicSite ? "/api/me/subscriptions/" : "/api/subscriptions/") + id, { method: "DELETE" });
       subs.reload();
       items.reload();
     },
-    [subs, items],
+    [subs, items, isPublicSite],
   );
 
   const refreshAll = useCallback(() => {
@@ -552,7 +661,13 @@ export function App() {
   const markVisibleRead = useCallback(async () => {
     const unreadIds = (items.data?.items ?? []).filter((i) => !i.read).map((i) => i.id);
     if (!unreadIds.length) return;
-    await fetch("/api/items/batch", {
+    if (guestMode) {
+      guestBatch(unreadIds, "read");
+      syncGuest();
+      notify(`已在本机把 ${unreadIds.length} 条标为已读`);
+      return;
+    }
+    await fetch(isPublicSite ? "/api/me/items/batch" : "/api/items/batch", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: unreadIds, action: "read" }),
@@ -560,9 +675,22 @@ export function App() {
     notify(`已将本页 ${unreadIds.length} 条标为已读`);
     items.reload();
     stats.reload();
-  }, [items, stats, notify]);
+  }, [items, stats, notify, guestMode, isPublicSite, syncGuest]);
 
-  const visible = items.data?.items ?? [];
+// 访客本地隐藏 / 收藏 / 已读与本地屏蔽词在客户端生效；登录用户由服务端按 user_item_states 过滤
+  const visible = (guestMode
+    ? (items.data?.items ?? []).map((i) => ({
+        ...i,
+        starred: guest.starred.includes(i.id),
+        read: guest.read.includes(i.id),
+      }))
+    : (items.data?.items ?? [])
+  ).filter((i) => {
+    if (!guestMode) return true;
+    if (guest.hidden.includes(i.id)) return false;
+    if (guestBlocks(i.title, i.summary, guest.blocked)) return false;
+    return true;
+  });
   const currentIndex = detail ? visible.findIndex((i) => i.id === detail.id) : -1;
 
   const enabledSources = (sources.data?.sources ?? []).filter((s) => s.enabled || showAllSources);
@@ -576,6 +704,13 @@ export function App() {
     { key: "feed", label: "资源流", icon: Activity },
     { key: "hot", label: "今日热点", icon: Flame },
     { key: "digest", label: "每日精选", icon: Radar },
+    ...(me ? [{ key: "me" as Tab, label: "我的", icon: User }] : []),
+    ...(!adminReady && me
+      ? [
+          { key: "rules" as Tab, label: "我的订阅与屏蔽", icon: ShieldBan, badge: stats.data?.totals.blockRules },
+          { key: "push" as Tab, label: "我的推送规则", icon: Zap, badge: push.data?.stats.queued },
+        ]
+      : []),
     ...(adminReady
       ? [
           { key: "rules" as Tab, label: "订阅与屏蔽", icon: ShieldBan, badge: stats.data?.totals.blockRules },
@@ -583,7 +718,9 @@ export function App() {
           { key: "ai" as Tab, label: "AI 引擎", icon: Bot },
           { key: "ops" as Tab, label: "数据源运维", icon: Wrench },
         ]
-      : [{ key: "admin" as const, label: "管理区", icon: Lock }]),
+      : me
+        ? []
+        : [{ key: "admin" as const, label: "管理区", icon: Lock }]),
   ];
 
   const handleTab = (key: Tab | "admin") => {
@@ -629,6 +766,91 @@ export function App() {
           </div>
         </div>
 
+        {/* 账号态 + 说明 + RSS：240px 侧栏里只留图标，避免文字被挤成竖排 */}
+        <div className="mt-2 flex items-center gap-1 px-1 lg:mt-0">
+          <button
+            type="button"
+            onClick={() => setWelcomeOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2 py-1 text-[11.5px] font-medium whitespace-nowrap text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950"
+            title="站点说明与使用提示"
+          >
+            <BookOpen size={12} />
+            <span className="lg:hidden">说明</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRssOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2 py-1 text-[11.5px] font-medium whitespace-nowrap text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950"
+            title="RSS 订阅地址"
+          >
+            <Globe2 size={12} />
+            <span className="lg:hidden">RSS</span>
+          </button>
+          <div className="ml-auto min-w-0">
+            {me ? (
+              <div className="flex items-center gap-1">
+                {me.avatarUrl ? (
+                  <img src={me.avatarUrl} alt="" className="h-5 w-5 shrink-0 rounded-full border border-ink-200" />
+                ) : (
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-semibold text-ink-600">
+                    {(me.name ?? me.username).slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span
+                  className="min-w-0 truncate text-[11.5px] font-medium text-ink-800"
+                  title={`${me.name ?? me.username} · LINUX DO 信任等级 ${me.trustLevel}`}
+                >
+                  {me.name ?? me.username}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="shrink-0 rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-900"
+                  title="退出登录"
+                >
+                  <LogOut size={12} />
+                </button>
+              </div>
+            ) : bootData?.loginEnabled ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthHash(null);
+                  setAuthOpen(true);
+                }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ink-950 px-2 py-1 text-[11.5px] font-medium whitespace-nowrap text-white hover:bg-brand-hover"
+                title="用 LINUX DO 登录"
+              >
+                <User size={12} /> 登录
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {guestMode && (guest.hidden.length > 0 || guest.starred.length > 0 || guest.read.length > 0) && (
+          <div className="mt-2 rounded-md border border-ink-200 bg-surface-hover px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-600">
+            本机偏好：收藏 {guest.starred.length} · 已读 {guest.read.length} · 已关闭 {guest.hidden.length}
+            {bootData?.loginEnabled && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const r = await importGuestToAccount(guest);
+                  if (r.ok) {
+                    notify(`已合并 ${r.imported} 条偏好到账号`);
+                    syncGuest();
+                    items.reload();
+                    stats.reload();
+                  } else {
+                    notify(r.error ?? "合并失败");
+                  }
+                }}
+                className="ml-1 font-medium text-accent hover:underline"
+              >
+                登录后合并
+              </button>
+            )}
+          </div>
+        )}
         {/* 搜索框（/ 快捷键聚焦） */}
         <div className="relative mt-2.5 lg:mt-0">
           <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-400" />
@@ -921,7 +1143,7 @@ export function App() {
 
         {/* 主内容区 */}
         <main className={tab === "feed" ? "min-w-0 flex-1" : "min-w-0 flex-1 px-3.5 py-3.5 sm:px-6 sm:py-5"}>
-          {((tab as string) === "admin" || (ADMIN_TABS.has(tab) && !adminReady)) && (
+          {((tab as string) === "admin" || (ADMIN_TABS.has(tab) && !adminReady && !((tab === "rules" || tab === "push") && me))) && (
             <AdminGate protectedMode={protectedMode} onAuthChange={setAdminAuthed}>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
@@ -1620,7 +1842,7 @@ export function App() {
             />
           )}
 
-          {adminReady && tab === "rules" && (
+          {(adminReady || me) && tab === "rules" && (
             <RulesPanel
               subscriptions={subs.data?.subscriptions ?? []}
               rules={blockRules.data?.rules ?? []}
@@ -1649,7 +1871,7 @@ export function App() {
                 notify("已导入常见噪音屏蔽词");
               }}
               onToggleRule={async (id, enabled) => {
-                await fetch("/api/block-rules/" + id, {
+                await fetch((isPublicSite && !adminReady ? "/api/me/block-rules/" : "/api/block-rules/") + id, {
                   method: "PATCH",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ enabled }),
@@ -1659,7 +1881,7 @@ export function App() {
                 setBlockedPreview(null);
               }}
               onDeleteRule={async (id) => {
-                await fetch("/api/block-rules/" + id, { method: "DELETE" });
+                await fetch((isPublicSite && !adminReady ? "/api/me/block-rules/" : "/api/block-rules/") + id, { method: "DELETE" });
                 blockRules.reload();
                 items.reload();
                 stats.reload();
@@ -1674,14 +1896,14 @@ export function App() {
             />
           )}
 
-          {adminReady && tab === "push" && (
+          {pushBase && tab === "push" && (
             <PushPanel
               payload={push.data}
               preview={pushPreview}
               logs={pushLogs.data?.logs ?? []}
               sources={sources.data?.sources ?? []}
               onSave={async (p: Partial<PushSettings>) => {
-                const res = await fetch("/api/push", {
+                const res = await fetch(pushBase ?? "/api/push", {
                   method: "PATCH",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify(p),
@@ -1695,11 +1917,11 @@ export function App() {
                 notify("推送规则已保存");
               }}
               onPreview={async () => {
-                const res = await fetch("/api/push/preview?limit=6");
+                const res = await fetch((pushBase ?? "/api/push") + "/preview?limit=6");
                 setPushPreview((await res.json()) as PushPreview);
               }}
               onFlush={async () => {
-                const res = await fetch("/api/push/flush", { method: "POST" });
+                const res = await fetch((pushBase ?? "/api/push") + "/flush", { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as { sent?: number; queued?: number };
                 notify(`已发送 ${data.sent ?? 0} 条，队列剩 ${data.queued ?? 0} 条`);
                 push.reload();
@@ -1707,7 +1929,7 @@ export function App() {
                 setPushPreview(null);
               }}
               onTest={async () => {
-                const res = await fetch("/api/push/test", { method: "POST" });
+                const res = await fetch((pushBase ?? "/api/push") + "/test", { method: "POST" });
                 notify(res.ok ? "测试消息已发送到 Telegram" : "推送未启用或缺少凭据");
                 pushLogs.reload();
               }}
@@ -1740,6 +1962,8 @@ export function App() {
             />
           )}
 
+          {me && tab === "me" && bootData && <UserPushPanel boot={bootData} />}
+          {adminReady && tab === "ops" && <SiteAdminPanel />}
           {adminReady && tab === "ops" && (
             <OpsPanel
               sources={sources.data?.sources ?? []}
@@ -1860,6 +2084,36 @@ export function App() {
       )}
 
       <Toast message={toast} />
+
+      {welcomeOpen && bootData && (
+        <WelcomeModal
+          boot={bootData}
+          onClose={closeWelcome}
+          onLogin={() => {
+            closeWelcome();
+            setAuthHash(null);
+            setAuthOpen(true);
+          }}
+        />
+      )}
+
+      {authOpen && bootData && (
+        <AuthModal
+          boot={bootData}
+          initialHash={authHash}
+          onClose={() => setAuthOpen(false)}
+          onDone={() => {
+            setAuthOpen(false);
+            boot.reload();
+            setTimeout(() => {
+              items.reload();
+              stats.reload();
+            }, 300);
+          }}
+        />
+      )}
+
+      {rssOpen && bootData && <RssModal boot={bootData} currentQuery={query} onClose={() => setRssOpen(false)} />}
     </div>
   );
 }

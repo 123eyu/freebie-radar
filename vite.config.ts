@@ -12,6 +12,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:8788",
+      // 本地 Vite 调试也要能直接点开 RSS 订阅地址
+      "/rss": "http://127.0.0.1:8788",
+      "/rss.xml": "http://127.0.0.1:8788",
     },
   },
   build: {

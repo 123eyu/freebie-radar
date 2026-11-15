@@ -14,6 +14,9 @@ import { startIntervalScheduler, startScheduler } from "./cron.ts";
 import { getRetention, runCleanup } from "./retention.ts";
 import { ensureSources } from "./collectors/index.ts";
 import { releaseFlareSession } from "./flaresolverr.ts";
+import { pushUserDaily, startUserPushScheduler } from "./user-push.ts";
+import { purgeExpiredSessions } from "./auth.ts";
+import { getBuildInfo } from "./updater.ts";
 
 migrate();
 ensureSources();
@@ -25,11 +28,15 @@ run(
 const app = new Hono();
 app.use("*", logger());
 
-app.get("/health", (c) => {
+app.get("/health", async (c) => {
   const row = getDb().prepare("SELECT 1 AS ok").get() as { ok: number } | undefined;
+  // 一键更新后前端轮询 /health 等 commit 变化来判断「新版本真的起来了」
+  const build = await getBuildInfo().catch(() => null);
   return c.json({
     ok: row?.ok === 1,
-    version: "0.1.0",
+    version: build?.version ?? "0.1.0",
+    commit: build?.commitShort ?? null,
+    runtimeMode: build?.runtimeMode ?? null,
     time: new Date().toISOString(),
     sources: config.enabledSources.length || "all",
   });
@@ -79,6 +86,8 @@ if (config.enableScheduler) {
   startIntervalScheduler();
   // 推送：攒批队列按 batchIntervalMin 定时合并发送（静默时段自动跳过）
   startPushScheduler();
+  // 个人 Bot 攒批：各用户按自己的周期出队，与全局攒批互不干扰
+  startUserPushScheduler();
   // 日报：仍然按 DAILY_CRON 触发
   startScheduler({
     collect: async () => undefined,
@@ -87,6 +96,10 @@ if (config.enableScheduler) {
       const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       if (digestExists(day)) return;
       await runDaily({ date: now });
+      // 每日精选落库后，给开了「个人日报」的用户各发一份
+      await pushUserDaily().catch((err) => {
+        console.error("[user-push] 个人日报失败:", err instanceof Error ? err.message : err);
+      });
     },
   });
 
@@ -103,6 +116,13 @@ if (config.enableScheduler) {
     }
   };
   tickCleanup();
+  // 过期的登录 Session 顺手清掉，避免 sessions 表无限增长
+  try {
+    const n = purgeExpiredSessions();
+    if (n > 0) console.log("[auth] 清理过期会话", n, "条");
+  } catch {
+    /* ignore */
+  }
   setInterval(tickCleanup, 12 * 3600_000);
 }
 
