@@ -125,7 +125,12 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       kindHint: readSourceKindHint(cur?.source_id),
     });
     // 资讯/水帖不许落进实地福利：AI 标错时统一降级到兜底分类
-    const effectiveCategory = demoteOfflineCategory(rawCategory, effectiveKind);
+    const effectiveCategory = demoteOfflineCategory(
+      rawCategory,
+      effectiveKind,
+      cur?.title ?? "",
+      cur?.summary ?? "",
+    );
     const effectiveKeep = effectiveKind === "noise" ? false : verdict.keep;
     const keep = effectiveKeep ? 1 : 0;
     const nextScore = cur

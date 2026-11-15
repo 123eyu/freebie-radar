@@ -591,6 +591,9 @@ function persist(
       const effectiveCategory = demoteOfflineCategory(
         verdict?.category && isCategory(verdict.category) ? verdict.category : e.category,
         effectiveKind,
+        e.title,
+        e.summary ?? "",
+        e.category,
       );
       const effectiveQuality =
         typeof verdict?.quality === "number" && Number.isFinite(verdict.quality)

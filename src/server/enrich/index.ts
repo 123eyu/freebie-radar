@@ -14,6 +14,16 @@ export { CATEGORY_LABEL, isCategory };
 
 type Rule = { category: Category; weight: number; keywords: string[]; exclude?: RegExp; require?: RegExp };
 
+/** 线下场景词：出现这些才可能是「实地」，光有「免费」不算 */
+const OFFLINE_SCENE_RE =
+  /现场|到店|进店|门店|实体店|快闪|商场|专柜|自提|打卡|试吃|试饮|派样|派发|店庆|开业|线下|凭手机|凭截图|排队领|附近|博会|展会|展览|市集|集市|庙会|漫展|车展/;
+/** 领取动作：必须能真的领到东西，否则只是地点词撞上了 */
+const OFFLINE_CLAIM_RE =
+  /(?:免费领取|免费领|现场领|领取|免费送|免费赠|赠送|白送|白给|0元|零元|一分钱|打卡[^\s]{0,4}(?:送|领)|试吃|试饮|派样|派发|小样|礼品|手幅|周边)/;
+/** 资讯/求助/闲聊：命中就不该当实地福利 */
+const OFFLINE_EXCLUDE_RE =
+  /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录|抽检|不合格|检测结果|召回|处罚|罚款|我想|有吗|有没有人|求租|转租|合租/;
+
 const RULES: Rule[] = [
   {
     category: "ai",
@@ -125,9 +135,9 @@ const RULES: Rule[] = [
       "打卡", "试吃", "试饮", "派样", "派发", "店庆", "开业活动", "新店开业", "附近", "线下", "凭手机", "凭截图领取", "排队领",
     ],
     // 光有「附近/线下/现场」这类地点词不够：必须同时出现「领取动作」，否则闲聊帖、行业资讯全被吸进来
-    require: /(?:免费领取|免费领|现场领|领取|免费送|免费赠|赠送|白送|白给|0元|零元|一分钱|打卡[^\s]{0,4}(?:送|领)|试吃|试饮|派样|派发|小样|礼品|手幅|周边)/,
+    require: OFFLINE_CLAIM_RE,
     // 新闻/发布会里的「现场」不是实地福利；抽检通报、租房求组队这类也不是
-    exclude: /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录|抽检|不合格|检测结果|召回|处罚|罚款|我想|有吗|有没有人|求租|转租|合租/,
+    exclude: OFFLINE_EXCLUDE_RE,
   },
   {
     category: "goods",
@@ -260,11 +270,32 @@ export function classify(
   return { category: best.category, tags };
 }
 /**
- * 实地福利只收「线下能领到实物」的内容：资讯/水帖即使被规则或 AI 标成 offline 也不该进这个分类。
- * 统一在这里收口，enrich 与 AI 审核落库都调用它。
+ * 实地福利的完整口径：先得是福利（kind=freebie），再得是实地（线下场景 + 领取动作 + 中文文本）。
+ * AI 会把美国的线上促销/到店好价也标成 offline，所以规则结果和 AI 输出都要过这道闸。
  */
-export function demoteOfflineCategory(category: string | null, kind: string | null): string | null {
-  return category === "offline" && (kind === "news" || kind === "info" || kind === "noise") ? "other" : category;
+export function isOfflineWorthy(title: string, summary: string, kind: string | null): boolean {
+  if (kind !== "freebie") return false;
+  const text = `${title} ${summary}`;
+  if (!OFFLINE_SCENE_RE.test(text) || !OFFLINE_CLAIM_RE.test(text)) return false;
+  if (OFFLINE_EXCLUDE_RE.test(text)) return false;
+  // 全英文的海外本地促销对中文站没有意义
+  return (text.match(/[\u4e00-\u9fff]/g) ?? []).length >= 2;
+}
+
+/**
+ * 统一收口：任何来源（规则 / AI 审核 / 重分类）把条目标成 offline 时都过一遍 isOfflineWorthy，
+ * 不合格就退回 fallback（默认兜底分类）。
+ */
+export function demoteOfflineCategory(
+  category: string | null,
+  kind: string | null,
+  title = "",
+  summary = "",
+  fallback: string | null = "other",
+): string | null {
+  if (category !== "offline") return category;
+  if (isOfflineWorthy(title, summary, kind)) return category;
+  return fallback && fallback !== "offline" ? fallback : "other";
 }
 
 function ageDays(iso: string | null): number {
@@ -435,8 +466,8 @@ export function enrichItem(
     kindHint: hints?.kindHint ?? null,
   };
   let kind = guessKind(kindInput);
-  // 实地福利必须是「线下能领到的实物福利」：资讯/水帖即使命中了现场、附近这类地点词也不该进这个分类
-  if (category === "offline" && (kind === "news" || kind === "info" || kind === "noise")) {
+  // 实地福利必须是「能到店领到的实物福利」：好价（deal）和只撞上地点词的资讯/闲聊一律退回
+  if (category === "offline" && !isOfflineWorthy(title, summary, kind)) {
     const again = classify(title, summary, { excludeCategories: ["offline"] });
     category =
       again.category === "other" && isCategory(hintCat) && hintCat !== "offline" ? hintCat : again.category;

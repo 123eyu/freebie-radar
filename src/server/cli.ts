@@ -109,7 +109,13 @@ async function main() {
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(row.source_id),
         });
         // 资讯/水帖不许落进实地福利（AI 或旧规则标错的在这里降级）
-        finalCategory = demoteOfflineCategory(finalCategory, finalKind) as typeof finalCategory;
+        finalCategory = demoteOfflineCategory(
+          finalCategory,
+          finalKind,
+          row.title,
+          row.summary ?? "",
+          e.category,
+        ) as typeof finalCategory;
         const finalScore = calibrateScoreByObtain(e.baseScore, finalObtain, aiKeepBool, finalQuality, finalKind, {
           title: e.title,
 summary: e.summary ?? "",

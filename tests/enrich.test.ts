@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, enrichItem, scoreItem } from "../src/server/enrich/index.ts";
+import { classify, demoteOfflineCategory, enrichItem, isOfflineWorthy, scoreItem } from "../src/server/enrich/index.ts";
 import { cleanText, guessExpiry, normalizeUrl, parseDate, urlKey } from "../src/server/enrich/normalize.ts";
 
 test("URL 规范化：追踪参数、片段、尾斜杠都不影响去重键", () => {
@@ -56,6 +56,25 @@ test("分类：实地福利里的资讯/水帖在 enrich 阶段被降级", () =>
   assert.ok(e);
   assert.notEqual(e.category, "offline");
   assert.equal(e.kind, "info");
+});
+
+test("分类：实地福利只收福利（freebie），好价与海外线上促销一律不进", () => {
+  // 好价（deal）不是福利
+  assert.equal(isOfflineWorthy("Dairy Queen- 2 for $6 cupcakes", "到店自取", "deal"), false);
+  // 全英文的海外线上促销不是中文站的实地福利
+  assert.equal(
+    isOfflineWorthy(
+      "6 FREE Walgreens Photo Cards ($24 Value)",
+      "use promo code 6PREM at checkout and opt for free same-day pickup",
+      "freebie",
+    ),
+    false,
+  );
+  // 真·实地福利：中文 + 线下场景 + 领取动作
+  assert.equal(isOfflineWorthy("海口博博会，河北博物院礼品免费送", "现场领取", "freebie"), true);
+  assert.equal(isOfflineWorthy("新店开业活动：到店免费领小样", "", "freebie"), true);
+  assert.equal(demoteOfflineCategory("offline", "deal", "Dairy Queen- 2 for $6 cupcakes", "", "goods"), "goods");
+  assert.equal(demoteOfflineCategory("offline", "freebie", "海口博博会，河北博物院礼品免费送", "现场领取"), "offline");
 });
 
 test("分类：无关键词落 other", () => {

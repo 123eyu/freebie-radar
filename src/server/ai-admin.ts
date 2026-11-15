@@ -274,7 +274,13 @@ if (!v.keep) rejected += 1;
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(row.source_id),
         });
         // 资讯/水帖不许落进实地福利
-        const finalCategory = demoteOfflineCategory(category, kind);
+        const finalCategory = demoteOfflineCategory(
+          category,
+          kind,
+          row.title,
+          row.summary ?? "",
+          baseEnriched?.category ?? null,
+        );
         const effectiveKeep = kind === "noise" ? false : v.keep;
         const keep = effectiveKeep ? 1 : 0;
         const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind });
@@ -396,7 +402,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     const fallbackObtain = guessObtain(r.title, r.summary ?? "");
     const nextObtain = r.ai_keep === null ? fallbackObtain : (r.obtain ?? fallbackObtain);
     // 资讯/水帖不许落进实地福利
-    nextCat = demoteOfflineCategory(nextCat, nextKind) as typeof nextCat;
+    nextCat = demoteOfflineCategory(nextCat, nextKind, r.title, r.summary ?? "", e.category) as typeof nextCat;
 
 // 顺手用新的多维加权口径重算分数（规则内容分存进 base_score，AI 质量分参与合成）
     const keepBool = r.ai_keep === null ? null : r.ai_keep === 1;
