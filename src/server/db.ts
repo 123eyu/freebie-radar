@@ -314,6 +314,13 @@ const MIGRATIONS: string[] = [
    WHERE status = 'active' AND category IN ('pan', 'course')
      AND (title LIKE '%签署%' OR title LIKE '%备忘录%' OR title LIKE '%论坛%' OR title LIKE '%峰会%'
           OR title LIKE '%发布会%' OR title LIKE '%暗改%' OR title LIKE '%限制加码%');
+`,
+  /* v26：网盘里的课程/讲义/书籍资料归「网课/教程」，让 pan 只留纯网盘分享 */
+  `
+  UPDATE items SET category = 'course'
+   WHERE status = 'active' AND category = 'pan'
+     AND (title LIKE '%课程%' OR title LIKE '%讲义%' OR title LIKE '%训练班%' OR title LIKE '%讲完%'
+          OR title LIKE '%节短课%' OR title LIKE '%实战篇%' OR title LIKE '%一套书%' OR title LIKE '%电子书%');
   `,
 ];
 
