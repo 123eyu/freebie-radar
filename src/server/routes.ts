@@ -350,15 +350,15 @@ export function registerApi(app: Hono) {
       // 代表条目只算一次：旧写法是逐行相关子查询（每行都要重跑一遍全表过滤 + 排序），5000 行时单次请求要 2-13 秒。
       // 现在改成一次窗口函数：按 title_key + 48 小时时间桶分组，每组取 score 最高的一条当代表。
       const groupKey = "CASE WHEN category = 'game' THEN 'game' ELSE CAST(julianday(COALESCE(published_at, first_seen_at)) / 2 AS INTEGER) END";
-      // 分组键：优先用 AI 语义去重落库的 canonical_id（同活动不同措辞也能收敛），否则退回 title_key
-      const clusterKey =
-        "COALESCE(CASE WHEN canonical_id IS NOT NULL AND canonical_id > 0 THEN 'c' || canonical_id END, 't' || COALESCE(title_key, ''))";
-      const keyOk = "(LENGTH(CAST(title_key AS BLOB)) >= 6 OR canonical_id IS NOT NULL)";
+const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
       const innerClause = where.length ? `${where.join(" AND ")} AND ` : "";
+      // 注意：SQL 层只按 title_key 收敛（可走 idx_items_title_key 索引）。
+      // canonical_id 的跨措辞聚类交给下面的 JS TitleDeduper（它已接收 canonicalId），
+      // 不要放进 PARTITION BY —— 表达式分组会让索引失效，全表排序会阻塞事件循环。
       where.push(
-        `((canonical_id IS NULL AND (title_key IS NULL OR title_key = '' OR LENGTH(CAST(title_key AS BLOB)) < 6)) OR id IN (
+        `(title_key IS NULL OR title_key = '' OR LENGTH(CAST(title_key AS BLOB)) < 6 OR id IN (
            SELECT rid FROM (
-             SELECT id AS rid, ROW_NUMBER() OVER (PARTITION BY ${clusterKey}, ${groupKey} ORDER BY score DESC, id ASC) AS rn
+             SELECT id AS rid, ROW_NUMBER() OVER (PARTITION BY title_key, ${groupKey} ORDER BY score DESC, id ASC) AS rn
                FROM items WHERE ${innerClause}${keyOk}
            ) WHERE rn = 1))`,
       );
@@ -391,12 +391,9 @@ export function registerApi(app: Hono) {
     // 收拢不同措辞的同一事件（如多家媒体报道同一条新闻/优惠），并累加同组来源数。
     const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const candidates = all<ItemRow & { dup_count?: number }>(
-      `SELECT items.*, (SELECT COUNT(*) FROM items d
-            WHERE d.status = 'active'
-              AND (
-                (items.canonical_id IS NOT NULL AND d.canonical_id = items.canonical_id)
-                OR (items.canonical_id IS NULL AND d.title_key = items.title_key AND LENGTH(CAST(items.title_key AS BLOB)) >= 6)
-              )
+`SELECT items.*, (SELECT COUNT(*) FROM items d INDEXED BY idx_items_title_key
+            WHERE d.title_key = items.title_key AND d.status = 'active'
+              AND LENGTH(CAST(items.title_key AS BLOB)) >= 6
               AND (items.category = 'game' OR ABS(julianday(COALESCE(d.published_at, d.first_seen_at)) - julianday(COALESCE(items.published_at, items.first_seen_at))) <= 2)) AS dup_count
          FROM items ${clause} ORDER BY ${order} LIMIT ?`,
       ...params,
