@@ -264,6 +264,11 @@ const MIGRATIONS: string[] = [
    WHERE kind = 'info'
     AND category IN ('headline', 'world');
   `,
+  /* v21：AI 语义去重聚类 ID（同一活动/福利/事件共享 canonical_id，根条目自身也置为 rootId） */
+  `
+  ALTER TABLE items ADD COLUMN canonical_id INTEGER;
+  CREATE INDEX IF NOT EXISTS idx_items_canonical_id ON items(canonical_id);
+  `,
   /* v22：网盘资源与网课教程独立成类，历史条目按标题关键词重新落位 */
   `
   UPDATE items SET category = 'pan'
@@ -278,11 +283,6 @@ const MIGRATIONS: string[] = [
      AND COALESCE(category, '') IN ('edu', 'other', '')
      AND (title LIKE '%网课%' OR title LIKE '%课程%' OR title LIKE '%公开课%' OR title LIKE '%训练营%'
           OR title LIKE '%课件%' OR title LIKE '%讲义%' OR title LIKE '%视频教程%');
-  `,
-  /* v21：AI 语义去重聚类 ID（同一活动/福利/事件共享 canonical_id，根条目自身也置为 rootId） */
-  `
-  ALTER TABLE items ADD COLUMN canonical_id INTEGER;
-  CREATE INDEX IF NOT EXISTS idx_items_canonical_id ON items(canonical_id);
   `,
 ];
 
