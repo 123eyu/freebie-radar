@@ -7,6 +7,8 @@ import type { ObtainMode } from "./obtain.ts";
 import { isContentKind, type ContentKind } from "./kind.ts";
 import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 
+import { CATEGORY_DESC, CATEGORY_KEYS } from "../../shared/taxonomy.ts";
+
 export type AiVerdict = {
   index: number;
   keep: boolean;
@@ -66,6 +68,9 @@ export type AiSettings = {
 const SETTINGS_KEY = "ai";
 const DEFAULT_MAX_ITEMS = 60;
 
+/** 分类清单与说明由 shared/taxonomy.ts 生成，加分类不用再改提示词 */
+const CATEGORY_PROMPT_LINE = `分类 category 只能是：${CATEGORY_KEYS.join(" | ")}`;
+const CATEGORY_DESC_LINE = `细分类参考：${CATEGORY_KEYS.map((k) => `${k}=${CATEGORY_DESC[k]}`).join("；")}。`;
 const DEFAULT_PROMPT = [
   "你是多主题社区与「资源雷达」的内容审核与打标员。任务是过滤低信噪比水帖，并把有价值的内容准确归类到「白嫖福利 / 特价好价 / 开源项目 / 重要新闻 / 行业资讯」，不要把开源项目、黑五特价、合规拼车或高价值重大新闻/经济股票科技资讯误杀成噪音。",
   "",
@@ -83,9 +88,8 @@ const DEFAULT_PROMPT = [
   "- 八卦吐槽、吵架引战水贴、纯感慨/讨论帖（如「怎么看待白嫖」「如何评价…」）或无实际可领路径的空泛软文",
   "- 毫无折扣亮点的普通原价推广",
   "",
-  "分类 category 只能是：ai | cloud | vps | domain | opensource | software | dev | design | security | hardware | media | game | carpool | trade | headline | world | finance | stock | tech | news | goods | invite | edu | other",
-  "分类 category 只能是：ai | cloud | vps | domain | opensource | software | dev | design | security | hardware | media | game | carpool | trade | headline | world | finance | stock | tech | news | goods | invite | edu | pan | course | other",
-  "细分类参考：vps=独立服务器/VPS/小鸡/现车；cloud=云额度/对象存储/CDN/代理流量；dev=开发框架/CLI/SDK/插件；design=字体/图标/UI模板/素材；security=安全漏洞/VPN/隐私工具；hardware=硬件/路由器/NAS/数码；carpool=拼车合租车位；trade=明盘出鸡/账号转让；headline=国内时政/政策法规/民生要闻；world=国际局势/外交/海外要闻；finance=宏观经济/金融货币/商业并购/投融资；stock=A股/港股/美股/ETF/财报/IPO/股票市场；tech=科技前沿/芯片/互联网/航天/新能源；news=综合资讯快讯；goods=生活羊毛/话费红包/优惠券/实物；pan=网盘资源（夸克/阿里云盘/百度网盘/115 等分享与转存）；course=网课与教程（公开课/训练营/视频课程/课件讲义）；edu=教育考试（题库/真题/教材/电子书/论文/备考）；invite=邀请码。",
+  CATEGORY_PROMPT_LINE,
+  CATEGORY_DESC_LINE,
   "同时判断「获取方式」obtain，只能是：",
   "- free：点开即可直接免费拿或开源免费用，不需抽签/付费",
   "- conditional：需注册、实名、填表、签到攒积分、回复或新用户条件才可领",

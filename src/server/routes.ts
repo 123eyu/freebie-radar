@@ -55,6 +55,35 @@ import {
   PRESET_NOISE_PATTERNS,
   type BlockRule,
 } from "./enrich/blocklist.ts";
+import {
+  CATEGORY_DESC,
+  CATEGORY_GROUPS,
+  CATEGORY_KEYS,
+  CATEGORY_LABEL,
+  CHANNELS,
+  KIND_LABEL,
+  KIND_ORDER,
+  OBTAIN_KEYS,
+  OBTAIN_LABEL,
+  isCategory,
+  isContentKind,
+} from "../shared/taxonomy.ts";
+
+/**
+ * 校验数据源上的分类/形态兜底提示。
+ * 以前这里是自由字符串，手写错一个字就会被静默忽略，主页与数据源口径逐渐漂移。
+ */
+function checkSourceHints(kindHint: unknown, categoryHint: unknown): string | null {
+  if (typeof kindHint === "string" && kindHint.trim()) {
+    const v = kindHint.trim();
+    if (!isContentKind(v) || v === "noise") return `kindHint 只能是 ${KIND_ORDER.join("/")}`;
+  }
+  if (typeof categoryHint === "string" && categoryHint.trim()) {
+    const v = categoryHint.trim();
+    if (!isCategory(v)) return `categoryHint 必须是小类 key（${CATEGORY_KEYS.join("/")}）`;
+  }
+  return null;
+}
 
 export type ItemRow = {
   id: number;
@@ -618,6 +647,16 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
     return c.json({ ok: true, updated: ids.length });
   });
 
+  // ---- 分类口径（前端/第三方客户端据此渲染，与主页频道保持同一份定义）----
+  app.get("/api/taxonomy", (c) => {
+    return c.json({
+      categories: CATEGORY_KEYS.map((key) => ({ key, label: CATEGORY_LABEL[key], desc: CATEGORY_DESC[key] })),
+      groups: CATEGORY_GROUPS,
+      channels: CHANNELS,
+      kinds: KIND_ORDER.map((key) => ({ key, label: KIND_LABEL[key] })),
+      obtains: OBTAIN_KEYS.map((key) => ({ key, label: OBTAIN_LABEL[key] })),
+    });
+  });
   // ---- 屏蔽词管理 ----
   app.get("/api/block-rules", (c) => {
     const rules = all<BlockRule>("SELECT id, pattern, mode, scope, enabled, created_at FROM block_rules ORDER BY id DESC");
@@ -733,6 +772,8 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
     const name = (body?.name ?? "").trim();
     const url = (body?.url ?? "").trim();
     if (!name || !/^https?:\/\//i.test(url)) return c.json({ error: "名称与合法的 http(s) RSS 地址必填" }, 400);
+    const hintErr = checkSourceHints(body?.kindHint, body?.categoryHint);
+    if (hintErr) return c.json({ error: hintErr }, 400);
     const id = addCustomRssSource({
       name,
       url,
@@ -783,6 +824,9 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
       if (!body.config || typeof body.config !== "object" || Array.isArray(body.config)) {
         return c.json({ error: "config 必须为 JSON 对象" }, 400);
       }
+      const cfg = body.config as Record<string, unknown>;
+      const hintErr = checkSourceHints(cfg.kindHint, cfg.categoryHint);
+      if (hintErr) return c.json({ error: hintErr }, 400);
       if (existing.kind === "rss") {
         const feeds = (body.config as { feeds?: unknown }).feeds;
         if (!Array.isArray(feeds) || feeds.length === 0) {
@@ -793,6 +837,11 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
           if (!/^https?:\/\//i.test(url)) {
             return c.json({ error: "RSS 订阅地址必须是合法的 http(s):// URL" }, 400);
           }
+          const feedHintErr = checkSourceHints(
+            (f as { kindHint?: unknown })?.kindHint,
+            (f as { categoryHint?: unknown })?.categoryHint,
+          );
+          if (feedHintErr) return c.json({ error: `feeds 里的 ${feedHintErr}` }, 400);
         }
       }
       sets.push("config = ?");

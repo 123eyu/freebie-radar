@@ -6,49 +6,11 @@ import { extractPrice } from "./pricing.ts";
 import { OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
 import { guessObtain } from "./obtain.ts";
 import { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind } from "./kind.ts";
+import { CATEGORY_LABEL, isCategory, type Category } from "../../shared/taxonomy.ts";
 
 export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
-export type Category =
-  | "ai" | "cloud" | "vps" | "domain" | "opensource" | "software" | "dev" | "design" | "security" | "hardware" | "media" | "game" | "carpool" | "trade" | "headline" | "world" | "finance" | "stock" | "tech" | "news" | "goods" | "invite" | "edu" | "pan" | "course" | "other";
-
-const CATEGORIES = new Set<string>([
-  "ai", "cloud", "vps", "domain", "opensource", "software", "dev", "design", "security", "hardware",
-  "media", "game", "carpool", "trade", "headline", "world", "finance", "stock", "tech", "news", "goods", "invite", "edu",
-  "pan", "course", "other",
-]);
-
-export function isCategory(value: unknown): value is Category {
-  return typeof value === "string" && CATEGORIES.has(value);
-}
-
-export const CATEGORY_LABEL: Record<Category, string> = {
-  ai: "AI 额度",
-  cloud: "云服务",
-  vps: "VPS/主机",
-  domain: "域名/建站",
-  opensource: "开源软件",
-  software: "软件授权",
-  dev: "开发/工程",
-  design: "设计/素材",
-  security: "安全/网络",
-  hardware: "硬件/数码",
-  media: "影音会员",
-  game: "游戏",
-  carpool: "拼车/合租",
-  trade: "二手/交易",
-  headline: "时政要闻",
-  world: "国际要闻",
-  finance: "经济/商业",
-  stock: "股票/市场",
-  tech: "科技动态",
-  news: "综合资讯",
-  goods: "实物/优惠",
-  invite: "邀请码",
-  edu: "教育/考试",
-  pan: "网盘资源",
-  course: "网课/教程",
-  other: "其它",
-};
+export type { Category };
+export { CATEGORY_LABEL, isCategory };
 
 type Rule = { category: Category; weight: number; keywords: string[] };
 

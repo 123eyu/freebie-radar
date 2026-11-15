@@ -17,7 +17,17 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { CATEGORY_LABEL, KIND_LABEL, KIND_ORDER, OBTAIN_LABEL, OBTAIN_ORDER } from "../lib/sources.ts";
+import {
+  CATEGORY_DESC,
+  CATEGORY_GROUPS,
+  CATEGORY_LABEL,
+  CHANNELS,
+  KIND_LABEL,
+  KIND_ORDER,
+  OBTAIN_LABEL,
+  OBTAIN_ORDER,
+  categoryLabel,
+} from "../lib/sources.ts";
 import type {
   AiFallbackMode,
   PushLogItem,
@@ -674,40 +684,69 @@ export function PushPanel({
               </div>
             </div>
 
-            {/* 分类白名单 */}
+            {/* 分类白名单：分组与主页频道一致，可直接套用频道默认集合 */}
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[13px] font-medium text-ink-900">只推哪些分类（不勾选表示全部分类都推）</span>
-                {s.categories.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => save({ categories: [] })}
-                    className="text-[12px] font-medium text-brand hover:underline"
-                  >
-                    恢复全部分类
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(CATEGORY_LABEL).map(([key, label]) => {
-                  const checked = s.categories.includes(key);
-                  return (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11.5px] text-ink-500">套用主页频道：</span>
+                  {CHANNELS.map((ch) => {
+                    const same =
+                      s.categories.length === ch.categories.length &&
+                      ch.categories.every((c) => s.categories.includes(c));
+                    return (
+                      <button
+                        key={ch.key}
+                        type="button"
+                        onClick={() => save({ categories: [...ch.categories] })}
+                        className={
+                          "rounded border px-2 py-0.5 text-[11.5px] transition-colors " +
+                          (same
+                            ? "border-brand bg-brand text-white"
+                            : "border-ink-200 bg-surface text-ink-600 hover:border-brand-border hover:text-brand")
+                        }
+                      >
+                        {ch.label}
+                      </button>
+                    );
+                  })}
+                  {s.categories.length > 0 && (
                     <button
-                      key={key}
                       type="button"
-                      onClick={() => toggleCategory(key)}
-                      className={
-                        "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] transition-colors " +
-                        (checked
-                          ? "border-brand bg-brand-subtle font-medium text-brand"
-                          : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
-                      }
+                      onClick={() => save({ categories: [] })}
+                      className="text-[12px] font-medium text-brand hover:underline"
                     >
-                      {checked && <Check size={12} />}
-                      {label}
+                      恢复全部分类
                     </button>
-                  );
-                })}
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {CATEGORY_GROUPS.map((group) => (
+                  <div key={group.key} className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-[62px] shrink-0 text-[11px] text-ink-400">{group.label}</span>
+                    {group.categories.map((key) => {
+                      const checked = s.categories.includes(key);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          title={CATEGORY_DESC[key]}
+                          onClick={() => toggleCategory(key)}
+                          className={
+                            "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] transition-colors " +
+                            (checked
+                              ? "border-brand bg-brand-subtle font-medium text-brand"
+                              : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
+                          }
+                        >
+                          {checked && <Check size={12} />}
+                          {CATEGORY_LABEL[key]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -920,7 +959,7 @@ export function PushPanel({
                               )}
                               {rt.categories.length > 0 && (
                                 <span className="text-[11px] font-normal text-ink-500">
-                                  分类：{rt.categories.map((c) => CATEGORY_LABEL[c] ?? c).join("/")}
+                                  分类：{rt.categories.map((c) => categoryLabel(c)).join("/")}
                                 </span>
                               )}
                               {rt.keywords.length > 0 && (
@@ -1115,33 +1154,63 @@ export function PushPanel({
                             </div>
 
                             <div>
-                              <span className="text-[11px] text-ink-500">允许分类（不选表示全部分类）</span>
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {Object.entries(CATEGORY_LABEL).map(([ck, cl]) => {
-                                  const on = routeDraft.categories.includes(ck);
-                                  return (
+                              <div className="flex flex-wrap items-center justify-between gap-1">
+                                <span className="text-[11px] text-ink-500">允许分类（不选表示全部分类）</span>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <span className="text-[10.5px] text-ink-400">套用频道：</span>
+                                  {CHANNELS.map((ch) => (
                                     <button
-                                      key={ck}
+                                      key={ch.key}
                                       type="button"
-                                      onClick={() =>
-                                        setRouteDraft({
-                                          ...routeDraft,
-                                          categories: on
-                                            ? routeDraft.categories.filter((x) => x !== ck)
-                                            : [...routeDraft.categories, ck],
-                                        })
-                                      }
-                                      className={
-                                        "rounded border px-2 py-0.5 text-[11px] " +
-                                        (on
-                                          ? "border-brand bg-brand-subtle font-medium text-brand"
-                                          : "border-ink-200 bg-surface text-ink-600")
-                                      }
+                                      onClick={() => setRouteDraft({ ...routeDraft, categories: [...ch.categories] })}
+                                      className="rounded border border-ink-200 bg-surface px-1.5 py-0.5 text-[10.5px] text-ink-600 hover:border-brand-border hover:text-brand"
                                     >
-                                      {cl}
+                                      {ch.label}
                                     </button>
-                                  );
-                                })}
+                                  ))}
+                                  {routeDraft.categories.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setRouteDraft({ ...routeDraft, categories: [] })}
+                                      className="text-[10.5px] font-medium text-brand hover:underline"
+                                    >
+                                      清空
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-1 space-y-1">
+                                {CATEGORY_GROUPS.map((group) => (
+                                  <div key={group.key} className="flex flex-wrap items-center gap-1">
+                                    <span className="w-[52px] shrink-0 text-[10.5px] text-ink-400">{group.label}</span>
+                                    {group.categories.map((ck) => {
+                                      const on = routeDraft.categories.includes(ck);
+                                      return (
+                                        <button
+                                          key={ck}
+                                          type="button"
+                                          title={CATEGORY_DESC[ck]}
+                                          onClick={() =>
+                                            setRouteDraft({
+                                              ...routeDraft,
+                                              categories: on
+                                                ? routeDraft.categories.filter((x) => x !== ck)
+                                                : [...routeDraft.categories, ck],
+                                            })
+                                          }
+                                          className={
+                                            "rounded border px-2 py-0.5 text-[11px] " +
+                                            (on
+                                              ? "border-brand bg-brand-subtle font-medium text-brand"
+                                              : "border-ink-200 bg-surface text-ink-600")
+                                          }
+                                        >
+                                          {CATEGORY_LABEL[ck]}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ))}
                               </div>
                             </div>
 

@@ -19,7 +19,7 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { CATEGORY_LABEL, KIND_LABEL, OBTAIN_LABEL, timeAgo } from "../lib/sources.ts";
+import { KIND_LABEL, OBTAIN_LABEL, categoryLabel, timeAgo } from "../lib/sources.ts";
 import type { AiPayload, AiSettings, AiSourceMode, AiStage, AiStats, Source } from "../types.ts";
 
 const STAGE_META: Record<AiStage, { label: string; cls: string }> = {
@@ -455,7 +455,7 @@ export function AiPanel({
                   </span>
                 )}
                 <span className="rounded bg-surface px-1.5 py-0.5 text-[11px] text-ink-600">
-                  {CATEGORY_LABEL[r.category] ?? r.category}
+                  {categoryLabel(r.category)}
                 </span>
                 {r.obtain && (
                   <span className="rounded bg-surface px-1.5 py-0.5 text-[11px] text-ink-600">
@@ -691,7 +691,7 @@ export function AiPanel({
           <div className="mt-3 flex flex-wrap gap-1.5">
             {st.byCategory.map((c) => (
               <span key={c.category} className="rounded-md bg-ink-100 px-2 py-0.5 text-[11.5px] text-ink-700">
-                {CATEGORY_LABEL[c.category] ?? c.category} <span className="font-mono">{c.n}</span>
+                {categoryLabel(c.category)} <span className="font-mono">{c.n}</span>
               </span>
             ))}
           </div>
@@ -1201,7 +1201,7 @@ export function AiPanel({
                     )}
                     {r.category && (
                       <span className="rounded bg-ink-100 px-1.5 py-0.5 text-ink-600">
-                        {CATEGORY_LABEL[r.category] ?? r.category}
+                        {categoryLabel(r.category)}
                       </span>
                     )}
                     {r.obtain && r.obtain !== "free" && (

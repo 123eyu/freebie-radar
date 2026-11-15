@@ -10,6 +10,7 @@ import { OBTAIN_LABEL } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { sendTelegram } from "./telegram.ts";
 import type { FreshItem } from "./collectors/index.ts";
+import { CATEGORY_SET, KIND_ORDER, OBTAIN_SET } from "../shared/taxonomy.ts";
 
 /* ------------------------------------------------------------------ *
  * 推送设置（存在 settings 表，网页可改，无需重启）
@@ -156,9 +157,11 @@ export const DEFAULT_SETTINGS: PushSettings = {
 };
 
 const SETTINGS_KEY = "push";
-const VALID_CATEGORIES = new Set(["ai", "cloud", "vps", "domain", "opensource", "software", "dev", "design", "security", "hardware", "media", "game", "carpool", "trade", "headline", "world", "finance", "stock", "tech", "news", "goods", "invite", "edu", "pan", "course", "other"]);
-const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
-const VALID_KINDS = new Set(["freebie", "deal", "opensource", "news", "info"]);
+/** 分类 / 获取方式 / 形态的合法值统一来自 shared/taxonomy.ts，避免与主页分类漂移 */
+const VALID_CATEGORIES: ReadonlySet<string> = CATEGORY_SET;
+const VALID_OBTAIN: ReadonlySet<string> = OBTAIN_SET;
+/** 可推送形态：noise 是拦截结果，不作为推送目标 */
+const VALID_KINDS = new Set<string>(KIND_ORDER);
 
 function numOr(v: unknown, fallback: number, min: number, max: number): number {
   const n = Number(v);

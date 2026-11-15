@@ -1,21 +1,10 @@
 import { DEAL_HINT, NOISE_TITLE, OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
+import { KIND_LABEL, KIND_SET, isContentKind, type ContentKind } from "../../shared/taxonomy.ts";
 
-export type ContentKind = "freebie" | "deal" | "opensource" | "news" | "info" | "noise";
-
-export const VALID_KINDS = new Set<ContentKind>(["freebie", "deal", "opensource", "news", "info", "noise"]);
-
-export const KIND_LABEL: Record<ContentKind, string> = {
-  freebie: "白嫖福利",
-  deal: "特价好价",
-  opensource: "开源项目",
-  news: "重要新闻",
-  info: "行业资讯",
-  noise: "噪音水帖",
-};
-
-export function isContentKind(v: unknown): v is ContentKind {
-  return typeof v === "string" && VALID_KINDS.has(v as ContentKind);
-}
+export type { ContentKind };
+export { KIND_LABEL, isContentKind };
+/** 兼容旧名：可被识别的全部形态（含 noise）。 */
+export { KIND_SET as VALID_KINDS };
 
 const OPENSOURCE_SOURCES = new Set([
   "github-free-for-dev",

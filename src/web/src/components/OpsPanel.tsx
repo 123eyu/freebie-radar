@@ -1,6 +1,13 @@
 import { Fragment, useEffect, useState } from "react";
 import { Activity, Check, Copy, Database, ExternalLink, Gauge, KeyRound, Loader2, Pencil, Play, Plus, Rss, Search, ShieldCheck, Trash2, X } from "lucide-react";
-import { formatInterval, timeAgo } from "../lib/sources.ts";
+import {
+  CATEGORY_LABEL,
+  KIND_LABEL,
+  KIND_ORDER,
+  categoryOptionGroups,
+  formatInterval,
+  timeAgo,
+} from "../lib/sources.ts";
 import type { RetentionSettings, Run, Source, SourceQuality } from "../types.ts";
 
 const INTERVAL_OPTIONS = [
@@ -14,32 +21,99 @@ const INTERVAL_OPTIONS = [
   { label: "6 小时", sec: 21600 },
 ];
 
+/** 用途（kind）下拉：来自 shared/taxonomy.ts，与推送/主页同一份 */
 const KIND_HINT_OPTIONS = [
   { value: "", label: "用途：自动识别" },
-  { value: "news", label: "用途：重要新闻（直入重要新闻频道）" },
-  { value: "info", label: "用途：行业资讯（经济/股票/科技）" },
-  { value: "freebie", label: "用途：白嫖福利" },
-  { value: "deal", label: "用途：特价好价" },
-  { value: "opensource", label: "用途：开源项目" },
+  ...KIND_ORDER.map((key) => ({ value: key, label: `用途：${KIND_LABEL[key]}` })),
 ];
 
-const CATEGORY_HINT_OPTIONS = [
-  { value: "", label: "分类：自动识别" },
-  { value: "headline", label: "时政要闻" },
-  { value: "world", label: "国际要闻" },
-  { value: "finance", label: "经济/商业" },
-  { value: "stock", label: "股票/市场" },
-  { value: "tech", label: "科技前沿" },
-  { value: "ai", label: "AI 额度/前沿" },
-  { value: "cloud", label: "云服务" },
-  { value: "vps", label: "VPS/主机" },
-  { value: "software", label: "软件授权" },
-  { value: "game", label: "游戏" },
-  { value: "opensource", label: "开源项目" },
-  { value: "news", label: "综合资讯" },
-];
+/** 分类下拉按大类分组，覆盖全部分类（以前这里只列了 13 个，网盘/网课/拼车等选不到） */
+const CATEGORY_HINT_GROUPS = categoryOptionGroups();
+
+function categoryHintLabel(value: string): string {
+  return value ? (CATEGORY_LABEL[value as keyof typeof CATEGORY_LABEL] ?? value) : "自动识别";
+}
+
+/**
+ * 数据源当前生效的分类/用途口径（已转成中文标签）：源级优先，其次 feed / channel 上的 hint。
+ * 多个不同取值时显示「首个 +N」，避免把多栏目源说成单一分类。
+ */
+function sourceHints(source: Source): { category: string; kind: string } {
+  const cfg = source.config ?? {};
+  const feeds = Array.isArray(cfg.feeds) ? (cfg.feeds as Array<Record<string, unknown>>) : [];
+  const channels = Array.isArray(cfg.channels) ? (cfg.channels as unknown[]) : [];
+  const pick = (key: "categoryHint" | "kindHint"): string => {
+    const values = [
+      cfg[key],
+      ...feeds.map((f) => f?.[key]),
+      ...channels.map((c) => (c && typeof c === "object" ? (c as Record<string, unknown>)[key] : undefined)),
+    ]
+      .filter((v): v is string => typeof v === "string" && Boolean(v.trim()))
+      .map((v) => v.trim());
+    const unique = [...new Set(values)];
+    if (!unique.length) return "";
+    const labelOf = (v: string) => (key === "categoryHint" ? categoryHintLabel(v) : (KIND_LABEL[v] ?? v));
+    if (unique.length === 1) return labelOf(unique[0]!);
+    return `${labelOf(unique[0]!)} +${unique.length - 1}`;
+  };
+  return { category: pick("categoryHint"), kind: pick("kindHint") };
+}
 
 type OpsTab = "sources" | "runs" | "quality" | "retention";
+type FeedRow = {
+  url: string;
+  limit: string;
+  categoryHint: string;
+  kindHint: string;
+  titleKeywords: string;
+};
+
+function feedToRow(feed: Record<string, unknown>): FeedRow {
+  return {
+    url: typeof feed.url === "string" ? feed.url : "",
+    limit: typeof feed.limit === "number" ? String(feed.limit) : "30",
+    categoryHint: typeof feed.categoryHint === "string" ? feed.categoryHint : "",
+    kindHint: typeof feed.kindHint === "string" ? feed.kindHint : "",
+    titleKeywords: Array.isArray(feed.titleKeywords) ? (feed.titleKeywords as string[]).join(", ") : "",
+  };
+}
+
+const EMPTY_FEED_ROW: FeedRow = { url: "", limit: "30", categoryHint: "", kindHint: "", titleKeywords: "" };
+
+function splitKeywords(raw: string): string[] {
+  return raw
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** 分类下拉：按大类分组，覆盖全部分类；未知的历史值也能原样显示 */
+function CategoryHintSelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  const known = Boolean(value && value in CATEGORY_LABEL);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
+      <option value="">分类：自动识别</option>
+      {value && !known && <option value={value}>{value}（未知分类）</option>}
+      {CATEGORY_HINT_GROUPS.map((group) => (
+        <optgroup key={group.label} label={group.label}>
+          {group.options.map((opt) => (
+            <option key={opt.value} value={opt.value} title={opt.desc}>
+              {opt.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
 function SourceInlineEditor({
   source,
@@ -54,23 +128,14 @@ function SourceInlineEditor({
 }) {
   const cfg = source.config ?? {};
   const feeds = Array.isArray(cfg.feeds) ? (cfg.feeds as Array<Record<string, unknown>>) : [];
-  const firstFeed = feeds[0] ?? {};
   const channels = Array.isArray(cfg.channels) ? (cfg.channels as unknown[]).filter((c) => typeof c === "string") : [];
 
   const [name, setName] = useState(source.name);
   const [intervalSec, setIntervalSec] = useState(source.interval_sec);
   const [kindHint, setKindHint] = useState(typeof cfg.kindHint === "string" ? cfg.kindHint : "");
-  const [categoryHint, setCategoryHint] = useState(
-    typeof cfg.categoryHint === "string"
-      ? cfg.categoryHint
-      : typeof firstFeed.categoryHint === "string"
-        ? firstFeed.categoryHint
-        : "",
-  );
-  const [rssUrl, setRssUrl] = useState(typeof firstFeed.url === "string" ? firstFeed.url : "");
-  const [rssLimit, setRssLimit] = useState(typeof firstFeed.limit === "number" ? String(firstFeed.limit) : "30");
-  const [rssKeywords, setRssKeywords] = useState(
-    Array.isArray(firstFeed.titleKeywords) ? (firstFeed.titleKeywords as string[]).join(", ") : "",
+  const [categoryHint, setCategoryHint] = useState(typeof cfg.categoryHint === "string" ? cfg.categoryHint : "");
+  const [feedRows, setFeedRows] = useState<FeedRow[]>(() =>
+    feeds.length ? feeds.map(feedToRow) : [{ ...EMPTY_FEED_ROW }],
   );
   const [tgChannels, setTgChannels] = useState(channels.join(", "));
   const [showJson, setShowJson] = useState(source.kind !== "rss" && source.kind !== "telegram");
@@ -105,21 +170,24 @@ function SourceInlineEditor({
     else delete base.categoryHint;
 
     if (!showJson && source.kind === "rss") {
-      const nextFeed: Record<string, unknown> = {
-        ...firstFeed,
-        id: typeof firstFeed.id === "string" && firstFeed.id ? firstFeed.id : source.id.replace(/^rss-/, ""),
-        url: rssUrl.trim(),
-        limit: Math.max(1, Math.min(100, Number(rssLimit) || 30)),
-      };
-      if (categoryHint.trim()) nextFeed.categoryHint = categoryHint.trim();
-      else delete nextFeed.categoryHint;
-      const kws = rssKeywords
-        .split(/[,，]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (kws.length) nextFeed.titleKeywords = kws;
-      else delete nextFeed.titleKeywords;
-      base.feeds = [nextFeed, ...feeds.slice(1)];
+      base.feeds = feedRows.map((row, i) => {
+        const prev = feeds[i] ?? {};
+        const fallbackId = i === 0 ? source.id.replace(/^rss-/, "") : `${source.id.replace(/^rss-/, "")}-${i + 1}`;
+        const next: Record<string, unknown> = {
+          ...prev,
+          id: typeof prev.id === "string" && prev.id ? prev.id : fallbackId,
+          url: row.url.trim(),
+          limit: Math.max(1, Math.min(100, Number(row.limit) || 30)),
+        };
+        if (row.categoryHint.trim()) next.categoryHint = row.categoryHint.trim();
+        else delete next.categoryHint;
+        if (row.kindHint.trim()) next.kindHint = row.kindHint.trim();
+        else delete next.kindHint;
+        const kws = splitKeywords(row.titleKeywords);
+        if (kws.length) next.titleKeywords = kws;
+        else delete next.titleKeywords;
+        return next;
+      });
     }
 
     if (!showJson && source.kind === "telegram") {
@@ -130,6 +198,10 @@ function SourceInlineEditor({
     }
 
     return base;
+  };
+
+  const updateFeed = (index: number, patch: Partial<FeedRow>) => {
+    setFeedRows((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
 
   const handleSave = async () => {
@@ -192,7 +264,7 @@ function SourceInlineEditor({
           </select>
         </label>
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-[11px] text-ink-500">用途频道（新抓取条目生效）</span>
+          <span className="text-[11px] text-ink-500">源级兜底用途（feed 未指定时生效）</span>
           <select
             value={kindHint}
             onChange={(e) => setKindHint(e.target.value)}
@@ -206,52 +278,97 @@ function SourceInlineEditor({
           </select>
         </label>
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-[11px] text-ink-500">默认兜底分类</span>
-          <select
+          <span className="text-[11px] text-ink-500">源级兜底分类（feed 未指定时生效）</span>
+          <CategoryHintSelect
             value={categoryHint}
-            onChange={(e) => setCategoryHint(e.target.value)}
+            onChange={setCategoryHint}
             className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
-          >
-            {CATEGORY_HINT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          />
         </label>
       </div>
 
       {!showJson && source.kind === "rss" && (
-        <div className="grid gap-2.5 sm:grid-cols-12">
-          <label className="space-y-1 sm:col-span-6">
-            <span className="text-[11px] text-ink-500">RSS / Atom 订阅地址</span>
-            <input
-              value={rssUrl}
-              onChange={(e) => setRssUrl(e.target.value)}
-              placeholder="https://example.com/rss.xml"
-              className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
-            />
-          </label>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-[11px] text-ink-500">每次条数</span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={rssLimit}
-              onChange={(e) => setRssLimit(e.target.value)}
-              className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
-            />
-          </label>
-          <label className="space-y-1 sm:col-span-4">
-            <span className="text-[11px] text-ink-500">标题必含关键词（逗号分隔，留空全收）</span>
-            <input
-              value={rssKeywords}
-              onChange={(e) => setRssKeywords(e.target.value)}
-              placeholder="如：免费, 限免, free"
-              className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand"
-            />
-          </label>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-ink-500">
+              订阅地址（{feedRows.length} 条）· 每条可单独指定分类/用途，留空则用源级兜底
+            </span>
+            <button
+              type="button"
+              onClick={() => setFeedRows((rows) => [...rows, { ...EMPTY_FEED_ROW }])}
+              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[11.5px] font-medium text-ink-700 hover:border-brand-border hover:text-brand"
+            >
+              <Plus size={11} /> 添加订阅地址
+            </button>
+          </div>
+          {feedRows.map((row, i) => (
+            <div key={i} className="space-y-2 rounded-lg border border-ink-200 bg-surface-hover p-2.5">
+              <div className="grid gap-2 sm:grid-cols-12">
+                <label className="space-y-1 sm:col-span-6">
+                  <span className="text-[11px] text-ink-500">RSS / Atom 地址 #{i + 1}</span>
+                  <input
+                    value={row.url}
+                    onChange={(e) => updateFeed(i, { url: e.target.value })}
+                    placeholder="https://example.com/rss.xml"
+                    className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
+                  />
+                </label>
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-[11px] text-ink-500">每次条数</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={row.limit}
+                    onChange={(e) => updateFeed(i, { limit: e.target.value })}
+                    className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-950 outline-none focus:border-brand"
+                  />
+                </label>
+                <div className="space-y-1 sm:col-span-2">
+                  <span className="text-[11px] text-ink-500">分类</span>
+                  <CategoryHintSelect
+                    value={row.categoryHint}
+                    onChange={(v) => updateFeed(i, { categoryHint: v })}
+                    className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
+                  />
+                </div>
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-[11px] text-ink-500">用途</span>
+                  <select
+                    value={row.kindHint}
+                    onChange={(e) => updateFeed(i, { kindHint: e.target.value })}
+                    className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
+                  >
+                    {KIND_HINT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-[200px] flex-1 space-y-1">
+                  <span className="text-[11px] text-ink-500">标题必含关键词（逗号分隔，留空全收）</span>
+                  <input
+                    value={row.titleKeywords}
+                    onChange={(e) => updateFeed(i, { titleKeywords: e.target.value })}
+                    placeholder="如：免费, 限免, free"
+                    className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand"
+                  />
+                </label>
+                {feedRows.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setFeedRows((rows) => rows.filter((_, x) => x !== i))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-alert hover:border-alert/40 hover:bg-alert-subtle"
+                  >
+                    <Trash2 size={11} /> 删除这条
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -314,7 +431,7 @@ function SourceInlineEditor({
           </button>
           <button
             type="button"
-            disabled={saving || !name.trim() || (!showJson && source.kind === "rss" && !/^https?:\/\//i.test(rssUrl.trim()))}
+            disabled={saving || !name.trim() || (!showJson && source.kind === "rss" && feedRows.some((row) => !/^https?:\/\//i.test(row.url.trim())))}
             onClick={() => void handleSave()}
             className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
           >
@@ -914,17 +1031,13 @@ export function OpsPanel({
                       </option>
                     ))}
                   </select>
-                  <select
-                    value={rssCategoryHint}
-                    onChange={(e) => setRssCategoryHint(e.target.value)}
-                    className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand sm:col-span-2"
-                  >
-                    {CATEGORY_HINT_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="sm:col-span-2">
+                    <CategoryHintSelect
+                      value={rssCategoryHint}
+                      onChange={setRssCategoryHint}
+                      className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand"
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-[12px] text-ink-500">
@@ -1003,6 +1116,14 @@ export function OpsPanel({
 
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-ink-500">
                       <span className="font-mono tabular-nums text-ink-700">{s.items} 条在库</span>
+                      <span className="text-ink-400">
+                        {(() => {
+                          const hints = sourceHints(s);
+                          const cat = hints.category || "分类自动";
+                          const kind = hints.kind || "用途自动";
+                          return `${cat} · ${kind}`;
+                        })()}
+                      </span>
                       <span>{timeAgo(s.last_run_at)}采集</span>
                       <button
                         type="button"
@@ -1093,6 +1214,7 @@ export function OpsPanel({
                     <th className="px-4 py-2.5 font-medium">源</th>
                     <th className="px-2 py-2.5 font-medium">启用</th>
                     <th className="px-2 py-2.5 font-medium">采集周期</th>
+                    <th className="px-2 py-2.5 font-medium">分类口径</th>
                     <th className="px-2 py-2.5 font-medium">在库条数</th>
                     <th className="px-2 py-2.5 font-medium">最近采集</th>
                     <th className="px-2 py-2.5 font-medium">状态</th>
@@ -1146,6 +1268,21 @@ export function OpsPanel({
                               ))}
                             </select>
                           )}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          {(() => {
+                            const hints = sourceHints(s);
+                            return (
+                              <div className="flex flex-col gap-0.5 text-[11px]">
+                                <span className={hints.category ? "text-ink-700" : "text-ink-400"}>
+                                  {hints.category || "分类自动"}
+                                </span>
+                                <span className={hints.kind ? "text-ink-500" : "text-ink-400"}>
+                                  {hints.kind || "用途自动"}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-2 py-2.5 font-mono tabular-nums text-ink-700">{s.items}</td>
                         <td className="px-2 py-2.5 text-ink-500">{timeAgo(s.last_run_at)}</td>
