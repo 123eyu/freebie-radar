@@ -167,7 +167,147 @@ const SORTS: Record<string, string> = {
   expiring: "CASE WHEN expires_at IS NULL THEN 1 ELSE 0 END ASC, expires_at ASC, score DESC",
   price_asc: "CASE WHEN is_free = 1 THEN 0 WHEN price IS NOT NULL THEN price ELSE 999999 END ASC, score DESC",
 };
+/**
+ * 跨源聚类的唯一入口：「N 个来源」徽标和展开列表必须用同一个候选池。
+ * 池子 = 同一 (kind, category) 分组，与当前筛选条件无关：
+ *   - game 类不设时间下限（喜加一活动寿命长，旧帖仍是同一福利）
+ *   - 其它类只看近 CLUSTER_WINDOW_DAYS 天（更早的靠 TitleDeduper 的 48h 窗口也合不到一起）
+ * 以前列表按「当前筛选结果的前 300 条」聚类、/related 按「全局 score 前 300 条」再聚一次，
+ * 两个池子不同，于是出现「35 个来源、点开 0 条」。
+ */
+const CLUSTER_WINDOW_DAYS = 3;
+const CLUSTER_POOL_LIMIT = 900;
 
+/** 聚类只需要这几列：items.content / raw 是整篇正文，整池 900 行一起取会把单次请求拖到几百毫秒。 */
+type ClusterPoolRow = {
+  id: number;
+  title: string;
+  title_key: string | null;
+  url_key: string | null;
+  canonical_id: number | null;
+  category: string | null;
+  kind: string | null;
+  published_at: string | null;
+  first_seen_at: string;
+};
+
+function loadClusterPool(
+  kind: string | null | undefined,
+  category: string | null | undefined,
+  since: string,
+): ClusterPoolRow[] {
+  const bounded = category !== "game";
+  return all<ClusterPoolRow>(
+    `SELECT id, title, title_key, url_key, canonical_id, category, kind, published_at, first_seen_at
+       FROM items
+      WHERE status = 'active' AND kind IS ? AND category IS ?
+        ${bounded ? "AND COALESCE(published_at, first_seen_at) >= ?" : ""}
+      ORDER BY COALESCE(published_at, first_seen_at) DESC LIMIT ?`,
+    kind ?? null,
+    category ?? null,
+    ...(bounded ? [since] : []),
+    CLUSTER_POOL_LIMIT,
+  );
+}
+
+type ClusterIndex = { rootOf: (id: number) => number; sizeOf: (root: number) => number };
+
+function buildClusterIndex(rows: readonly ClusterPoolRow[]): ClusterIndex {
+  const entries = rows.map((r) => ({
+    row: r,
+    title: r.title,
+    urlKey: r.url_key,
+    canonicalId: r.canonical_id ?? null,
+    category: r.category,
+    kind: r.kind,
+    publishedAt: r.published_at ?? r.first_seen_at,
+  }));
+  const deduper = new TitleDeduper(entries, [], { maxGapHours: 48 });
+
+  // TitleDeduper 只认标题文本，不认落库的 title_key；而 SQL 折叠是按 title_key 做的。
+  // 这里再按 title_key 补一次并查集，保证「列表折成一条」和「徽标算几个来源」用的是同一套分组。
+  const parent = new Map<number, number>();
+  const find = (x: number): number => {
+    let cur = x;
+    while (parent.get(cur) !== cur) {
+      const up = parent.get(cur)!;
+      parent.set(cur, parent.get(up) ?? up);
+      cur = parent.get(cur)!;
+    }
+    return cur;
+  };
+  const union = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  };
+
+  for (const e of entries) parent.set(e.row.id, e.row.id);
+  const byDeduperRoot = new Map<number, number>();
+  for (const e of entries) {
+    const root = deduper.rootOf(e);
+    const prev = byDeduperRoot.get(root);
+    if (prev === undefined) byDeduperRoot.set(root, e.row.id);
+    else union(prev, e.row.id);
+  }
+  const byTitleKey = new Map<string, number>();
+  for (const e of entries) {
+    const key = e.row.title_key;
+    if (!key) continue;
+    const prev = byTitleKey.get(key);
+    if (prev === undefined) byTitleKey.set(key, e.row.id);
+    else union(prev, e.row.id);
+  }
+
+  const sizeByRoot = new Map<number, number>();
+  for (const e of entries) {
+    const root = find(e.row.id);
+    sizeByRoot.set(root, (sizeByRoot.get(root) ?? 0) + 1);
+  }
+  return {
+    rootOf: (id) => (parent.has(id) ? find(id) : -1),
+    sizeOf: (root) => sizeByRoot.get(root) ?? 1,
+  };
+}
+
+function clusterSince(): string {
+  return new Date(Date.now() - CLUSTER_WINDOW_DAYS * 86_400_000).toISOString();
+}
+
+/**
+ * 分组聚类索引带缓存：同一 (kind, category) 的池子在一次请求里被复用，跨请求也不必重算。
+ * 用「条目数 + 最大 id + 最近一次 AI 审核时间」当版本号，入库或补审写入 canonical 后自动失效。
+ */
+let clusterCacheRevision = "";
+const clusterIndexCache = new Map<string, ClusterIndex>();
+
+function clusterRevision(): string {
+  const row = get<{ n: number; m: number | null; r: string | null }>(
+    "SELECT COUNT(*) AS n, MAX(id) AS m, MAX(ai_reviewed_at) AS r FROM items",
+  );
+  return `${row?.n ?? 0}:${row?.m ?? 0}:${row?.r ?? ""}`;
+}
+/** 一次请求内复用的分组聚类入口：版本号只查一次，组队内的池子只算一次。 */
+function createClusterScope(): (kind: string | null | undefined, category: string | null | undefined) => ClusterIndex {
+  const revision = clusterRevision();
+  if (revision !== clusterCacheRevision) {
+    clusterIndexCache.clear();
+    clusterCacheRevision = revision;
+  }
+  const local = new Map<string, ClusterIndex>();
+  return (kind, category) => {
+    const key = `${kind ?? ""}::${category ?? ""}`;
+    const cached = local.get(key);
+    if (cached) return cached;
+    let index = clusterIndexCache.get(key);
+    if (!index) {
+      index = buildClusterIndex(loadClusterPool(kind, category, clusterSince()));
+      clusterIndexCache.set(key, index);
+    }
+    local.set(key, index);
+    return index;
+  };
+}
 function buildItemsQuery(q: Record<string, string | undefined>, rules: BlockRule[], includeBlocked: boolean) {
   const where: string[] = [];
   const params: SqlValue[] = [];
@@ -424,42 +564,25 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
       });
     }
 
-    // 跨源二次事件聚类：SQL 已经用 title_key 折叠了精确/双语别名，再对窗口内条目用 TitleDeduper
-    // 收拢不同措辞的同一事件（如多家媒体报道同一条新闻/优惠），并累加同组来源数。
-    const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
-    const candidates = all<ItemRow & { dup_count?: number }>(
-`SELECT items.*, (SELECT COUNT(*) FROM items d INDEXED BY idx_items_title_key
-            WHERE d.title_key = items.title_key AND d.status = 'active'
-              AND LENGTH(CAST(items.title_key AS BLOB)) >= 6
-              AND (items.category = 'game' OR ABS(julianday(COALESCE(d.published_at, d.first_seen_at)) - julianday(COALESCE(items.published_at, items.first_seen_at))) <= 2)) AS dup_count
-         FROM items ${clause} ORDER BY ${order} LIMIT ?`,
+const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
+    const candidates = all<ItemRow>(
+      `SELECT items.* FROM items ${clause} ORDER BY ${order} LIMIT ?`,
       ...params,
       fetchLimit,
     );
 
-    const dedupeInput = candidates.map((r) => ({
-      row: r,
-      title: r.title,
-      urlKey: r.url_key,
-      canonicalId: r.canonical_id ?? null,
-      category: r.category,
-      kind: r.kind,
-      publishedAt: r.published_at ?? r.first_seen_at,
-    }));
-    const deduper = new TitleDeduper(dedupeInput, [], { maxGapHours: 48 });
-    const clusterCounts = new Map<number, number>();
-    const representatives: Array<{ row: ItemRow; root: number }> = [];
+    // 折叠列表与计算「N 个来源」共用同一个分组聚类：徽标数字一定等于展开条数 + 1
+    const clusterOf = createClusterScope();
 
-    for (const entry of dedupeInput) {
-      const root = deduper.rootOf(entry);
-      const baseDup = Math.max(1, Number(entry.row.dup_count ?? 1));
-      const prevCount = clusterCounts.get(root);
-      if (prevCount === undefined) {
-        clusterCounts.set(root, baseDup);
-        representatives.push({ row: entry.row, root });
-      } else {
-        clusterCounts.set(root, prevCount + baseDup);
-      }
+    const seenClusters = new Set<string>();
+    const representatives: Array<{ row: ItemRow; dupCount: number }> = [];
+    for (const r of candidates) {
+      const idx = clusterOf(r.kind, r.category);
+      const root = idx.rootOf(r.id);
+      const key = `${r.kind ?? ""}::${r.category ?? ""}::${root}`;
+      if (seenClusters.has(key)) continue;
+      seenClusters.add(key);
+      representatives.push({ row: r, dupCount: idx.sizeOf(root) });
     }
 
     const extraMerged = candidates.length - representatives.length;
@@ -470,11 +593,11 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
       total,
       limit,
       offset,
-      items: page.map(({ row: r, root }) => {
+      items: page.map(({ row: r, dupCount }) => {
         const hit = includeBlocked ? matchBlockRules(r, rules) : null;
         return {
           ...shape(r, subKeywords, hit ? hit.pattern : null),
-          dupCount: clusterCounts.get(root) ?? 1,
+          dupCount,
         };
       }),
     });
@@ -492,77 +615,27 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
     );
     if (!self) return c.json({ items: [] });
 
-    const anchorTime = self.published_at ?? self.first_seen_at;
-    const exactRows = self.title_key
-      ? all<ItemRow & { source_name?: string }>(
-          `SELECT items.*, s.name AS source_name
-             FROM items LEFT JOIN sources s ON s.id = items.source_id
-            WHERE items.title_key = ? AND items.status = 'active' AND items.id != ?
-              AND (items.category = 'game' OR ABS(julianday(COALESCE(items.published_at, items.first_seen_at)) - julianday(?)) <= 2)
-            ORDER BY items.score DESC, items.id ASC LIMIT 40`,
-          self.title_key,
-          id,
-          anchorTime,
-        )
-      : [];
+// 与列表的「N 个来源」用同一个池子：同 (kind, category) 分组的 active 条目。
+    // 这样徽标数字一定等于展开条数 + 1；列表里那个数字就是这么算出来的。
+    const pool = loadClusterPool(self.kind, self.category, clusterSince());
+    const index = buildClusterIndex(pool);
+    const selfRoot = index.rootOf(id);
+    const memberIds = pool
+      .filter((r) => r.id !== id && index.rootOf(r.id) === selfRoot)
+      .map((r) => r.id)
+      .slice(0, 200);
+    if (!memberIds.length) return c.json({ items: [] });
 
-    // 再从同一 72h 时间窗口内捞出候选，通过 TitleDeduper 召回近重复/同事件报道
-    const windowRows = all<ItemRow & { source_name?: string }>(
+    const members = all<ItemRow & { source_name?: string }>(
       `SELECT items.*, s.name AS source_name
          FROM items LEFT JOIN sources s ON s.id = items.source_id
-        WHERE items.status = 'active' AND items.id != ?
-          AND ABS(julianday(COALESCE(items.published_at, items.first_seen_at)) - julianday(?)) <= 3
-        ORDER BY items.score DESC, items.id ASC LIMIT 300`,
-      id,
-      anchorTime,
+        WHERE items.id IN (${memberIds.map(() => "?").join(",")})
+        ORDER BY items.score DESC, items.id ASC`,
+      ...memberIds,
     );
-
-    const byId = new Map<number, ItemRow & { source_name?: string }>();
-    for (const r of exactRows) byId.set(r.id, r);
-
-    // AI 语义去重落库的聚类兄弟（跨 title_key 也能召回，如 B站大会员 的十几种说法）
-    if (self.canonical_id != null) {
-      const canonicalRows = all<ItemRow & { source_name?: string }>(
-        `SELECT items.*, s.name AS source_name
-           FROM items LEFT JOIN sources s ON s.id = items.source_id
-          WHERE items.canonical_id = ? AND items.status = 'active' AND items.id != ?
-          ORDER BY items.score DESC, items.id ASC LIMIT 40`,
-        self.canonical_id,
-        id,
-      );
-      for (const r of canonicalRows) byId.set(r.id, r);
-    }
-
-    if (windowRows.length) {
-      const selfEntry = {
-        row: self,
-        title: self.title,
-        urlKey: self.url_key,
-        canonicalId: self.canonical_id ?? null,
-        category: self.category,
-        kind: self.kind,
-        publishedAt: anchorTime,
-      };
-      const winEntries = windowRows.map((r) => ({
-        row: r,
-        title: r.title,
-        urlKey: r.url_key,
-        canonicalId: r.canonical_id ?? null,
-        category: r.category,
-        kind: r.kind,
-        publishedAt: r.published_at ?? r.first_seen_at,
-      }));
-      const deduper = new TitleDeduper([selfEntry, ...winEntries], [], { maxGapHours: 48 });
-      const selfRoot = deduper.rootOf(selfEntry);
-      for (const e of winEntries) {
-        if (deduper.rootOf(e) === selfRoot && !byId.has(e.row.id)) {
-          byId.set(e.row.id, e.row);
-        }
-      }
-    }
-
-    const merged = [...byId.values()].slice(0, 40);
-    return c.json({ items: merged.map((r) => ({ ...shape(r, [], null), sourceName: r.source_name ?? r.source_id })) });
+    return c.json({
+      items: members.map((r) => ({ ...shape(r, [], null), sourceName: r.source_name ?? r.source_id })),
+    });
   });
 
   app.get("/api/export", (c) => {
