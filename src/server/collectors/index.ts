@@ -1,6 +1,6 @@
 import { aiEnabled, config, pushEnabled } from "../config.ts";
 import { all, get, run, tx } from "../db.ts";
-import { enrichItem, FREEBIE_ONLY_SOURCES, resolveKind, type ContentKind } from "../enrich/index.ts";
+import { demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "../enrich/index.ts";
 import { calibrateScoreByObtain, resolveDbMergeKey } from "../enrich/alias.ts";
 import { getAiSettings, matchesEntryNoise, shouldPassSourceToAi, shouldReview, type AiVerdict } from "../enrich/ai.ts";
 import { enqueueForAi, reviewFreshNow, setPostReviewHandler } from "../enrich/ai-queue.ts";
@@ -586,6 +586,12 @@ function persist(
             kindHint: srcHints.kindHint,
           })
         : e.kind;
+      // AI 给出的分类优先于关键词规则（以前这里只用规则结果，AI 判对的分类被丢掉）；
+      // 再统一收口：资讯/水帖不许落进实地福利
+      const effectiveCategory = demoteOfflineCategory(
+        verdict?.category && isCategory(verdict.category) ? verdict.category : e.category,
+        effectiveKind,
+      );
       const effectiveQuality =
         typeof verdict?.quality === "number" && Number.isFinite(verdict.quality)
           ? Math.min(5, Math.max(1, Math.round(verdict.quality)))
@@ -674,7 +680,7 @@ const scoreCtx = {
           titleKey,
           e.summary ?? "",
           e.author ?? null,
-          e.category,
+          effectiveCategory,
           JSON.stringify(e.tags),
           e.baseScore,
           nextScore,
@@ -717,7 +723,7 @@ const scoreCtx = {
           titleKey,
           e.summary ?? "",
           e.author ?? null,
-          e.category,
+          effectiveCategory,
           JSON.stringify(e.tags),
           e.baseScore,
           score,
@@ -751,7 +757,7 @@ const scoreCtx = {
           aiKeep: verdict ? verdict.keep : null,
           aiReason: verdict?.reason ?? null,
           kind: effectiveKind,
-          category: verdict?.category || e.category,
+          category: effectiveCategory,
           obtain: effectiveObtain,
           summary: e.summary ?? null,
           content: e.content ?? null,

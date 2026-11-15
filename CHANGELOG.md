@@ -1,5 +1,16 @@
 # 变更记录
 
+## 2026-11-16
+
+### 实地福利收紧：先得是福利，再谈实地
+
+- **根因一：AI 判对的分类被丢掉了**。采集落库（`collectors/index.ts`）只把 AI 的 `category` 拿去算 `kind`，写进 `items.category` 的始终是关键词规则结果；线上 51 条 `offline` 里有 42 条 AI 给的是 `tech` / `news` / `goods` / `headline`，全被规则覆盖。现在 AI 分类优先落库，规则只在 AI 没给时兜底
+- **根因二：`offline` 规则只认地点词**。「附近」「现场」「门店」单独命中就能进实地福利，于是「杭州附近的兄弟有吗…一起免费玩」这类闲聊、防火玻璃抽检通报都被收进来。规则改为 `require` 必须同时出现领取动作（免费领 / 领取 / 免费送 / 派样 / 试吃…），并 `exclude` 抽检、不合格、通报、求租、租房、租房组队这类资讯与求助
+- **统一收口 `demoteOfflineCategory()`**：`offline` 只接受 `kind ∈ {freebie, deal}`；`news` / `info` / `noise` 一律降级。enrich、AI 审核落库（`ai-queue`）、补审（`ai-admin`）、采集落库、`reclassify` 五处共用同一函数，不再各写一套
+- **`reclassify` 优先采用 AI 分类**：后台「零 Token 重分类」以前对已审核条目只保留库里的旧分类，现在先读 `ai.category`，再退回库值 / 规则值
+- **Schema v29**：把 `offline` 里 kind 为 `news` / `info` / `noise` 的条目和历史误判（不合格 / 抽检 / 通报 / 求租 / 租房 / 记者 / 发布会 / 峰会）移出
+- 实测：`pnpm test` 89/89、`pnpm typecheck` 干净；本地 448 条库重跑 `reclassify` 后 `offline` 2 → 1（剩下的是南京「零元面馆」排队免费领素面），二次运行 changed=0
+
 ### 移动端顶栏瘦身、首屏体积与接口压缩
 
 - **拒绝安卓自动深色**：`styles.css` 的 `color-scheme` 由 `light` 改为 `only light`，并在 `index.html` 补 `<meta name="color-scheme" content="only light">`。此前手机开深色模式时 Chrome 的「自动深色」会把整站反相成纯黑底 + 灰描边，浅色设计被彻底毁掉；CSS 里只写 `light` 不足以拒绝自动反相，必须是 `only light`（实测 computed `light only` 后停止反相）

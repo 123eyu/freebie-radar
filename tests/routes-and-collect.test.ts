@@ -68,6 +68,37 @@ test("ingestItems：重复抓取已有条目时更新参数完整且保留原有
   assert.ok(afterRow.score <= 25, `AI 判否条目分数应 ≤ 25，实际 ${afterRow.score}`);
 });
 
+test("重分类：AI 给出的分类优先于关键词规则，实地福利里的资讯被纠正为 AI 分类", async () => {
+  const { reclassifyStoredItems } = await import("../src/server/ai-admin.ts");
+  run("DELETE FROM items");
+  // 规则会把它判成 offline（门店 + 免费领），但 AI 判成 tech/info
+  ingestItems("rss-ithome", [
+    {
+      externalId: "ai-cat-1",
+      url: "https://example.com/ai-cat-1",
+      title: "新店开业活动：到店免费领小样，门店现场排队",
+      summary: "商场专柜活动",
+      publishedAt: new Date().toISOString(),
+    },
+  ]);
+  const before = get<{ category: string }>(
+    "SELECT category FROM items WHERE source_id = 'rss-ithome' AND external_id = 'ai-cat-1'",
+  )!;
+  assert.equal(before.category, "offline");
+
+  run(
+    `UPDATE items SET ai = ?, ai_keep = 1, kind = 'info', ai_quality = 3
+      WHERE source_id = 'rss-ithome' AND external_id = 'ai-cat-1'`,
+    JSON.stringify({ index: 0, keep: true, kind: "info", category: "tech", obtain: "free", quality: 3 }),
+  );
+  reclassifyStoredItems("all");
+
+  const after = get<{ category: string }>(
+    "SELECT category FROM items WHERE source_id = 'rss-ithome' AND external_id = 'ai-cat-1'",
+  )!;
+  assert.equal(after.category, "tech", "AI 判成 tech 的资讯不该留在实地福利");
+});
+
 test("GET /api/items：短中文名《斗阵骑士》可跨源合并，且指定单源或保鲜期时不被别源老帖遮蔽", async () => {
   run("DELETE FROM items");
   const old = new Date(Date.now() - 20 * 86_400_000).toISOString();

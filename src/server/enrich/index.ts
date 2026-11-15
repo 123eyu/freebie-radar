@@ -12,7 +12,7 @@ export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type { Category };
 export { CATEGORY_LABEL, isCategory };
 
-type Rule = { category: Category; weight: number; keywords: string[]; exclude?: RegExp };
+type Rule = { category: Category; weight: number; keywords: string[]; exclude?: RegExp; require?: RegExp };
 
 const RULES: Rule[] = [
   {
@@ -121,11 +121,13 @@ const RULES: Rule[] = [
     category: "offline",
     weight: 1.2,
     keywords: [
-      "现场领取", "现场可领", "现场免费", "现场", "到店", "进店", "门店", "实体店", "快闪", "商场", "专柜", "自提",
-      "打卡", "试吃", "试饮", "派样", "派发", "店庆", "开业活动", "开业", "附近", "线下", "凭手机", "凭截图领取", "排队领",
+      "现场领取", "现场可领", "现场免费", "现场送", "到店", "进店", "门店", "实体店", "快闪", "商场", "专柜", "自提",
+      "打卡", "试吃", "试饮", "派样", "派发", "店庆", "开业活动", "新店开业", "附近", "线下", "凭手机", "凭截图领取", "排队领",
     ],
-    // 新闻/发布会里的「现场」不是实地福利
-    exclude: /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录/,
+    // 光有「附近/线下/现场」这类地点词不够：必须同时出现「领取动作」，否则闲聊帖、行业资讯全被吸进来
+    require: /(?:免费领取|免费领|现场领|领取|免费送|免费赠|赠送|白送|白给|0元|零元|一分钱|打卡[^\s]{0,4}(?:送|领)|试吃|试饮|派样|派发|小样|礼品|手幅|周边)/,
+    // 新闻/发布会里的「现场」不是实地福利；抽检通报、租房求组队这类也不是
+    exclude: /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录|抽检|不合格|检测结果|召回|处罚|罚款|我想|有吗|有没有人|求租|转租|合租/,
   },
   {
     category: "goods",
@@ -237,11 +239,18 @@ export {
   dedupeByTitle,
   type DedupeEntry,
 } from "./dedup.ts";
-export function classify(title: string, summary: string): { category: Category; tags: string[] } {
+export function classify(
+  title: string,
+  summary: string,
+  opts?: { excludeCategories?: readonly Category[] },
+): { category: Category; tags: string[] } {
   const text = stripUrls(`${title} ${summary}`).toLowerCase();
+  const skip = opts?.excludeCategories;
   let best: { category: Category; hits: string[]; score: number } = { category: "other", hits: [], score: 0 };
   for (const rule of RULES) {
+    if (skip?.includes(rule.category)) continue;
     if (rule.exclude && rule.exclude.test(text)) continue;
+    if (rule.require && !rule.require.test(text)) continue;
     const hits = rule.keywords.filter((k) => matchKeyword(text, k));
     if (!hits.length) continue;
     const score = hits.length * rule.weight;
@@ -249,6 +258,13 @@ export function classify(title: string, summary: string): { category: Category; 
   }
   const tags = best.hits.slice(0, 6);
   return { category: best.category, tags };
+}
+/**
+ * 实地福利只收「线下能领到实物」的内容：资讯/水帖即使被规则或 AI 标成 offline 也不该进这个分类。
+ * 统一在这里收口，enrich 与 AI 审核落库都调用它。
+ */
+export function demoteOfflineCategory(category: string | null, kind: string | null): string | null {
+  return category === "offline" && (kind === "news" || kind === "info" || kind === "noise") ? "other" : category;
 }
 
 function ageDays(iso: string | null): number {
@@ -401,13 +417,13 @@ export function enrichItem(
 
   const guessed = classify(title, summary);
   const hintCat = raw.categoryHint ?? hints?.categoryHint ?? null;
-  const category: Category = guessed.category === "other" && isCategory(hintCat) ? hintCat : guessed.category;
-  const tags = guessed.tags;
+  let category: Category = guessed.category === "other" && isCategory(hintCat) ? hintCat : guessed.category;
+  let tags = guessed.tags;
   const codes = extractCodes(title, raw.content ?? raw.summary ?? "");
   const priceInfo = extractPrice(title, summary);
   const expiresAt = raw.expiresAt ?? guessExpiry(`${title} ${summary}`);
   const obtain = guessObtain(title, summary);
-  const kind = guessKind({
+  const kindInput = {
     title,
     summary,
     sourceId,
@@ -417,7 +433,16 @@ export function enrichItem(
     price: priceInfo.price,
     freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
     kindHint: hints?.kindHint ?? null,
-  });
+  };
+  let kind = guessKind(kindInput);
+  // 实地福利必须是「线下能领到的实物福利」：资讯/水帖即使命中了现场、附近这类地点词也不该进这个分类
+  if (category === "offline" && (kind === "news" || kind === "info" || kind === "noise")) {
+    const again = classify(title, summary, { excludeCategories: ["offline"] });
+    category =
+      again.category === "other" && isCategory(hintCat) && hintCat !== "offline" ? hintCat : again.category;
+    tags = again.tags;
+    kind = guessKind({ ...kindInput, category });
+  }
   const { score, reason } = scoreItem({
     title,
     summary,
