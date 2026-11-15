@@ -162,6 +162,14 @@ function buildItemsQuery(q: Record<string, string | undefined>, rules: BlockRule
       params.push(...cats);
     }
   }
+  // 反向排除分类：真福利频道要把「网盘资源 / 网课教程」这类长期资料型内容挡在外面
+  if (q.excludeCategory) {
+    const cats = q.excludeCategory.split(",").map((s) => s.trim()).filter(Boolean);
+    if (cats.length) {
+      where.push(`COALESCE(category, 'other') NOT IN (${cats.map(() => "?").join(",")})`);
+      params.push(...cats);
+    }
+  }
   if (q.kind) {
     const kinds = q.kind.split(",").map((s) => s.trim()).filter(Boolean);
     if (kinds.length === 1) {

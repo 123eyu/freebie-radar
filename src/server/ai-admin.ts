@@ -276,7 +276,14 @@ if (!v.keep) rejected += 1;
         const effectiveKeep = kind === "noise" ? false : v.keep;
         const keep = effectiveKeep ? 1 : 0;
         const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind });
-        const score = calibrateScoreByObtain(baseScore, obtain, effectiveKeep, quality, kind);
+        const score = calibrateScoreByObtain(baseScore, obtain, effectiveKeep, quality, kind, {
+          title: row.title,
+          summary: row.summary ?? "",
+          publishedAt: row.published_at,
+          sourceId: row.source_id,
+          codes: baseEnriched?.codes ?? [],
+          price: baseEnriched?.price ?? null,
+        });
         updateAi(row.id, ai, keep, score, category, obtain, kind, quality);
       }
     }
@@ -328,8 +335,11 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     ai_keep: number | null;
     published_at: string | null;
     expires_at: string | null;
+    ai_quality: number | null;
+    score: number;
+    base_score: number | null;
   }>(
-    `SELECT id, source_id, external_id, url, title, summary, category, kind, obtain, ai_keep, published_at, expires_at
+    `SELECT id, source_id, external_id, url, title, summary, category, kind, obtain, ai_keep, ai_quality, score, base_score, published_at, expires_at
        FROM items WHERE ${cond} ORDER BY id DESC LIMIT 6000`,
   );
 
@@ -372,12 +382,35 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     const fallbackObtain = guessObtain(r.title, r.summary ?? "");
     const nextObtain = r.ai_keep === null ? fallbackObtain : (r.obtain ?? fallbackObtain);
 
-    if (nextCat !== r.category || nextKind !== r.kind || nextObtain !== r.obtain) {
+// 顺手用新的多维加权口径重算分数（规则内容分存进 base_score，AI 质量分参与合成）
+    const keepBool = r.ai_keep === null ? null : r.ai_keep === 1;
+    const quality =
+      typeof r.ai_quality === "number" && Number.isFinite(r.ai_quality)
+        ? Math.min(5, Math.max(1, Math.round(r.ai_quality)))
+        : null;
+    const nextScore = calibrateScoreByObtain(e.baseScore, nextObtain, keepBool, quality, nextKind, {
+      title: e.title,
+      summary: e.summary ?? "",
+      publishedAt: e.publishedAt ?? null,
+      sourceId: r.source_id,
+      codes: e.codes,
+      price: e.price,
+    });
+
+    if (
+      nextCat !== r.category ||
+      nextKind !== r.kind ||
+      nextObtain !== r.obtain ||
+      nextScore !== r.score ||
+      e.baseScore !== (r.base_score ?? null)
+    ) {
       run(
-        "UPDATE items SET category = ?, kind = ?, obtain = ? WHERE id = ?",
+        "UPDATE items SET category = ?, kind = ?, obtain = ?, base_score = ?, score = ? WHERE id = ?",
         nextCat,
         nextKind,
         nextObtain,
+        e.baseScore,
+        nextScore,
         r.id,
       );
       updated += 1;

@@ -8,6 +8,14 @@ import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
 
+function parseCodes(raw: string | null): string[] {
+  try {
+    const v = JSON.parse(raw ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 function readSourceKindHint(sourceId: string | undefined): string | null {
   if (!sourceId) return null;
   const row = get<{ config: string }>("SELECT config FROM sources WHERE id = ?", sourceId);
@@ -88,6 +96,7 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
   try {
     const cur = get<{
       score: number;
+      base_score: number | null;
       ai_keep: number | null;
       obtain: string | null;
       category: string | null;
@@ -96,8 +105,10 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       source_id: string;
       is_free: number;
       price: number | null;
+      published_at: string | null;
+      codes: string | null;
     }>(
-      "SELECT score, ai_keep, obtain, category, title, summary, source_id, is_free, price FROM items WHERE id = ?",
+      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes FROM items WHERE id = ?",
       itemId,
     );
     const effectiveCategory = nextCategory ?? cur?.category ?? null;
@@ -115,10 +126,23 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
     });
     const effectiveKeep = effectiveKind === "noise" ? false : verdict.keep;
     const keep = effectiveKeep ? 1 : 0;
-    const nextScore =
-      cur && cur.ai_keep === null
-        ? calibrateScoreByObtain(cur.score, effectiveObtain, effectiveKeep, nextQuality, effectiveKind)
-        : cur?.score ?? 0;
+    const nextScore = cur
+      ? calibrateScoreByObtain(
+          cur.base_score ?? cur.score,
+          effectiveObtain,
+          effectiveKeep,
+          nextQuality,
+          effectiveKind,
+          {
+            title: cur.title,
+            summary: cur.summary ?? "",
+            publishedAt: cur.published_at ?? null,
+            sourceId: cur.source_id,
+codes: parseCodes(cur.codes),
+            price: cur.price ?? null,
+          },
+        )
+      : 0;
     run(
       `UPDATE items
           SET ai = ?,

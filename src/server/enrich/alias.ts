@@ -1,5 +1,6 @@
 import { all, get, run } from "../db.ts";
 import { extractMergeKeys } from "./dedup.ts";
+import { combineScore, type ScoreBreakdown, type ScoreCtx } from "./score.ts";
 
 /**
  * 结合 title_aliases 字典把单条标题映射到统一的 canonical title_key。
@@ -38,39 +39,31 @@ export function resolveDbMergeKey(title: string): string {
   }
 }
 
-const QUALITY_BONUS: Record<number, number> = {
-  5: 16,
-  4: 10,
-  3: 2,
-  2: -10,
-  1: -20,
-};
-
-/** 结合 AI 质量分（1-5）、内容形态（kind）与获取方式对基础分做统一校准。 */
+/**
+ * 综合评分入口：多维加权（见 score.ts），AI 质量分占主导。
+ *
+ * 保持原函数名与参数顺序，额外接受一个可选的 ctx（标题/发布时间/来源/兑换码/价格）。
+ * 不传 ctx 时那几个维度按中性值算，行为仍然可用——但调用方应尽量传，否则时效与来源可信度维度失效。
+ */
 export function calibrateScoreByObtain(
-  score: number,
+  ruleScore: number,
   obtain: string | null | undefined,
   aiKeep: boolean | null,
   quality?: number | null,
   kind?: string | null,
+  ctx: ScoreCtx = {},
 ): number {
-  let out = score;
-  if (aiKeep === false || kind === "noise") {
-    out = Math.min(Math.round(out * 0.4), 35);
-    return Math.max(0, out);
-  }
-  if (typeof quality === "number" && Number.isFinite(quality)) {
-    const q = Math.min(5, Math.max(1, Math.round(quality)));
-    out += QUALITY_BONUS[q] ?? 0;
-  }
-  if (kind === "deal" || kind === "opensource" || kind === "news" || kind === "info") {
-    // 付费好价（如黑五 VPS / 史低）与开源项目不再被「paid <= 25」一刀切压死
-    if (obtain === "promo") out = Math.round(out * 0.85);
-    else if (obtain === "trial") out = Math.round(out * 0.85);
-  } else {
-    if (obtain === "paid") out = Math.min(out, 25);
-    else if (obtain === "trial" || obtain === "promo") out = Math.round(out * 0.78);
-    else if (obtain === "conditional") out = Math.round(out * 0.9);
-  }
-  return Math.max(0, Math.min(100, out));
+  return combineScore(ruleScore, obtain, aiKeep, quality, kind, ctx).total;
+}
+
+/** 需要解释分数时用这个：返回各维度得分与惩罚系数。 */
+export function explainScore(
+  ruleScore: number,
+  obtain: string | null | undefined,
+  aiKeep: boolean | null,
+  quality?: number | null,
+  kind?: string | null,
+  ctx: ScoreCtx = {},
+): ScoreBreakdown {
+  return combineScore(ruleScore, obtain, aiKeep, quality, kind, ctx);
 }

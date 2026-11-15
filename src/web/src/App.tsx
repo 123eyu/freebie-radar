@@ -19,6 +19,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  FolderOpen,
   Wrench,
   X,
   Zap,
@@ -135,6 +136,7 @@ type Preset = { key: string; label: string; icon: typeof Sparkles };
 
 const PRIMARY_CHANNELS: Preset[] = [
   { key: "verified", label: "真福利", icon: Sparkles },
+  { key: "pan", label: "网盘/网课", icon: FolderOpen },
   { key: "deal", label: "黑五/好价", icon: Flame },
   { key: "opensource", label: "开源项目", icon: Code },
   { key: "news", label: "重要新闻", icon: Newspaper },
@@ -332,6 +334,13 @@ export function App() {
       if (kindFilter === "auto") p.set("kind", "freebie");
       if (obtain === "auto") p.set("obtain", "free,conditional");
       if (range === "auto") p.set("maxAgeDays", "7");
+      // 网盘资源与网课教程属于长期资料型内容，单独成频道，不混进「真福利」
+      if (categories.length === 0) p.set("excludeCategory", "pan,course");
+    } else if (preset === "pan") {
+      p.set("unexpired", "1");
+      if (kindFilter === "auto") p.set("kind", "freebie,deal,info");
+      if (categories.length === 0) p.set("category", "pan,course");
+      p.set("hideRejected", "1");
     } else if (preset === "deal") {
       p.set("unexpired", "1");
       if (kindFilter === "auto") p.set("kind", "deal");

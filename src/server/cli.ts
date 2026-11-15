@@ -108,7 +108,14 @@ async function main() {
           price: e.price,
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(row.source_id),
         });
-        const finalScore = calibrateScoreByObtain(e.score, finalObtain, aiKeepBool, finalQuality, finalKind);
+        const finalScore = calibrateScoreByObtain(e.baseScore, finalObtain, aiKeepBool, finalQuality, finalKind, {
+          title: e.title,
+summary: e.summary ?? "",
+          publishedAt: e.publishedAt ?? null,
+          sourceId: row.source_id,
+          codes: e.codes,
+          price: e.price,
+        });
         const titleKey = resolveDbMergeKey(row.title);
         run(
           "UPDATE items SET category = ?, obtain = ?, kind = ?, ai_quality = COALESCE(?, ai_quality), tags = ?, score = ?, expires_at = ?, price = ?, is_free = ?, codes = ?, title_key = ?, status = CASE WHEN status = 'ignored' THEN 'ignored' ELSE ? END WHERE id = ?",

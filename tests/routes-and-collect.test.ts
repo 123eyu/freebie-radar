@@ -21,7 +21,7 @@ after(() => {
   closeDb();
 });
 
-test("ingestItems：重复抓取已有条目时更新参数完整且保留原有 AI 判定与分数折半", () => {
+test("ingestItems：重复抓取已有条目时更新参数完整且保留原有 AI 判定，分数按 AI 判否重算不回升", () => {
   const first = ingestItems("rss-ithome", [
     {
       externalId: "post-1",
@@ -57,7 +57,9 @@ test("ingestItems：重复抓取已有条目时更新参数完整且保留原有
   assert.equal(afterRow.summary, "限免更新");
   assert.equal(afterRow.ai_keep, 0);
   assert.equal(afterRow.obtain, "trial");
-  assert.equal(afterRow.score, beforeRow.score);
+  // AI 判否的条目按新口径重算后就该压到低分区，重复抓取不得把它抬回去，也不得越过 25 分
+  assert.ok(afterRow.score <= beforeRow.score, `重复抓取不应抬高分数（${afterRow.score} > ${beforeRow.score}）`);
+  assert.ok(afterRow.score <= 25, `AI 判否条目分数应 ≤ 25，实际 ${afterRow.score}`);
 });
 
 test("GET /api/items：短中文名《斗阵骑士》可跨源合并，且指定单源或保鲜期时不被别源老帖遮蔽", async () => {

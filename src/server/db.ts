@@ -295,6 +295,11 @@ const MIGRATIONS: string[] = [
      AND title NOT LIKE '%转存%'
      AND title NOT LIKE '%夸克%';
   `,
+  /* v24：规则内容分单独落库，AI 审核后从它重算综合分，避免二次校准漂移 */
+  `
+  ALTER TABLE items ADD COLUMN base_score REAL;
+  UPDATE items SET base_score = score WHERE base_score IS NULL;
+  `,
 ];
 
 export function dbPath(): string {

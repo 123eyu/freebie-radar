@@ -547,12 +547,21 @@ function persist(
         typeof verdict?.quality === "number" && Number.isFinite(verdict.quality)
           ? Math.min(5, Math.max(1, Math.round(verdict.quality)))
           : null;
+const scoreCtx = {
+        title: e.title,
+        summary: e.summary ?? "",
+        publishedAt: e.publishedAt ?? null,
+        sourceId,
+        codes: e.codes,
+        price: e.price,
+      };
       const score = calibrateScoreByObtain(
-        e.score,
+        e.baseScore,
         effectiveObtain,
         verdict ? verdict.keep : null,
         effectiveQuality,
         effectiveKind,
+        scoreCtx,
       );
       const aiJson = verdict ? JSON.stringify({ ...verdict, kind: effectiveKind }) : null;
       const status = e.keep ? "active" : "expired";
@@ -595,16 +604,17 @@ function persist(
         const nextKind = verdict ? effectiveKind : existing.ai_keep === null ? e.kind : existing.kind;
         const nextScore = verdict
           ? score
-          : calibrateScoreByObtain(
-              e.score,
+: calibrateScoreByObtain(
+              e.baseScore,
               existing.obtain,
               existing.ai_keep === null ? null : existing.ai_keep === 1,
               existingQuality,
               nextKind,
+              scoreCtx,
             );
         run(
           `UPDATE items SET url = ?, url_key = ?, title = ?, title_key = ?, summary = ?, author = ?, category = ?,
-             tags = ?, score = ?, expires_at = ?, published_at = ?, raw = ?, last_seen_at = ?,
+             tags = ?, base_score = ?, score = ?, expires_at = ?, published_at = ?, raw = ?, last_seen_at = ?,
              price = ?, is_free = ?,
              ai = COALESCE(?, ai),
              obtain = COALESCE(?, obtain),
@@ -623,6 +633,7 @@ function persist(
           e.author ?? null,
           e.category,
           JSON.stringify(e.tags),
+          e.baseScore,
           nextScore,
           e.expiresAt,
           e.publishedAt ?? null,
@@ -652,9 +663,9 @@ function persist(
       }
       try {
         const res = run(
-          `INSERT INTO items (source_id, external_id, url, url_key, title, title_key, summary, author, category,
-             tags, score, expires_at, published_at, raw, status, ai, obtain, ai_keep, kind, ai_quality, image_url, content, codes, price, is_free, first_seen_at, last_seen_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+`INSERT INTO items (source_id, external_id, url, url_key, title, title_key, summary, author, category,
+             tags, base_score, score, expires_at, published_at, raw, status, ai, obtain, ai_keep, kind, ai_quality, image_url, content, codes, price, is_free, first_seen_at, last_seen_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           sourceId,
           e.externalId,
           e.url,
@@ -665,6 +676,7 @@ function persist(
           e.author ?? null,
           e.category,
           JSON.stringify(e.tags),
+          e.baseScore,
           score,
           e.expiresAt,
           e.publishedAt ?? null,

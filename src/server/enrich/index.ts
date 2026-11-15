@@ -246,6 +246,8 @@ export type EnrichedItem = RawItem & {
   codes: string[];
   price: number | null;
   isFree: boolean;
+  /** 规则内容分（scoreItem 的原始结果），综合分由它 + AI 质量分重算 */
+  baseScore: number;
   score: number;
   url: string;
   urlKey: string;
@@ -470,6 +472,7 @@ export function enrichItem(
     category,
     tags,
     expiresAt,
+    baseScore: score,
     score,
     imageUrl: sanitizeImageUrl(raw.imageUrl, url),
     kind,

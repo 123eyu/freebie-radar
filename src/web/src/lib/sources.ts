@@ -91,6 +91,7 @@ const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABEL);
 
 const PRESET_CATEGORIES: Record<string, string[]> = {
   verified: FREEBIE_CATEGORY_KEYS,
+  pan: ["pan", "course"],
   free: FREEBIE_CATEGORY_KEYS,
   deal: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "pan", "course", "hardware", "goods", "design", "dev", "security", "edu", "other"],
   opensource: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "course", "edu", "other"],
