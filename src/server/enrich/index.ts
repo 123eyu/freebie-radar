@@ -12,7 +12,7 @@ export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type { Category };
 export { CATEGORY_LABEL, isCategory };
 
-type Rule = { category: Category; weight: number; keywords: string[] };
+type Rule = { category: Category; weight: number; keywords: string[]; exclude?: RegExp };
 
 const RULES: Rule[] = [
   {
@@ -115,6 +115,17 @@ const RULES: Rule[] = [
     category: "news",
     weight: 0.75,
     keywords: ["新闻", "快讯", "要闻", "播报", "周刊", "日报", "changelog", "release notes"],
+  },
+  {
+    // 实地福利：线下门店/快闪/商场现场领取的实物，和线上羊毛分开，避免被「实物/优惠」吞掉
+    category: "offline",
+    weight: 1.2,
+    keywords: [
+      "现场领取", "现场可领", "现场免费", "现场", "到店", "进店", "门店", "实体店", "快闪", "商场", "专柜", "自提",
+      "打卡", "试吃", "试饮", "派样", "派发", "店庆", "开业活动", "开业", "附近", "线下", "凭手机", "凭截图领取", "排队领",
+    ],
+    // 新闻/发布会里的「现场」不是实地福利
+    exclude: /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录/,
   },
   {
     category: "goods",
@@ -230,6 +241,7 @@ export function classify(title: string, summary: string): { category: Category; 
   const text = stripUrls(`${title} ${summary}`).toLowerCase();
   let best: { category: Category; hits: string[]; score: number } = { category: "other", hits: [], score: 0 };
   for (const rule of RULES) {
+    if (rule.exclude && rule.exclude.test(text)) continue;
     const hits = rule.keywords.filter((k) => matchKeyword(text, k));
     if (!hits.length) continue;
     const score = hits.length * rule.weight;

@@ -33,6 +33,7 @@ export const CATEGORY_KEYS = [
   "tech",
   "news",
   "goods",
+  "offline",
   "invite",
   "edu",
   "pan",
@@ -64,6 +65,7 @@ const CATEGORY_LABEL_BY_KEY = {
   tech: "科技动态",
   news: "综合资讯",
   goods: "实物/优惠",
+  offline: "实地福利",
   invite: "邀请码",
   edu: "教育/考试",
   pan: "网盘资源",
@@ -97,6 +99,7 @@ export const CATEGORY_DESC: Record<Category, string> = {
   tech: "科技前沿 / 芯片 / 互联网 / 航天新能源",
   news: "综合快讯与其它资讯",
   goods: "生活羊毛 / 优惠券 / 话费红包 / 实物",
+  offline: "线下活动 / 门店 / 快闪 / 现场领取的实物福利",
   invite: "邀请码 / 开放注册 / 内测资格",
   edu: "题库 / 真题 / 教材 / 电子书 / 备考",
   pan: "夸克 / 阿里云盘 / 百度网盘等分享与转存",
@@ -111,7 +114,7 @@ export const CATEGORY_GROUPS: { key: CategoryGroupKey; label: string; categories
   {
     key: "freebie",
     label: "福利与交易",
-    categories: ["ai", "cloud", "vps", "domain", "software", "media", "game", "carpool", "trade", "goods", "invite"],
+    categories: ["ai", "cloud", "vps", "domain", "software", "media", "game", "carpool", "trade", "goods", "offline", "invite"],
   },
   {
     key: "tech",
@@ -174,14 +177,19 @@ export const NEWS_CATEGORY_LABEL: Record<string, string> = {
  * 频道（主页大类 preset）
  * ------------------------------------------------------------------ */
 
+/** 真福利/白嫖频道的分类集合：网盘、网课、实地福利各有独立频道，不混进来 */
 export const FREEBIE_CATEGORY_KEYS: Category[] = [
-  "ai", "software", "game", "cloud", "vps", "domain", "media", "pan", "course", "design", "dev", "edu", "goods", "invite", "opensource", "security", "hardware", "other",
+  "ai", "software", "game", "cloud", "vps", "domain", "media", "design", "dev", "edu", "goods", "invite", "opensource", "security", "hardware", "other",
 ];
 
-/** 频道 = 主页顶部的大类；分类白名单以它为默认集合，推送规则也支持一键套用。 */
-export const CHANNELS: { key: string; label: string; categories: Category[] }[] = [
-  { key: "verified", label: "真福利", categories: FREEBIE_CATEGORY_KEYS },
+/**
+ * 频道 = 主页顶部的大类；分类白名单以它为默认集合，推送规则也支持一键套用。
+ * exclude 里的分类即使出现在 categories 里也会被该频道排除（主页查询与分类胶囊都按它算）。
+ */
+export const CHANNELS: { key: string; label: string; categories: Category[]; exclude?: Category[] }[] = [
+  { key: "verified", label: "真福利", categories: FREEBIE_CATEGORY_KEYS, exclude: ["pan", "course", "offline"] },
   { key: "free", label: "全部白嫖", categories: FREEBIE_CATEGORY_KEYS },
+  { key: "offline", label: "实地福利", categories: ["offline"] },
   { key: "pan", label: "网盘/网课", categories: ["pan", "course"] },
   { key: "deal", label: "好价", categories: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "pan", "course", "hardware", "goods", "design", "dev", "security", "edu", "other"] },
   { key: "opensource", label: "开源", categories: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "course", "edu", "other"] },
@@ -189,15 +197,18 @@ export const CHANNELS: { key: string; label: string; categories: Category[] }[] 
   { key: "info", label: "行业资讯", categories: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "course", "edu", "news", "other"] },
 ];
 
-const PRESET_CATEGORIES: Record<string, Category[]> = Object.fromEntries(
-  CHANNELS.map((c) => [c.key, c.categories]),
-);
+/** 该频道要排除的分类（主页查询用它拼 excludeCategory，避免分类胶囊里出现点了没结果的项）。 */
+export function channelExcluded(preset: string): Category[] {
+  return CHANNELS.find((c) => c.key === preset)?.exclude ?? [];
+}
 
 /** preset 未知（如 codes / urgent / starred）时返回全部分类。 */
 export function categoriesForPreset(preset: string): string[] {
-  return PRESET_CATEGORIES[preset] ?? [...CATEGORY_KEYS];
+  const channel = CHANNELS.find((c) => c.key === preset);
+  if (!channel) return [...CATEGORY_KEYS];
+  const excluded = new Set<string>(channel.exclude ?? []);
+  return channel.categories.filter((key) => !excluded.has(key));
 }
-
 export function categoryLabelForPreset(category: string, preset: string): string {
   if (preset === "news" || preset === "info") {
     return NEWS_CATEGORY_LABEL[category] ?? categoryLabel(category);

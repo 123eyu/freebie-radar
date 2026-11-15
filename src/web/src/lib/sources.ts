@@ -18,6 +18,7 @@ export {
   OBTAIN_HINT,
   OBTAIN_ORDER,
   categoriesForPreset,
+  channelExcluded,
   categoryLabel,
   categoryLabelForPreset,
   categoryLabelForKind,

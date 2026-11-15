@@ -28,6 +28,7 @@ import {
   Flame,
   Newspaper,
   TrendingUp,
+  MapPin,
 } from "lucide-react";
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { DigestPanel } from "./components/DigestPanel.tsx";
@@ -38,7 +39,7 @@ import { RulesPanel } from "./components/RulesPanel.tsx";
 import { OpsPanel } from "./components/OpsPanel.tsx";
 import { PushPanel } from "./components/PushPanel.tsx";
 import { HotPanel } from "./components/HotPanel.tsx";
-import { KIND_LABEL, KIND_ORDER, OBTAIN_HINT, OBTAIN_LABEL, SOURCE_GROUPS, categoriesForPreset, categoryLabelForPreset, formatInterval, groupOfSource } from "./lib/sources.ts";
+import { KIND_LABEL, KIND_ORDER, OBTAIN_HINT, OBTAIN_LABEL, SOURCE_GROUPS, categoriesForPreset, categoryLabelForPreset, channelExcluded, formatInterval, groupOfSource } from "./lib/sources.ts";
 import type {
   BlockPreset,
   BlockRule,
@@ -137,6 +138,7 @@ type Preset = { key: string; label: string; icon: typeof Sparkles };
 const PRIMARY_CHANNELS: Preset[] = [
   { key: "verified", label: "真福利", icon: Sparkles },
   { key: "pan", label: "网盘/网课", icon: FolderOpen },
+  { key: "offline", label: "实地福利", icon: MapPin },
   { key: "deal", label: "黑五/好价", icon: Flame },
   { key: "opensource", label: "开源项目", icon: Code },
   { key: "news", label: "重要新闻", icon: Newspaper },
@@ -335,7 +337,13 @@ export function App() {
       if (obtain === "auto") p.set("obtain", "free,conditional");
       if (range === "auto") p.set("maxAgeDays", "7");
       // 网盘资源与网课教程属于长期资料型内容，单独成频道，不混进「真福利」
-      if (categories.length === 0) p.set("excludeCategory", "pan,course");
+      const excludedCats = channelExcluded("verified");
+      if (categories.length === 0 && excludedCats.length) p.set("excludeCategory", excludedCats.join(","));
+    } else if (preset === "offline") {
+      // 实地福利独立频道：线下/门店/现场领取，不混进真福利
+      p.set("unexpired", "1");
+      p.set("hideRejected", "1");
+      if (categories.length === 0) p.set("category", "offline");
     } else if (preset === "pan") {
       p.set("unexpired", "1");
       if (kindFilter === "auto") p.set("kind", "freebie,deal,info");
@@ -1017,7 +1025,9 @@ export function App() {
                 const countMap = new Map((stats.data?.byCategory ?? []).map((c) => [c.category ?? "other", c.n]));
                 const allowed = categoriesForPreset(preset);
                 const ordered = [...allowed].sort((a, b) => (countMap.get(b) ?? 0) - (countMap.get(a) ?? 0));
-                const quickCats = ordered.slice(0, 8);
+                // 只挂真的有内容的分类（外加已选中的，方便一键取消）；全空时退回频道默认顺序
+                const withItems = ordered.filter((key) => (countMap.get(key) ?? 0) > 0 || categories.includes(key));
+                const quickCats = (withItems.length ? withItems : ordered).slice(0, 10);
                 return (
                   <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto border-b border-ink-100 bg-surface px-3.5 py-1.5 sm:px-6">
                     <button

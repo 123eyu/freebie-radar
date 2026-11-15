@@ -30,6 +30,15 @@ test("分类：影音会员", () => {
 test("分类：域名与主机", () => {
   assert.equal(classify("免费 .dev 域名注册一年", "").category, "domain");
 });
+test("分类：实地福利（线下门店/快闪/现场领取）", () => {
+  assert.equal(classify("五大绝美花墙免费打卡，现场可免费领取手幅", "").category, "offline");
+  assert.equal(classify("正大附近，粉丝福利，免费送，2束鲜花", "").category, "offline");
+  assert.equal(classify("新店开业活动：到店免费领小样，可自提", "").category, "offline");
+  // 线上羊毛仍归「实物/优惠」
+  assert.equal(classify("京东优惠券满减，包邮到家", "").category, "goods");
+  // 新闻里的「现场」不算实地福利
+  assert.notEqual(classify("记者现场直击：峰会发布会现场", "").category, "offline");
+});
 
 test("分类：无关键词落 other", () => {
   assert.equal(classify("今天天气不错", "").category, "other");
