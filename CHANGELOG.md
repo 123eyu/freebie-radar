@@ -9,7 +9,9 @@
 - **统一收口 `demoteOfflineCategory()`**：`offline` 只接受 `kind ∈ {freebie, deal}`；`news` / `info` / `noise` 一律降级。enrich、AI 审核落库（`ai-queue`）、补审（`ai-admin`）、采集落库、`reclassify` 五处共用同一函数，不再各写一套
 - **`reclassify` 优先采用 AI 分类**：后台「零 Token 重分类」以前对已审核条目只保留库里的旧分类，现在先读 `ai.category`，再退回库值 / 规则值
 - **Schema v29**：把 `offline` 里 kind 为 `news` / `info` / `noise` 的条目和历史误判（不合格 / 抽检 / 通报 / 求租 / 租房 / 记者 / 发布会 / 峰会）移出
-- 实测：`pnpm test` 89/89、`pnpm typecheck` 干净；本地 448 条库重跑 `reclassify` 后 `offline` 2 → 1（剩下的是南京「零元面馆」排队免费领素面），二次运行 changed=0
+- **口径收紧到「先福利，再实地」**：`isOfflineWorthy()` 要求 `kind=freebie` + 线下场景词（到店/门店/现场/商场/专柜/快闪/自提/打卡/试吃/博览/市集…）+ 领取动作 + 中文文本。好价（deal）、全英文的海外线上促销（如 Walgreens 照片卡、DQ 2 for $6）一律不进
+- 实测：`pnpm test` 90/90、`pnpm typecheck` 干净；本地 448 条库 `offline` 2 → 1（南京「零元面馆」排队免费领素面），二次运行 changed=0
+- 线上（andnode，8092 条）重跑 `reclassify`：`offline` 51 → 1，只剩「海口博博会，河北博物院礼品免费送」；AI 判为 `tech`/`news`/`goods` 的 42 条随重分类归位，`/api/items?category=offline` 返回 1 条，前端「实地福利」频道显示 1 条
 
 ### 移动端顶栏瘦身、首屏体积与接口压缩
 
