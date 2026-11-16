@@ -34,6 +34,8 @@ export const CLASSIFICATION_PROMPT = [
   "opensource 必须有开源项目/源码/仓库依据；仅出现版本号不构成开源证据。",
   "网盘分享中的影视、软件、AI课程优先标 category=pan；课程内容本体可标 course，不因标题出现软件/电影/AI就改到授权、影音会员或AI额度。",
   "一般新闻与旅客经历可归 info，重要新闻归 news；keep 只控制是否值得保留，不能为保留内容强行标 deal/freebie。",
+  "交易类例外：标题含「N出 / 溢价N出 / 出 / 收 / 转让 / 过户 / 出号 / 车位 / 合租 / 拼团 / 独享车」等交易意图词，且带价格或付费方式时，kind 必须是 deal，不得因为「没有促销词」判成 info。",
   '反例：全美航班停飞4小时，普通旅客当天实际遇到了什么 → kind=info，category=world，obtain=free；不是促销。',
   '正例：航空公司限时特价机票，单程99元 → kind=deal；GitHub学生认证免费领开发者礼包 → kind=freebie。',
+  '正例：50出zouter 老HK amd 9.9/月 → kind=deal，category=trade（「出」= 转让，不是资讯）；出租一个新加坡 google ultra 5x（独享车）→ kind=deal，category=carpool。',
 ].join("\n");

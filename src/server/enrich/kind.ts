@@ -114,7 +114,9 @@ export function guessKind(input: {
   if (hasPromoWord && !hasDealWord && !input.isFree) {
     return "deal";
   }
-  if ((input.category === "carpool" || input.category === "trade") && !input.isFree && !hasDealWord && (!guard || signals.promotion)) {
+  // 交易/拼车类：分类本身已确认是「明盘出鸡 / 发车合租」，不再额外要求促销词
+  // （「50出」「溢价50出」「出租…车位」都不含促销词，旧逻辑因此把它们判成 info）
+  if ((input.category === "carpool" || input.category === "trade") && !hasDealWord) {
     return "deal";
   }
   if (input.sourceId && DEAL_SOURCES.has(input.sourceId) && !input.isFree && !hasDealWord && (!guard || signals.promotion)) {
@@ -153,8 +155,51 @@ function coerceNonNewsKind(fallbackInput: Parameters<typeof guessKind>[0]): Cont
   return guessed === "noise" || (guessed === "news" && !isAuthoritativeNewsSource(fallbackInput.sourceId, fallbackInput.kindHint)) ? "info" : guessed;
 }
 
+const TRADE_LIKE_CATEGORIES = new Set(["trade", "carpool", "goods"]);
+
+/**
+ * 分类与形态的一致性约束（最后一道闸）。
+ * 分类已经确认是「二手交易 / 拼车合租 / 实物优惠」时，形态不可能是「行业资讯」：
+ * 以前这里只做单向降级（AI 说 deal 但没促销词就打回 info），于是出现
+ * category=trade + kind=info 的自相矛盾组合（全库 500+ 条）。
+ */
+export function alignKindWithCategory(
+  kind: ContentKind,
+  input: Parameters<typeof guessKind>[0],
+): ContentKind {
+  if (kind === "noise" || kind === "news") return kind;
+  const category = input.category;
+  if (!category || !TRADE_LIKE_CATEGORIES.has(category)) return kind;
+  if (input.freebieOnlySource) return kind;
+  const signals = contentSignals(input.title, input.summary);
+  const paidish = input.obtain === "paid" || (typeof input.price === "number" && input.price > 0);
+  // 有明确领取/白送证据且不需要付费的实物福利归 freebie（如「免费送小鸡」「PDD 免费领」）；
+  // 需要付费的「领取优惠券」仍是好价，不能因为出现「领取」就变福利
+  if (signals.claim && !paidish) return "freebie";
+  // 编辑性内容（财报/事故/政策报道）撞上交易词时不硬改
+  if (signals.editorial && !signals.promotion) return kind;
+  // 交易/拼车：分类已确认是明盘转让或发车，形态就是 deal
+  if (category === "trade" || category === "carpool") return "deal";
+  // goods（实物/优惠）默认不是资讯：AI 没给形态时按价格/免费信号落位
+  if (category === "goods" && kind === "info") {
+    if (signals.claim) return "freebie";
+    if (paidish) return "deal";
+    if (input.obtain === "free" || input.obtain === "conditional" || input.obtain === "lottery") return "freebie";
+  }
+  // goods：有价格或促销证据才算好价，其余保留原判
+  return paidish || signals.promotion ? "deal" : kind;
+}
+
 /** 结合 AI 输出与规则上下文归一化最终 kind。 */
 export function resolveKind(
+  aiKind: unknown,
+  aiKeep: boolean | null | undefined,
+  fallbackInput: Parameters<typeof guessKind>[0],
+): ContentKind {
+  return alignKindWithCategory(resolveKindRaw(aiKind, aiKeep, fallbackInput), fallbackInput);
+}
+
+function resolveKindRaw(
   aiKind: unknown,
   aiKeep: boolean | null | undefined,
   fallbackInput: Parameters<typeof guessKind>[0],

@@ -658,8 +658,26 @@ const scoreCtx = {
           existing.ai_keep = null;
           existing.kind = null;
         }
-        const nextClassification = applyManualClassification(existing.id, effectiveCategory, verdict ? effectiveKind : resolveKind(existing.kind, existing.ai_keep === null ? null : existing.ai_keep === 1, {
-          title: e.title, summary: e.summary ?? "", sourceId, category: effectiveCategory, obtain: existing.obtain,
+        // 已入库的 AI 分类优先：重复采集时关键词规则不得覆盖 AI 判对的分类。
+        // 旧逻辑直接用 effectiveCategory（规则结果）无条件覆盖，导致 ai.category=trade
+        // 而 items.category 变成 goods/tech/other 的分裂（全库 667 条）。
+        let storedAiCategory: string | null = null;
+        if (existing.ai) {
+          try {
+            const parsed = JSON.parse(existing.ai) as { category?: unknown };
+            if (isCategory(parsed.category) && parsed.category !== "other") storedAiCategory = parsed.category;
+          } catch { /* 保留旧值 */ }
+        }
+        const proposedCategory = verdict && isCategory(verdict.category) ? verdict.category : (storedAiCategory ?? e.category);
+        const baseCategory = demoteOfflineCategory(
+          categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : proposedCategory, srcHints),
+          verdict ? effectiveKind : existing.kind ?? e.kind,
+          e.title,
+          e.summary ?? "",
+          e.category,
+        );
+        const nextClassification = applyManualClassification(existing.id, baseCategory, verdict ? effectiveKind : resolveKind(existing.kind, existing.ai_keep === null ? null : existing.ai_keep === 1, {
+          title: e.title, summary: e.summary ?? "", sourceId, category: baseCategory, obtain: existing.obtain,
           isFree: e.isFree, price: e.price, kindHint: srcHints.kindHint, guardEnabled: srcHints.guardEnabled,
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
         }));
