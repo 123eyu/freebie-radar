@@ -184,7 +184,8 @@ export function alignKindWithCategory(
   if (category === "goods" && kind === "info") {
     if (signals.claim) return "freebie";
     if (paidish) return "deal";
-    if (input.obtain === "free" || input.obtain === "conditional" || input.obtain === "lottery") return "freebie";
+    // 注意：obtain=free 只代表「没检测到价格」，不是福利证据；
+    // 用它兜底会把「什么值得买」的测评文全判成白嫖福利。
   }
   // goods：有价格或促销证据才算好价，其余保留原判
   return paidish || signals.promotion ? "deal" : kind;

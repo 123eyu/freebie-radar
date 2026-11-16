@@ -1,6 +1,6 @@
 import { aiEnabled, config, pushEnabled } from "../config.ts";
 import { all, get, run, tx } from "../db.ts";
-import { demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "../enrich/index.ts";
+import { demoteEditorialGoods, demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "../enrich/index.ts";
 import { calibrateScoreByObtain, resolveDbMergeKey } from "../enrich/alias.ts";
 import { getAiSettings, matchesEntryNoise, shouldPassSourceToAi, shouldReview, type AiVerdict } from "../enrich/ai.ts";
 import { enqueueForAi, reviewFreshNow, setPostReviewHandler } from "../enrich/ai-queue.ts";
@@ -593,12 +593,16 @@ function persist(
         : e.kind;
       // AI 给出的分类优先于关键词规则（以前这里只用规则结果，AI 判对的分类被丢掉）；
       // 再统一收口：资讯/水帖不许落进实地福利
-      const effectiveCategory = demoteOfflineCategory(
-        categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : verdict?.category && isCategory(verdict.category) ? verdict.category : e.category, srcHints),
+      const effectiveCategory = demoteEditorialGoods(
+        demoteOfflineCategory(
+          categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : verdict?.category && isCategory(verdict.category) ? verdict.category : e.category, srcHints),
+          effectiveKind,
+          e.title,
+          e.summary ?? "",
+          e.category,
+        ),
         effectiveKind,
-        e.title,
-        e.summary ?? "",
-        e.category,
+        { title: e.title, summary: e.summary ?? "", obtain: effectiveObtain, price: e.price },
       );
       const effectiveQuality =
         typeof verdict?.quality === "number" && Number.isFinite(verdict.quality)
@@ -669,12 +673,16 @@ const scoreCtx = {
           } catch { /* 保留旧值 */ }
         }
         const proposedCategory = verdict && isCategory(verdict.category) ? verdict.category : (storedAiCategory ?? e.category);
-        const baseCategory = demoteOfflineCategory(
-          categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : proposedCategory, srcHints),
+        const baseCategory = demoteEditorialGoods(
+          demoteOfflineCategory(
+            categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : proposedCategory, srcHints),
+            verdict ? effectiveKind : existing.kind ?? e.kind,
+            e.title,
+            e.summary ?? "",
+            e.category,
+          ),
           verdict ? effectiveKind : existing.kind ?? e.kind,
-          e.title,
-          e.summary ?? "",
-          e.category,
+          { title: e.title, summary: e.summary ?? "", obtain: existing.obtain, price: e.price },
         );
         const nextClassification = applyManualClassification(existing.id, baseCategory, verdict ? effectiveKind : resolveKind(existing.kind, existing.ai_keep === null ? null : existing.ai_keep === 1, {
           title: e.title, summary: e.summary ?? "", sourceId, category: baseCategory, obtain: existing.obtain,

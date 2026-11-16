@@ -8,7 +8,7 @@ import { guessObtain } from "./obtain.ts";
 import { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind } from "./kind.ts";
 import { CATEGORY_LABEL, isCategory, type Category } from "../../shared/taxonomy.ts";
 import { categoryForSource, type SourceHints } from "../../shared/source-classification.ts";
-import { isSharedResource } from "./evidence.ts";
+import { contentSignals, isSharedResource } from "./evidence.ts";
 
 export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type { Category };
@@ -301,6 +301,25 @@ export function demoteOfflineCategory(
   if (category !== "offline") return category;
   if (isOfflineWorthy(title, summary, kind)) return category;
   return fallback && fallback !== "offline" ? fallback : "other";
+}
+
+/**
+ * 商品分类里的「测评 / 使用记录 / 选购科普 / 榜单」不是优惠也不是福利。
+ * AI 常把「什么值得买」的测评文判成 goods+freebie，于是它们混进「真福利」「好价」频道
+ * （频道按 category 筛，不看 kind）。没有价格、没有促销、没有领取证据时降到 tech，
+ * 只留在「行业资讯」频道。
+ */
+export function demoteEditorialGoods(
+  category: string | null,
+  kind: string | null,
+  input: { title: string; summary?: string; obtain?: string | null; price?: number | null },
+): string | null {
+  if (category !== "goods") return category;
+  if (kind !== "info") return category;
+  const signals = contentSignals(input.title, input.summary ?? "");
+  const paidish = input.obtain === "paid" || (typeof input.price === "number" && input.price > 0);
+  if (paidish || signals.promotion || signals.claim) return category;
+  return "tech";
 }
 
 function ageDays(iso: string | null): number {
