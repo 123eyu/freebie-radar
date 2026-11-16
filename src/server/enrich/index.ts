@@ -25,6 +25,12 @@ const OFFLINE_CLAIM_RE =
 /** 资讯/求助/闲聊：命中就不该当实地福利 */
 const OFFLINE_EXCLUDE_RE =
   /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录|抽检|不合格|检测结果|召回|处罚|罚款|我想|有吗|有没有人|求租|转租|合租/;
+/** 实物/生活福利：线上免费领也算「实物福利」，不再要求到店 */
+const PHYSICAL_RE =
+  /实物|食品|零食|饮料|奶茶|咖啡|薯条|汉堡|炸鸡|披萨|餐|水果|生鲜|纸巾|日用品|洗护|小样|试用装|周边|手幅|徽章|玩偶|礼品|礼盒|礼包|书|教材|电子书|体检|话费|流量|红包|立减金|代金券|优惠券|充值卡|京豆|积分兑|会员|月卡|季卡|年卡|羊毛|现金|余额|\d+\s*(?:元|块|r)\b/;
+/** 测评/选购/资讯：goods 分类里命中这些就不是优惠也不是福利 */
+const GOODS_EDITORIAL_RE =
+  /测评|评测|实测|使用记录|使用体验|使用感受|选购|怎么选|如何选|科普|榜单|排行|对比|值不值|开箱|避坑|踩雷|横评|盘点|攻略|差价|降价|涨价|调价|假货|验真|备案|增项|单价|差在哪|先分清|先查|别硬熬|被点名|一衣难求|成本|赚几|只能升不能降|降档墙|降到|便宜|放心买|能买吗|该不该|划不划算|值得吗|买前/;
 
 const RULES: Rule[] = [
   {
@@ -281,10 +287,12 @@ export function classify(
 export function isOfflineWorthy(title: string, summary: string, kind: string | null): boolean {
   if (kind !== "freebie") return false;
   const text = `${title} ${summary}`;
-  if (!OFFLINE_SCENE_RE.test(text) || !OFFLINE_CLAIM_RE.test(text)) return false;
+  if (!OFFLINE_CLAIM_RE.test(text)) return false;
   if (OFFLINE_EXCLUDE_RE.test(text)) return false;
   // 全英文的海外本地促销对中文站没有意义
-  return (text.match(/[\u4e00-\u9fff]/g) ?? []).length >= 2;
+  if ((text.match(/[\u4e00-\u9fff]/g) ?? []).length < 2) return false;
+  // ① 线下到店领取（原有口径）② 线上免费领实物/生活福利（新增口径）
+  return OFFLINE_SCENE_RE.test(text) || PHYSICAL_RE.test(text);
 }
 
 /**
@@ -315,10 +323,17 @@ export function demoteEditorialGoods(
   input: { title: string; summary?: string; obtain?: string | null; price?: number | null },
 ): string | null {
   if (category !== "goods") return category;
-  if (kind !== "info") return category;
+  if (kind === "noise" || kind === "news") return category;
+  // 测评 / 选购 / 价格资讯：既不是优惠也不是福利
+  if (GOODS_EDITORIAL_RE.test(input.title)) return "tech";
+  const text = `${input.title} ${input.summary ?? ""}`;
   const signals = contentSignals(input.title, input.summary ?? "");
   const paidish = input.obtain === "paid" || (typeof input.price === "number" && input.price > 0);
-  if (paidish || signals.promotion || signals.claim) return category;
+  // 免费领实物/生活福利 → 实物福利（offline）大类
+  if (kind === "freebie" && signals.claim && PHYSICAL_RE.test(text)) return "offline";
+  // 有价格或有促销 → 保留 goods（优惠）
+  if (paidish || signals.promotion) return category;
+  // 无价格、无促销、无领取证据 → 测评/资讯
   return "tech";
 }
 
