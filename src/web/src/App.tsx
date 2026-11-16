@@ -37,7 +37,6 @@ import {
 } from "lucide-react";
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { AdminGate } from "./components/AdminGate.tsx";
-import { PageHeading } from "./components/PageHeading.tsx";
 import { ADMIN_AUTH_EVENT } from "./lib/auth.ts";
 import {
   guestAddBlock,
@@ -190,20 +189,6 @@ const SECONDARY_VIEWS: Preset[] = [
 ];
 
 const PRESETS: Preset[] = [...PRIMARY_CHANNELS, ...SECONDARY_VIEWS];
-const CHANNEL_DESCRIPTION: Record<string, string> = {
-  verified: "已通过 AI 审核的近期福利，优先展示可直接领取与有条件领取的内容。",
-  pan: "网盘资源与课程资料集中查看，不混进限时领取的福利流。",
-  offline: "门店、现场与线下活动福利；领取前请核对地点和参与条件。",
-  deal: "近期特价与促销活动，可用价格上限进一步筛选。",
-  opensource: "值得关注的开源工具与项目，点击标题查看介绍或打开原项目。",
-  news: "重要新闻单独阅读，不与领取型福利混在一起。",
-  info: "行业动态与实用资讯，按方向筛选并快速扫读。",
-  codes: "含兑换码的近期资源；可直接复制，领取前请核对截止时间。",
-  urgent: "即将截止的活动，优先核对时间与领取条件。",
-  starred: "收藏的内容集中在这里；登录后可跨设备同步。",
-  hidden: "你主动隐藏的内容，可随时恢复到资源流。",
-  all: "浏览全部已收录内容，可继续按分类、来源和时间缩小范围。",
-};
 
 
 // 主仓库地址：顶栏 GitHub 图标跳这里
@@ -1263,9 +1248,6 @@ export function App() {
 
           {tab === "feed" && (
             <>
-              <div className="feed-heading">
-                <PageHeading eyebrow="资源流" title={PRESETS.find((p) => p.key === preset)?.label ?? "资源流"} description={CHANNEL_DESCRIPTION[preset] ?? ""} />
-              </div>
               {/* 移动端：频道胶囊 + 筛选/视图压成一行，省掉两条整行按钮 */}
               <div className="flex items-stretch border-b border-ink-100 bg-surface">
                 <div className="channel-nav no-scrollbar min-w-0 flex-1" role="group" aria-label="内容频道">

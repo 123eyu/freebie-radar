@@ -109,7 +109,6 @@
   gap: 16px;
   padding: 24px 0;
 }
-.feed-heading { padding: 0 24px; }
 .channel-nav {
   display: flex;
   gap: 4px;
@@ -165,7 +164,6 @@
 }
 @media (max-width: 639px) {
   .page-heading { padding: 18px 0; gap: 12px; }
-  .feed-heading { padding-inline: 14px; }
   .channel-nav { padding-inline: 6px; }
   .channel-nav button { min-height: 40px; padding-inline: 10px; font-size: 12px; }
   .feed-controls select { max-width: 100%; flex: 1 1 120px; }
