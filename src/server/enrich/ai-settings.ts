@@ -1,13 +1,14 @@
 import { config } from "../config.ts";
 import { all, get, run } from "../db.ts";
 import type { RawItem } from "../collectors/types.ts";
-import { NOISE_TITLE } from "./noise.ts";
+import { isNoiseTitle } from "./noise.ts";
 import { FREEBIE_ONLY_SOURCES } from "./index.ts";
 import type { ObtainMode } from "./obtain.ts";
 import { isContentKind, type ContentKind } from "./kind.ts";
 import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 
 import { CATEGORY_DESC, CATEGORY_KEYS } from "../../shared/taxonomy.ts";
+import { CLASSIFICATION_PROMPT } from "./evidence.ts";
 
 export type AiVerdict = {
   index: number;
@@ -205,7 +206,7 @@ export function aiReady(s = getAiSettings()): boolean {
 /** 是否命中入口噪音初筛（求助/问价/版本更新补丁 + 用户自定义噪音词）。 */
 export function matchesEntryNoise(title: string, s = getAiSettings()): boolean {
   if (!s.preFilterEnabled) return false;
-  if (NOISE_TITLE.test(title)) return true;
+  if (isNoiseTitle(title)) return true;
   if (s.customNoiseKeywords.length) {
     const lower = title.toLowerCase();
     if (s.customNoiseKeywords.some((kw) => lower.includes(kw.toLowerCase()))) return true;
@@ -280,6 +281,7 @@ function buildSystemPrompt(s: AiSettings): string {
   if (s.extraPrompt.trim()) {
     parts.push("", "补充审核规则（务必优先遵守）：", s.extraPrompt.trim());
   }
+  parts.push("", CLASSIFICATION_PROMPT);
   if (!s.learnFromFeedback) return parts.join("\n");
   try {
     const fb = feedbackStats(s.feedbackLimit);

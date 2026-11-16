@@ -6,14 +6,17 @@ import type { Collector, RawItem } from "./types.ts";
 type FeedSpec = {
   id: string;
   url: string;
+  categoryHint?: string;
+  kindHint?: string;
   limit?: number;
   via?: "direct" | "flaresolverr";
   /** 仅保留命中指定 RSS <category> 的条目（如 NodeSeek 的 info / promotion） */
   includeCategories?: string[];
   /** 排除命中指定 RSS <category> 的条目 */
   excludeCategories?: string[];
-  /** 标题或摘要必须包含至少一个关键词（大小写不敏感） */
+  /** 标题必须包含至少一个关键词（大小写不敏感） */
   titleKeywords?: string[];
+  excludeTitleKeywords?: string[];
   /** 针对 itch.io sale RSS：仅保留 100% 免费（discountpercent=100 或 price=$0.00） */
   only100Off?: boolean;
 };
@@ -159,9 +162,10 @@ export const rssCollector: Collector = {
         const incCats = (feed.includeCategories ?? []).map((s) => s.toLowerCase());
         const excCats = new Set((feed.excludeCategories ?? []).map((s) => s.toLowerCase()));
         const titleKws = (feed.titleKeywords ?? []).map((s) => s.toLowerCase()).filter(Boolean);
+        const excludedTitles = (feed.excludeTitleKeywords ?? []).map((s) => s.toLowerCase()).filter(Boolean);
 
         // 先过滤后截断 limit，避免垃圾分类占满配额把真福利挤掉
-        const scanPool = incCats.length || excCats.size || titleKws.length || feed.only100Off ? parsed.items : parsed.items.slice(0, limit);
+        const scanPool = incCats.length || excCats.size || titleKws.length || excludedTitles.length || feed.only100Off ? parsed.items : parsed.items.slice(0, limit);
         let keptForFeed = 0;
 
         for (const it of scanPool) {
@@ -183,6 +187,7 @@ export const rssCollector: Collector = {
           }
 
           const cleanT = cleanText(title, 200);
+          if (excludedTitles.some((word) => cleanT.toLowerCase().includes(word))) continue;
           const rawSummary =
             textOf(it.description) || textOf(it.summary) || textOf(it["content:encoded"]) || textOf(it.content);
           const cleanS = cleanText(rawSummary, 400);
@@ -206,7 +211,8 @@ export const rssCollector: Collector = {
             publishedAt: parseDate(published),
             expiresAt: saleEnds,
             imageUrl: imageOf(it, rawSummary, link),
-            categoryHint: feed.only100Off ? "game" : undefined,
+            categoryHint: feed.only100Off ? "game" : typeof feed.categoryHint === "string" ? feed.categoryHint : undefined,
+            kindHint: typeof feed.kindHint === "string" ? feed.kindHint : undefined,
             tags: [feed.id],
             raw: { feed: feed.id },
           });

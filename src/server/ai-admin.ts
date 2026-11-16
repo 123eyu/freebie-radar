@@ -1,11 +1,12 @@
 import { all, get, run } from "./db.ts";
 import { calibrateScoreByObtain } from "./enrich/alias.ts";
 import { demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
-import { isAuthoritativeNewsSource } from "./enrich/kind.ts";
 import { guessObtain } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { aiQueueStats } from "./enrich/ai-queue.ts";
-import { getSourceHints } from "./collectors/index.ts";
+import { getSourceHints, applyManualClassification, getManualClassification } from "./source-settings.ts";
+import { categoryForSource } from "../shared/source-classification.ts";
+import { isSharedResource } from "./enrich/evidence.ts";
 import { finishAiJob, getAiTelemetry, recordAiBatch, startAiJob } from "./enrich/ai-telemetry.ts";
 import { aiDedupDegradation, aiDedupStats, dedupeKeptItemsWithAi } from "./enrich/ai-dedup.ts";
 import {
@@ -245,6 +246,7 @@ let rejected = 0;
 if (!v.keep) rejected += 1;
         else keptIds.push(row.id);
         const obtain = v.obtain ?? guessObtain(row.title, row.summary ?? "");
+        const hints = getSourceHints(row.source_id);
         // 重审时重算一次基础分再校准，避免多次叠加乘除失真
         const baseEnriched = enrichItem(
           {
@@ -256,14 +258,15 @@ if (!v.keep) rejected += 1;
             expiresAt: row.expires_at,
           },
           row.source_id,
+          hints,
         );
         const baseScore = baseEnriched ? baseEnriched.score : row.score;
-        const category = isCategory(v.category) ? v.category : row.category;
+        const category = categoryForSource(row.source_id, isSharedResource(row.title, row.summary ?? "", row.content ?? "", row.url) ? "pan" : isCategory(v.category) ? v.category : row.category, hints);
         const quality =
           typeof v.quality === "number" && Number.isFinite(v.quality)
             ? Math.min(5, Math.max(1, Math.round(v.quality)))
             : null;
-        const kind = resolveKind(v.kind, v.keep, {
+        let kind = resolveKind(v.kind, v.keep, {
           title: row.title,
           summary: row.summary ?? "",
           sourceId: row.source_id,
@@ -272,9 +275,11 @@ if (!v.keep) rejected += 1;
           isFree: baseEnriched?.isFree ?? false,
           price: baseEnriched?.price ?? null,
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(row.source_id),
+          kindHint: hints.kindHint,
+          guardEnabled: hints.guardEnabled,
         });
         // 资讯/水帖不许落进实地福利
-        const finalCategory = demoteOfflineCategory(
+        let finalCategory = demoteOfflineCategory(
           category,
           kind,
           row.title,
@@ -283,7 +288,8 @@ if (!v.keep) rejected += 1;
         );
         const effectiveKeep = kind === "noise" ? false : v.keep;
         const keep = effectiveKeep ? 1 : 0;
-        const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind });
+        const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind, category: finalCategory });
+        ({ kind, category: finalCategory } = applyManualClassification(row.id, finalCategory, kind));
         const score = calibrateScoreByObtain(baseScore, obtain, effectiveKeep, quality, kind, {
           title: row.title,
           summary: row.summary ?? "",
@@ -323,11 +329,14 @@ if (!v.keep) rejected += 1;
  * 零 Token 存量分类重整：用最新关键词规则重算 active 条目的 category（以及未 AI 审核条目的 kind / obtain）。
  * scope = "other"：仅挽救落入 other/null 的条目；scope = "all"：全量 active 按新规则刷新（已 AI 审核的只刷新 category=other 的漏网条目）。
  */
-export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
+export function reclassifyStoredItems(scope: "other" | "all" = "other", options: { dryRun?: boolean; sourceId?: string; itemId?: number; forceAutomatic?: boolean } = {}): {
   scanned: number;
   updated: number;
   movedFromOther: number;
   scope: "other" | "all";
+  dryRun: boolean;
+  rerouted: number;
+  samples: { id: number; title: string; sourceId: string; fromKind: string | null; toKind: string | null; fromCategory: string | null; toCategory: string | null }[];
 } {
   const cond = scope === "other" ? "status = 'active' AND (category = 'other' OR category IS NULL)" : "status = 'active'";
   const rows = all<{
@@ -337,6 +346,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     url: string;
     title: string;
     summary: string | null;
+    content: string | null;
     category: string | null;
     kind: string | null;
     obtain: string | null;
@@ -348,20 +358,27 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     score: number;
     base_score: number | null;
   }>(
-    `SELECT id, source_id, external_id, url, title, summary, category, kind, obtain, ai_keep, ai_quality, ai, score, base_score, published_at, expires_at
-       FROM items WHERE ${cond} ORDER BY id DESC LIMIT 6000`,
+    `SELECT id, source_id, external_id, url, title, summary, SUBSTR(content,1,12000) AS content, category, kind, obtain, ai_keep, ai_quality, ai, score, base_score, published_at, expires_at
+       FROM items WHERE ${options.itemId ? "1=1" : cond}${options.sourceId ? " AND source_id = ?" : ""}${options.itemId ? " AND id = ?" : ""} ORDER BY id DESC LIMIT 6000`,
+    ...(options.sourceId ? [options.sourceId] : []),
+    ...(options.itemId ? [options.itemId] : []),
   );
 
   let updated = 0;
   let movedFromOther = 0;
+  let rerouted = 0;
+  const hintsBySource = new Map<string, ReturnType<typeof getSourceHints>>();
+  const samples: { id: number; title: string; sourceId: string; fromKind: string | null; toKind: string | null; fromCategory: string | null; toCategory: string | null }[] = [];
   for (const r of rows) {
-    const hints = getSourceHints(r.source_id);
+    let hints = hintsBySource.get(r.source_id);
+    if (!hints) { hints = getSourceHints(r.source_id); hintsBySource.set(r.source_id, hints); }
     const e = enrichItem(
       {
         externalId: r.external_id ?? String(r.id),
         url: r.url,
         title: r.title,
         summary: r.summary ?? "",
+        content: r.content,
         publishedAt: r.published_at,
         expiresAt: r.expires_at,
       },
@@ -371,24 +388,25 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
     if (!e) continue;
     // AI 审核给出的分类优先：规则以前只用它算 kind，落库却存了关键词结果，导致 AI 判对的分类被丢掉
     let aiCategory: string | null = null;
+    let aiKind: string | null = null;
     if (r.ai) {
       try {
-        const parsed = JSON.parse(r.ai) as { category?: unknown };
+        const parsed = JSON.parse(r.ai) as { category?: unknown; kind?: unknown };
         if (isCategory(parsed.category)) aiCategory = parsed.category;
+        if (typeof parsed.kind === "string") aiKind = parsed.kind;
       } catch {
         aiCategory = null;
       }
     }
     // 已人工/AI 审核过的非 other 条目不随意覆盖其分类，只修复 other / 误判成 news 的 VPS 帖子 / 非权威源的 news
     const catWasLegacyNews = (r.category === "news" || r.category === "headline") && e.category === "vps";
-    let nextCat =
+    let nextCat: string | null =
       aiCategory ??
-      (r.ai_keep !== null && r.category && r.category !== "other" && !catWasLegacyNews ? r.category : e.category);
-    let nextKind = r.ai_keep === null ? e.kind : (r.kind ?? e.kind);
-    if (hints.kindHint && r.ai_keep !== 0 && nextKind !== hints.kindHint) {
-      nextKind = e.kind;
-    } else if (nextKind === "news" && !isAuthoritativeNewsSource(r.source_id, hints.kindHint)) {
-      nextKind = resolveKind("news", r.ai_keep === 1 ? true : r.ai_keep === 0 ? false : null, {
+      (!options.forceAutomatic && r.ai_keep !== null && r.category && r.category !== "other" && !catWasLegacyNews ? r.category : e.category);
+    nextCat = categoryForSource(r.source_id, isSharedResource(r.title, r.summary ?? "", r.content ?? "", r.url) ? "pan" : nextCat, hints);
+    let nextKind = options.forceAutomatic ? aiKind ?? e.kind : r.ai_keep === null ? e.kind : (r.kind ?? e.kind);
+    {
+      nextKind = resolveKind(nextKind, r.ai_keep === 1 ? true : r.ai_keep === 0 ? false : null, {
         title: r.title,
         summary: r.summary ?? "",
         sourceId: r.source_id,
@@ -397,12 +415,15 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
         isFree: e.isFree,
         price: e.price,
         kindHint: hints.kindHint,
+        guardEnabled: hints.guardEnabled,
+        freebieOnlySource: FREEBIE_ONLY_SOURCES.has(r.source_id),
       });
     }
     const fallbackObtain = guessObtain(r.title, r.summary ?? "");
     const nextObtain = r.ai_keep === null ? fallbackObtain : (r.obtain ?? fallbackObtain);
     // 资讯/水帖不许落进实地福利
     nextCat = demoteOfflineCategory(nextCat, nextKind, r.title, r.summary ?? "", e.category) as typeof nextCat;
+    ({ category: nextCat, kind: nextKind } = applyManualClassification(r.id, nextCat, nextKind as import("../shared/taxonomy.ts").ContentKind));
 
 // 顺手用新的多维加权口径重算分数（规则内容分存进 base_score，AI 质量分参与合成）
     const keepBool = r.ai_keep === null ? null : r.ai_keep === 1;
@@ -426,13 +447,28 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
       nextScore !== r.score ||
       e.baseScore !== (r.base_score ?? null)
     ) {
-      run(
-        "UPDATE items SET category = ?, kind = ?, obtain = ?, base_score = ?, score = ? WHERE id = ?",
+      if (nextCat !== r.category || nextKind !== r.kind) {
+        rerouted += 1;
+        if (samples.length < 30) samples.push({ id: r.id, title: r.title, sourceId: r.source_id, fromKind: r.kind, toKind: nextKind, fromCategory: r.category, toCategory: nextCat });
+      }
+      let ai = r.ai;
+      if (ai && !getManualClassification(r.id) && (nextCat !== r.category || nextKind !== r.kind)) {
+        try {
+          const parsed: unknown = JSON.parse(ai);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ai = JSON.stringify({
+            ...parsed, kind: nextKind, category: nextCat,
+            classificationCorrection: { previousKind: r.kind, previousCategory: r.category, reason: "来源固定分类或内容证据校验", at: new Date().toISOString() },
+          });
+        } catch { /* preserve malformed legacy AI */ }
+      }
+      if (!options.dryRun) run(
+        "UPDATE items SET category = ?, kind = ?, obtain = ?, base_score = ?, score = ?, ai = ? WHERE id = ?",
         nextCat,
         nextKind,
         nextObtain,
         e.baseScore,
         nextScore,
+        ai,
         r.id,
       );
       updated += 1;
@@ -441,7 +477,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other"): {
       }
     }
   }
-  return { scanned: rows.length, updated, movedFromOther, scope };
+  return { scanned: rows.length, updated, movedFromOther, scope, dryRun: Boolean(options.dryRun), rerouted, samples };
 }
 
 export { publicAiSettings, saveAiSettings, testAiConnection, DEFAULT_PROMPT, aiReady, getAiSettings, feedbackStats };

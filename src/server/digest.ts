@@ -1,7 +1,7 @@
 import { config } from "./config.ts";
 import { all, get, run } from "./db.ts";
 import { CATEGORY_LABEL, dedupeByTitle, KIND_LABEL, type ContentKind, type DedupeEntry } from "./enrich/index.ts";
-import { hasValueSignal, NOISE_TITLE } from "./enrich/noise.ts";
+import { hasValueSignal, isNoiseTitle } from "./enrich/noise.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { getPushSettings, passesPushFilters, sourceLabel } from "./push.ts";
 import { sendTelegram } from "./telegram.ts";
@@ -104,11 +104,11 @@ export function pickDaily(date = new Date(), topN = config.dailyTopN): DigestIte
   });
 
   const hasSignal = (r: DigestItem) => aiKeepMap.get(r.id) === true || hasValueSignal(r.title, r.kind);
-  const strictRaw = fresh.filter((r) => r.score >= MIN_DIGEST_SCORE && hasSignal(r) && !NOISE_TITLE.test(r.title));
+  const strictRaw = fresh.filter((r) => r.score >= MIN_DIGEST_SCORE && hasSignal(r) && !isNoiseTitle(r.title));
   const strict = dedupeByTitle(strictRaw, pushed.seeds);
   if (strict.length >= Math.min(6, topN)) return strict.slice(0, topN);
 
-  const relaxedRaw = fresh.filter((r) => hasSignal(r) && !NOISE_TITLE.test(r.title) && r.score >= MIN_DIGEST_SCORE - 10);
+  const relaxedRaw = fresh.filter((r) => hasSignal(r) && !isNoiseTitle(r.title) && r.score >= MIN_DIGEST_SCORE - 10);
   const relaxed = dedupeByTitle(relaxedRaw, pushed.seeds);
   return relaxed.slice(0, topN);
 }

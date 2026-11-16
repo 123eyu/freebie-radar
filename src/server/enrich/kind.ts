@@ -1,5 +1,6 @@
-import { DEAL_HINT, NOISE_TITLE, OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
+import { DEAL_HINT, isNoiseTitle, OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
 import { KIND_LABEL, KIND_SET, isContentKind, type ContentKind } from "../../shared/taxonomy.ts";
+import { contentSignals } from "./evidence.ts";
 
 export type { ContentKind };
 export { KIND_LABEL, isContentKind };
@@ -80,44 +81,50 @@ export function guessKind(input: {
   price?: number | null;
   freebieOnlySource?: boolean;
   kindHint?: string | null;
+  guardEnabled?: boolean;
 }): ContentKind {
   const title = input.title ?? "";
   const text = `${title} ${input.summary ?? ""}`;
-  if (NOISE_TITLE.test(title)) return "noise";
+  const guard = input.guardEnabled !== false;
+  const signals = contentSignals(title, input.summary);
+  if (isNoiseTitle(title)) return "noise";
   if (input.freebieOnlySource) return "freebie";
   if (input.kindHint && isContentKind(input.kindHint) && input.kindHint !== "noise") {
-    return input.kindHint;
+    if (!guard || !["freebie", "deal", "opensource"].includes(input.kindHint) ||
+        (input.kindHint === "freebie" && signals.claim) || (input.kindHint === "deal" && signals.promotion) ||
+        (input.kindHint === "opensource" && signals.repository)) return input.kindHint;
   }
+  if (guard && signals.editorial) return isAuthoritativeNewsSource(input.sourceId, input.kindHint) ? "news" : "info";
 
-  const hasDealWord = DEAL_HINT.test(title);
-  const hasPromoWord = PROMO_HINT.test(text);
-  const hasOpenSource = input.category === "opensource" || OPENSOURCE_HINT.test(text);
+  const hasDealWord = guard ? signals.claim : DEAL_HINT.test(title);
+  const hasPromoWord = guard ? signals.promotion : PROMO_HINT.test(text);
+  const hasOpenSource = guard ? signals.repository : input.category === "opensource" || OPENSOURCE_HINT.test(text);
 
   if (hasOpenSource && !hasDealWord && input.obtain !== "paid") {
     return "opensource";
   }
-  if (input.sourceId && OPENSOURCE_SOURCES.has(input.sourceId) && !hasDealWord) {
+  if (input.sourceId && OPENSOURCE_SOURCES.has(input.sourceId) && !hasDealWord && (!guard || signals.repository)) {
     return "opensource";
   }
 
   const hasPaidPrice = !input.isFree && typeof input.price === "number" && input.price > 0;
-  if (input.obtain === "paid" || hasPaidPrice) {
+  if ((input.obtain === "paid" || hasPaidPrice) && (!guard || signals.promotion)) {
     return "deal";
   }
   if (hasPromoWord && !hasDealWord && !input.isFree) {
     return "deal";
   }
-  if ((input.category === "carpool" || input.category === "trade") && !input.isFree && !hasDealWord) {
+  if ((input.category === "carpool" || input.category === "trade") && !input.isFree && !hasDealWord && (!guard || signals.promotion)) {
     return "deal";
   }
-  if (input.sourceId && DEAL_SOURCES.has(input.sourceId) && !input.isFree && !hasDealWord) {
+  if (input.sourceId && DEAL_SOURCES.has(input.sourceId) && !input.isFree && !hasDealWord && (!guard || signals.promotion)) {
     return "deal";
   }
 
   if (input.sourceId && NEWS_SOURCES.has(input.sourceId)) return "news";
-  if (input.isFree || hasDealWord) return "freebie";
+  if ((!guard && input.isFree) || hasDealWord) return "freebie";
   if (input.sourceId && INFO_SOURCES.has(input.sourceId)) return "info";
-  if (input.category === "opensource") return "opensource";
+  if (input.category === "opensource" && (!guard || signals.repository)) return "opensource";
   if (
     input.category === "headline" ||
     input.category === "world" ||
@@ -130,7 +137,7 @@ export function guessKind(input: {
     // 非权威新闻源（如什么值得买/IT之家/社区）不得落入 news，统一归为 info（导购站由上方 DEAL_SOURCES 先拦）
     return "info";
   }
-  return "freebie";
+  return guard ? "info" : "freebie";
 }
 
 function coerceNonNewsKind(fallbackInput: Parameters<typeof guessKind>[0]): ContentKind {
@@ -138,12 +145,12 @@ function coerceNonNewsKind(fallbackInput: Parameters<typeof guessKind>[0]): Cont
     fallbackInput.sourceId &&
     DEAL_SOURCES.has(fallbackInput.sourceId) &&
     !fallbackInput.isFree &&
-    !DEAL_HINT.test(fallbackInput.title ?? "")
+    !DEAL_HINT.test(fallbackInput.title ?? "") && fallbackInput.guardEnabled === false
   ) {
     return "deal";
   }
   const guessed = guessKind(fallbackInput);
-  return guessed === "news" || guessed === "noise" ? "info" : guessed;
+  return guessed === "noise" || (guessed === "news" && !isAuthoritativeNewsSource(fallbackInput.sourceId, fallbackInput.kindHint)) ? "info" : guessed;
 }
 
 /** 结合 AI 输出与规则上下文归一化最终 kind。 */
@@ -154,6 +161,13 @@ export function resolveKind(
 ): ContentKind {
   if (aiKeep === false) return "noise";
   if (isContentKind(aiKind)) {
+    if (fallbackInput.guardEnabled !== false) {
+      const signals = contentSignals(fallbackInput.title, fallbackInput.summary);
+      if ((aiKind === "deal" && !signals.promotion) ||
+          (aiKind === "freebie" && !signals.claim && !fallbackInput.freebieOnlySource) ||
+          (aiKind === "opensource" && !signals.repository)) return coerceNonNewsKind(fallbackInput);
+    }
+    if (fallbackInput.guardEnabled !== false && aiKind === "noise" && aiKeep === true) return coerceNonNewsKind(fallbackInput);
     if (aiKind === "noise" && aiKeep === true) return guessKind(fallbackInput);
     if (aiKind === "opensource" && (fallbackInput.category === "headline" || fallbackInput.category === "world" || fallbackInput.category === "stock")) {
       return guessKind(fallbackInput);
@@ -165,6 +179,7 @@ export function resolveKind(
     return aiKind;
   }
   if (aiKeep === true) {
+    if (fallbackInput.guardEnabled !== false) return coerceNonNewsKind(fallbackInput);
     if (fallbackInput.category === "opensource") return "opensource";
     if (fallbackInput.obtain === "paid" || (!fallbackInput.isFree && typeof fallbackInput.price === "number" && fallbackInput.price > 0)) {
       return "deal";

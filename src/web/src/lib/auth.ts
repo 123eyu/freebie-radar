@@ -29,6 +29,7 @@ export function clearToken(): void {
 }
 
 let installed = false;
+export const ADMIN_AUTH_EVENT = "radar-admin-auth-change";
 
 /** 在 main.tsx 里调用一次：所有 fetch 自动附带管理密码。 */
 export function installAuthFetch(): void {
@@ -37,10 +38,20 @@ export function installAuthFetch(): void {
   const orig = window.fetch.bind(window);
   window.fetch = ((input: RequestInfo | URL, init: RequestInit = {}) => {
     const token = getToken();
-    if (!token) return orig(input, init);
-    const headers = new Headers(init.headers ?? {});
+    const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+    if (!token || url.origin !== window.location.origin || !url.pathname.startsWith("/api/")) return orig(input, init);
+    const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
     if (!headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
-    return orig(input, { ...init, headers });
+    return orig(input, { ...init, headers }).then((response) => {
+      if (response.status === 401 && headers.get("authorization") === `Bearer ${token}`) {
+        // Personal-session expiry must not log the administrator out.
+        if (!url.pathname.startsWith("/api/me/")) {
+          clearToken();
+          window.dispatchEvent(new Event(ADMIN_AUTH_EVENT));
+        }
+      }
+      return response;
+    });
   }) as typeof fetch;
 }
 
@@ -48,8 +59,5 @@ export function installAuthFetch(): void {
 export async function verifyToken(token: string): Promise<boolean> {
   const r = await fetch("/api/auth/check", { headers: { authorization: `Bearer ${token}` } });
   if (!r.ok) return false;
-  // 真正需要密码的接口再探一次，确认有权限
-  const probe = await fetch("/api/push", { headers: { authorization: `Bearer ${token}` } });
-  if (probe.status === 401) return false;
-  return true;
+  return Boolean(((await r.json()) as { isAdmin?: boolean }).isAdmin);
 }

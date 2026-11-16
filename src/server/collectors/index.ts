@@ -39,6 +39,10 @@ import { ngaCollector } from "./nga.ts";
 import { biliCollector } from "./bili.ts";
 import { weiboCollector } from "./weibo.ts";
 import type { Collector, RawItem, SourceSeed } from "./types.ts";
+import { getSourceHints, applyManualClassification } from "../source-settings.ts";
+import { categoryForSource } from "../../shared/source-classification.ts";
+import { isSharedResource } from "../enrich/evidence.ts";
+export { getSourceHints } from "../source-settings.ts";
 
 export const COLLECTORS: Collector[] = [
   mockCollector, linuxdoCollector, v2exCollector, githubCollector, rssCollector, telegramCollector,
@@ -50,7 +54,7 @@ const BY_KIND = new Map(COLLECTORS.map((c) => [c.kind, c]));
 /** 内置源清单；collector 落地后在此追加。 */
 export const SEEDS: SourceSeed[] = [
   { id: "linuxdo-welfare", name: "LINUX DO · 福利羊毛", kind: "linuxdo", enabled: true, intervalSec: 90, config: { categoryId: 36, rssSlug: "welfare", categoryName: "福利羊毛" } },
-  { id: "linuxdo-resource", name: "LINUX DO · 资源荟萃", kind: "linuxdo", enabled: false, intervalSec: 180, config: { categoryId: 14, rssSlug: "resource", categoryName: "资源荟萃" } },
+  { id: "linuxdo-resource", name: "LINUX DO · 资源荟萃", kind: "linuxdo", enabled: false, intervalSec: 180, config: { categoryId: 14, rssSlug: "resource", categoryName: "资源荟萃", fixedCategory: "pan" } },
   { id: "v2ex-free", name: "V2EX · 免费赠送", kind: "v2ex", enabled: true, intervalSec: 120, config: { node: "free" } },
   { id: "v2ex-deals", name: "V2EX · 优惠信息", kind: "v2ex", enabled: true, intervalSec: 300, config: { node: "deals" } },
   { id: "v2ex-cloud", name: "V2EX · 云计算", kind: "v2ex", enabled: false, intervalSec: 1800, config: { node: "cloud" } },
@@ -561,10 +565,10 @@ function persist(
   let skipped = 0;
   const now = new Date().toISOString();
   const staleCutoffMs = Date.now() - Math.max(getRetention().keptDays, 7) * 86_400_000;
+  const srcHints = getSourceHints(sourceId);
   tx(() => {
     for (let index = 0; index < items.length; index += 1) {
       const raw = items[index]!;
-      const srcHints = getSourceHints(sourceId);
       const e = enrichItem(raw, sourceId, srcHints);
       if (!e) {
         skipped += 1;
@@ -578,18 +582,19 @@ function persist(
             title: e.title,
             summary: e.summary ?? undefined,
             sourceId,
-            category: verdict.category || e.category,
+            category: categoryForSource(sourceId, verdict.category || e.category, srcHints),
             obtain: effectiveObtain,
             isFree: e.isFree,
             price: e.price,
             freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
             kindHint: srcHints.kindHint,
+            guardEnabled: srcHints.guardEnabled,
           })
         : e.kind;
       // AI 给出的分类优先于关键词规则（以前这里只用规则结果，AI 判对的分类被丢掉）；
       // 再统一收口：资讯/水帖不许落进实地福利
       const effectiveCategory = demoteOfflineCategory(
-        verdict?.category && isCategory(verdict.category) ? verdict.category : e.category,
+        categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : verdict?.category && isCategory(verdict.category) ? verdict.category : e.category, srcHints),
         effectiveKind,
         e.title,
         e.summary ?? "",
@@ -615,7 +620,7 @@ const scoreCtx = {
         effectiveKind,
         scoreCtx,
       );
-      const aiJson = verdict ? JSON.stringify({ ...verdict, kind: effectiveKind }) : null;
+      const aiJson = verdict ? JSON.stringify({ ...verdict, kind: effectiveKind, category: effectiveCategory }) : null;
       const status = e.keep ? "active" : "expired";
       const titleKey = resolveDbMergeKey(e.title);
 
@@ -653,10 +658,15 @@ const scoreCtx = {
           existing.ai_keep = null;
           existing.kind = null;
         }
-        const nextKind = verdict ? effectiveKind : existing.ai_keep === null ? e.kind : existing.kind;
-        const nextScore = verdict
+        const nextClassification = applyManualClassification(existing.id, effectiveCategory, verdict ? effectiveKind : resolveKind(existing.kind, existing.ai_keep === null ? null : existing.ai_keep === 1, {
+          title: e.title, summary: e.summary ?? "", sourceId, category: effectiveCategory, obtain: existing.obtain,
+          isFree: e.isFree, price: e.price, kindHint: srcHints.kindHint, guardEnabled: srcHints.guardEnabled,
+          freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
+        }));
+        const nextKind = nextClassification.kind;
+        const nextScore = verdict && nextKind === effectiveKind
           ? score
-: calibrateScoreByObtain(
+          : calibrateScoreByObtain(
               e.baseScore,
               existing.obtain,
               existing.ai_keep === null ? null : existing.ai_keep === 1,
@@ -683,7 +693,7 @@ const scoreCtx = {
           titleKey,
           e.summary ?? "",
           e.author ?? null,
-          effectiveCategory,
+          nextClassification.category,
           JSON.stringify(e.tags),
           e.baseScore,
           nextScore,
@@ -696,7 +706,7 @@ const scoreCtx = {
           aiJson,
           verdict?.obtain ?? null,
           verdict ? (verdict.keep ? 1 : 0) : null,
-          verdict ? effectiveKind : existing.ai_keep === null ? e.kind : null,
+          nextKind,
           effectiveQuality,
           e.imageUrl,
           e.content ?? null,
@@ -898,25 +908,6 @@ export async function runAll(
 
 export const BUILTIN_SOURCE_IDS = new Set(SEEDS.map((s) => s.id));
 
-export function getSourceHints(sourceId: string): { kindHint: string | null; categoryHint: string | null } {
-  const row = get<{ config: string }>("SELECT config FROM sources WHERE id = ?", sourceId);
-  if (!row?.config) return { kindHint: null, categoryHint: null };
-  try {
-    const cfg = JSON.parse(row.config) as { kindHint?: unknown; categoryHint?: unknown; feeds?: Array<{ categoryHint?: unknown }> };
-    const kindHint = typeof cfg.kindHint === "string" && cfg.kindHint.trim() ? cfg.kindHint.trim() : null;
-    const feedHint = Array.isArray(cfg.feeds) ? cfg.feeds.find((f) => typeof f?.categoryHint === "string")?.categoryHint : undefined;
-    const categoryHint =
-      typeof cfg.categoryHint === "string" && cfg.categoryHint.trim()
-        ? cfg.categoryHint.trim()
-        : typeof feedHint === "string" && feedHint.trim()
-          ? feedHint.trim()
-          : null;
-    return { kindHint, categoryHint };
-  } catch {
-    return { kindHint: null, categoryHint: null };
-  }
-}
-
 export function addCustomRssSource(input: {
   id?: string;
   name: string;
@@ -924,6 +915,7 @@ export function addCustomRssSource(input: {
   intervalSec?: number;
   kindHint?: string;
   categoryHint?: string;
+  fixedCategory?: string;
 }): string {
   const cleanUrl = input.url.trim();
   const slug = (input.id || input.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32);
@@ -934,6 +926,7 @@ export function addCustomRssSource(input: {
   const cfg: Record<string, unknown> = { feeds: [feed] };
   if (input.kindHint?.trim()) cfg.kindHint = input.kindHint.trim();
   if (input.categoryHint?.trim()) cfg.categoryHint = input.categoryHint.trim();
+  if (input.fixedCategory?.trim()) cfg.fixedCategory = input.fixedCategory.trim();
   run(
     `INSERT INTO sources (id, name, kind, enabled, config, interval_sec, created_at)
      VALUES (?, ?, 'rss', 1, ?, ?, ?)

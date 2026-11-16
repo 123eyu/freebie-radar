@@ -191,10 +191,10 @@ export const CHANNELS: { key: string; label: string; categories: Category[]; exc
   { key: "free", label: "全部白嫖", categories: FREEBIE_CATEGORY_KEYS },
   { key: "offline", label: "实地福利", categories: ["offline"] },
   { key: "pan", label: "网盘/网课", categories: ["pan", "course"] },
-  { key: "deal", label: "好价", categories: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "pan", "course", "hardware", "goods", "design", "dev", "security", "edu", "other"] },
-  { key: "opensource", label: "开源", categories: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "course", "edu", "other"] },
-  { key: "news", label: "重要新闻", categories: ["headline", "world", "finance", "tech", "stock", "news", "security", "other"] },
-  { key: "info", label: "行业资讯", categories: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "course", "edu", "news", "other"] },
+  { key: "deal", label: "好价", categories: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "hardware", "goods", "design", "dev", "security", "edu", "other"], exclude: ["pan", "course"] },
+  { key: "opensource", label: "开源", categories: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "edu", "other"], exclude: ["pan", "course"] },
+  { key: "news", label: "重要新闻", categories: ["headline", "world", "finance", "tech", "stock", "news", "security", "other"], exclude: ["pan", "course"] },
+  { key: "info", label: "行业资讯", categories: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "edu", "news", "other"], exclude: ["pan", "course"] },
 ];
 
 /** 该频道要排除的分类（主页查询用它拼 excludeCategory，避免分类胶囊里出现点了没结果的项）。 */

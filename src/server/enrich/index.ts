@@ -7,6 +7,8 @@ import { OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
 import { guessObtain } from "./obtain.ts";
 import { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind } from "./kind.ts";
 import { CATEGORY_LABEL, isCategory, type Category } from "../../shared/taxonomy.ts";
+import { categoryForSource, type SourceHints } from "../../shared/source-classification.ts";
+import { isSharedResource } from "./evidence.ts";
 
 export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type { Category };
@@ -267,6 +269,9 @@ export function classify(
     if (score > best.score) best = { category: rule.category, hits, score };
   }
   const tags = best.hits.slice(0, 6);
+  if (best.category === "pan" && !isSharedResource(title, summary) && /网盘|云盘/.test(text) && /会员|容量|扩容|套餐|不限速|空间/.test(text)) {
+    return { category: /会员|不限速/.test(text) ? "media" : "cloud", tags };
+  }
   return { category: best.category, tags };
 }
 /**
@@ -438,7 +443,7 @@ export function scoreItem(input: {
 export function enrichItem(
   raw: RawItem,
   sourceId: string,
-  hints?: { kindHint?: string | null; categoryHint?: string | null },
+  hints?: SourceHints,
 ): EnrichedItem | null {
   const title = cleanText(raw.title, 200);
   if (!title) return null;
@@ -449,6 +454,8 @@ export function enrichItem(
   const guessed = classify(title, summary);
   const hintCat = raw.categoryHint ?? hints?.categoryHint ?? null;
   let category: Category = guessed.category === "other" && isCategory(hintCat) ? hintCat : guessed.category;
+  if (isSharedResource(title, raw.summary ?? "", raw.content ?? "", raw.url)) category = "pan";
+  category = categoryForSource(sourceId, category, hints);
   let tags = guessed.tags;
   const codes = extractCodes(title, raw.content ?? raw.summary ?? "");
   const priceInfo = extractPrice(title, summary);
@@ -463,7 +470,8 @@ export function enrichItem(
     isFree: priceInfo.isFree,
     price: priceInfo.price,
     freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
-    kindHint: hints?.kindHint ?? null,
+    kindHint: raw.kindHint ?? hints?.kindHint ?? null,
+    guardEnabled: hints?.guardEnabled,
   };
   let kind = guessKind(kindInput);
   // 实地福利必须是「能到店领到的实物福利」：好价（deal）和只撞上地点词的资讯/闲聊一律退回

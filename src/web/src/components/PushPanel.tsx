@@ -53,6 +53,8 @@ function Toggle({
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={value}
       onClick={() => onChange(!value)}
       className="flex w-full items-center justify-between gap-3 rounded-lg border border-ink-200 bg-surface-hover px-3.5 py-2.5 text-left transition-colors hover:border-ink-300"
     >
@@ -163,6 +165,7 @@ const AGE_OPTIONS: { label: string; hours: number }[] = [
 ];
 
 const REJECT_LABELS: { key: string; label: string }[] = [
+  { key: "hidden", label: "个人已关闭" },
   { key: "blocked", label: "屏蔽词" },
   { key: "duplicate", label: "跨源去重" },
   { key: "stale", label: "超新帖时效" },
@@ -200,6 +203,7 @@ export function PushPanel({
 }) {
   const [subTab, setSubTab] = useState<PushSubTab>("filters");
   const [busy, setBusy] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const s = payload?.settings;
   const stats = payload?.stats;
 
@@ -225,8 +229,11 @@ export function PushPanel({
 
   const save = async (patch: Partial<PushSettings>) => {
     setBusy("save");
+    setOperationError(null);
     try {
       await onSave(patch);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : "保存失败，请重试");
     } finally {
       setBusy(null);
     }
@@ -249,7 +256,8 @@ export function PushPanel({
   const enabledSources = sources.filter((src) => src.enabled);
 
   return (
-    <div className="space-y-4">
+    <fieldset disabled={busy !== null} className="min-w-0 space-y-4">
+      {operationError && <p role="alert" className="panel border-alert-border p-3 text-[12px] text-alert">{operationError}</p>}
       {/* 总开关 + 实时状态条 */}
       <section className="panel flex flex-wrap items-center justify-between gap-4 p-4">
         <div className="flex flex-wrap items-center gap-6">
@@ -258,7 +266,7 @@ export function PushPanel({
               <BellRing size={18} />
             </div>
             <div>
-              <div className="text-[14px] font-semibold text-ink-950">Telegram 自动推送</div>
+              <div className="text-[14px] font-semibold text-ink-950">{s.deliverVia === "webhook" ? "Webhook" : "Telegram"} 自动推送</div>
               <div className="text-[12px] text-ink-500">
                 {s.enabled
                   ? payload?.quiet
@@ -303,7 +311,7 @@ export function PushPanel({
           {payload?.defaults && (
             <button
               type="button"
-              onClick={() => void save(payload.defaults)}
+              onClick={() => { if (window.confirm("恢复默认会重置全部推送规则并关闭推送，继续吗？")) void save({ ...payload.defaults, enabled: false }); }}
               className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12px] font-medium text-ink-600 hover:bg-ink-100"
               title="恢复全部推送规则为默认值"
             >
@@ -327,7 +335,7 @@ export function PushPanel({
 
       {!payload?.ready && (
         <div className="rounded-lg border border-code-border bg-code-subtle p-3.5 text-[12.5px] text-amber-900">
-          服务端尚未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID（或 PUSH_CHANNEL=none），这里的设置会提前保存，配好凭据后立即生效。
+          当前渠道尚未就绪。个人用户请先在「我的」保存渠道凭据；自建站请检查服务端推送配置。规则可以先保存，但不会发送消息。
         </div>
       )}
 
@@ -1568,6 +1576,8 @@ export function PushPanel({
                     setBusy("preview");
                     try {
                       await onPreview();
+                    } catch {
+                      setOperationError("网络异常，试算失败，请重试");
                     } finally {
                       setBusy(null);
                     }
@@ -1581,7 +1591,10 @@ export function PushPanel({
                   onClick={async () => {
                     setBusy("flush");
                     try {
+                      if (payload?.quiet && !window.confirm("当前处于免打扰时段，仍要手动发送攒批吗？")) return;
                       await onFlush();
+                    } catch {
+                      setOperationError("网络异常，无法确认发送结果，请查看记录");
                     } finally {
                       setBusy(null);
                     }
@@ -1596,6 +1609,8 @@ export function PushPanel({
                     setBusy("test");
                     try {
                       await onTest();
+                    } catch {
+                      setOperationError("网络异常，无法确认测试结果，请查看记录");
                     } finally {
                       setBusy(null);
                     }
@@ -1687,6 +1702,6 @@ export function PushPanel({
           </section>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }

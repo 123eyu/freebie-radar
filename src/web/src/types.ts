@@ -32,6 +32,7 @@ export type Item = {
   last_seen_at: string;
   /** 同一福利被多少个源报道（1 = 只有这一条） */
   dupCount?: number;
+  manualClassification?: { category: string | null; kind: string | null; note: string; updated_at: string } | null;
 };
 
 export type Stats = {
@@ -129,6 +130,9 @@ export type PushSettings = {
   maxPerBatch: number;
   quietEnabled: boolean;
   quietHours: string;
+  deliverVia: "telegram" | "webhook";
+  webhookUrl: string;
+  webhookSecret: string;
   quietAction: QuietAction;
   timezone: string;
   maxAgeHours: number;

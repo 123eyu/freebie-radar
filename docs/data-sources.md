@@ -1,5 +1,7 @@
 # 数据源侦察报告
 
+> 按源固定分类、RSS 表单过滤、误判诊断与人工移动见 [分类管理指南](classification.md)。
+
 > 实测时间：2026-11-10 / 2026-11-11。所有结论都来自真实请求输出，原始数据见 `docs/probe-results.json`、`docs/probe2-results.json`、`docs/fs-test.json`。
 
 ## 0. 网络拓扑（决定了整个架构）

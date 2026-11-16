@@ -1,5 +1,12 @@
 import type { Hono } from "hono";
-import { all, get, run, type SqlValue } from "./db.ts";
+import { all, get, run, tx, dbRevision, type SqlValue } from "./db.ts";
+import { registerSecurity, registerPublicCache, limitUserAction, adminHostAllowed } from "./security.ts";
+import { reconcileSourceCategory, getSourceHints, getManualClassification } from "./source-settings.ts";
+import { getClassificationSettings, saveClassificationSettings } from "./classification-settings.ts";
+import { contentSignals } from "./enrich/evidence.ts";
+import { enrichItem, resolveKind } from "./enrich/index.ts";
+import { guessObtain } from "./enrich/obtain.ts";
+import { applyChannelQuery } from "../shared/channel-query.ts";
 import { TitleDeduper } from "./enrich/dedup.ts";
 import { aiEnabled, config, pushEnabled } from "./config.ts";
 import { getCookieSettings, toPublicCookieStatus, updateCookieSettings, type CookieSiteKey } from "./cookie-store.ts";
@@ -82,6 +89,7 @@ import {
 } from "./retention.ts";
 import {
   compileRule,
+  safeRegex,
   loadActiveBlockRules,
   matchBlockRules,
   PRESET_NOISE_PATTERNS,
@@ -105,7 +113,10 @@ import {
  * 校验数据源上的分类/形态兜底提示。
  * 以前这里是自由字符串，手写错一个字就会被静默忽略，主页与数据源口径逐渐漂移。
  */
-function checkSourceHints(kindHint: unknown, categoryHint: unknown): string | null {
+function checkSourceHints(kindHint: unknown, categoryHint: unknown, fixedCategory?: unknown): string | null {
+  if (fixedCategory !== undefined && fixedCategory !== null && (typeof fixedCategory !== "string" || (fixedCategory.trim() && !isCategory(fixedCategory.trim())))) {
+    return "固定分类必须是合法的小类 key；留空恢复自动分类";
+  }
   if (typeof kindHint === "string" && kindHint.trim()) {
     const v = kindHint.trim();
     if (!isContentKind(v) || v === "noise") return `kindHint 只能是 ${KIND_ORDER.join("/")}`;
@@ -150,12 +161,17 @@ export type ItemRow = {
   canonical_id?: number | null;
 };
 
+// List payloads never select full snapshots. The drawer fetches content on demand.
+const LIST_COLUMNS = "id, source_id, external_id, url, url_key, title_key, title, SUBSTR(summary, 1, 1200) AS summary, author, category, image_url, kind, ai_quality, tags, codes, price, is_free, obtain, score, expires_at, published_at, status, starred, ai, read_at, pushed_at, first_seen_at, last_seen_at, canonical_id";
+
 /** 订阅命中的关键词（都转小写比较），用于前端高亮与筛选。 */
 function matchKeywords(row: ItemRow, keywords: string[]): string[] {
   if (!keywords.length) return [];
   const text = (row.title + " " + (row.summary ?? "")).toLowerCase();
   return keywords.filter((k) => text.includes(k.toLowerCase()));
 }
+
+const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, "\\$&")}%`;
 
 function shape(row: ItemRow, keywords: string[] = [], blockedBy: string | null = null) {
   let tags: string[] = [];
@@ -198,7 +214,8 @@ function shape(row: ItemRow, keywords: string[] = [], blockedBy: string | null =
  * 否则 A 的收藏会显示成 B 的收藏。
  */
 function applyUserStates<T extends { id: number; starred: boolean; read: boolean }>(list: T[], userId: number | null): T[] {
-  if (!userId || !list.length) return list;
+  if (!list.length) return list;
+  if (!userId) return isPublicSite ? list.map((item) => ({ ...item, starred: false, read: false })) : list;
   const states = loadUserStates(
     userId,
     list.map((x) => x.id),
@@ -207,6 +224,7 @@ function applyUserStates<T extends { id: number; starred: boolean; read: boolean
     const s = states.get(it.id);
     it.starred = s?.starred ?? false;
     it.read = s?.read ?? false;
+    if (s?.hidden) Object.assign(it, { status: "ignored" });
   }
   return list;
 }
@@ -316,7 +334,7 @@ function buildClusterIndex(rows: readonly ClusterPoolRow[]): ClusterIndex {
     sizeByRoot.set(root, (sizeByRoot.get(root) ?? 0) + 1);
   }
   return {
-    rootOf: (id) => (parent.has(id) ? find(id) : -1),
+    rootOf: (id) => (parent.has(id) ? find(id) : id),
     sizeOf: (root) => sizeByRoot.get(root) ?? 1,
   };
 }
@@ -333,10 +351,7 @@ let clusterCacheRevision = "";
 const clusterIndexCache = new Map<string, ClusterIndex>();
 
 function clusterRevision(): string {
-  const row = get<{ n: number; m: number | null; r: string | null }>(
-    "SELECT COUNT(*) AS n, MAX(id) AS m, MAX(ai_reviewed_at) AS r FROM items",
-  );
-  return `${row?.n ?? 0}:${row?.m ?? 0}:${row?.r ?? ""}`;
+  return dbRevision() + ":" + Math.floor(Date.now() / 60_000);
 }
 /** 一次请求内复用的分组聚类入口：版本号只查一次，组队内的池子只算一次。 */
 function createClusterScope(): (kind: string | null | undefined, category: string | null | undefined) => ClusterIndex {
@@ -367,16 +382,18 @@ function createClusterScope(): (kind: string | null | undefined, category: strin
 type QueryScope = { userId: number | null; publicMode: boolean };
 
 function buildItemsQuery(
-  q: Record<string, string | undefined>,
+  input: Record<string, string | undefined>,
   rules: BlockRule[],
   includeBlocked: boolean,
   scope: QueryScope = { userId: null, publicMode: false },
 ) {
+  const q = applyChannelQuery(input);
   const where: string[] = [];
   const params: SqlValue[] = [];
 
   const status = q.status ?? "active";
   if (scope.publicMode) {
+    where.push("status = 'active'");
     // 公开站：ignored 等价于「我关掉了这条」，active 等价于「我没关」
     if (scope.userId !== null) {
       if (status === "ignored") {
@@ -470,8 +487,8 @@ function buildItemsQuery(
     }
   }
   if (q.search) {
-    where.push("(title LIKE ? OR COALESCE(summary,'') LIKE ?)");
-    params.push(`%${q.search}%`, `%${q.search}%`);
+    where.push("(title LIKE ? ESCAPE '\\' OR COALESCE(summary,'') LIKE ? ESCAPE '\\')");
+    params.push(likePattern(q.search), likePattern(q.search));
   }
   if (q.since) {
     where.push("COALESCE(published_at, first_seen_at) >= ?");
@@ -507,12 +524,14 @@ function buildItemsQuery(
     }
   }
 
-  const subKeywords = all<{ keyword: string }>("SELECT keyword FROM subscriptions ORDER BY keyword").map((r) => r.keyword);
+  const subKeywords = scope.publicMode
+    ? scope.userId ? loadUserSubscriptions(scope.userId) : []
+    : all<{ keyword: string }>("SELECT keyword FROM subscriptions ORDER BY keyword").map((r) => r.keyword);
   if (q.subscribed === "1") {
     if (subKeywords.length) {
-      const likes = subKeywords.map(() => "(title LIKE ? OR COALESCE(summary,'') LIKE ?)").join(" OR ");
+      const likes = subKeywords.map(() => "(title LIKE ? ESCAPE '\\' OR COALESCE(summary,'') LIKE ? ESCAPE '\\')").join(" OR ");
       where.push("(" + likes + ")");
-      for (const k of subKeywords) params.push(`%${k}%`, `%${k}%`);
+      for (const k of subKeywords) params.push(likePattern(k), likePattern(k));
     } else {
       where.push("1 = 0");
     }
@@ -531,12 +550,12 @@ function buildItemsQuery(
         regexRules.push(r);
         continue;
       }
-      const pat = `%${r.pattern.toLowerCase()}%`;
+      const pat = likePattern(r.pattern.toLowerCase());
       if (r.scope === "all") {
-        where.push("LOWER(title || ' ' || COALESCE(summary,'')) NOT LIKE ?");
+        where.push("LOWER(title || ' ' || COALESCE(summary,'')) NOT LIKE ? ESCAPE '\\'");
         params.push(pat);
       } else {
-        where.push("(source_id != ? OR LOWER(title || ' ' || COALESCE(summary,'')) NOT LIKE ?)");
+        where.push("(source_id != ? OR LOWER(title || ' ' || COALESCE(summary,'')) NOT LIKE ? ESCAPE '\\')");
         params.push(r.scope, pat);
       }
     }
@@ -596,6 +615,7 @@ let warnedNoAdminToken = false;
 let warnedAdminLocked = false;
 
 export function registerApi(app: Hono) {
+  registerSecurity(app);
   /**
    * 鉴权分层（顺序即优先级）：
    *   1. 采集回传：独立 INGEST_TOKEN，自己校验
@@ -623,6 +643,7 @@ export function registerApi(app: Hono) {
       return next();
     }
 
+    if (!adminHostAllowed(c)) return c.json({ error: "请从专用管理入口访问", needAuth: true }, 403);
     if (identity.isAdmin) return next();
 
     if (identity.adminLocked) {
@@ -642,23 +663,29 @@ export function registerApi(app: Hono) {
     return c.json({ error: "需要管理密码", needAuth: true }, 401);
   });
 
-  // 前端用它验证密码是否正确
-  app.get("/api/auth/check", (c) => c.json({ ok: true, protected: Boolean(config.adminToken) }));
+  registerPublicCache(app);
+
+  app.get("/api/auth/check", (c) => {
+    const id = identityOf(c);
+    return c.json({ ok: true, protected: Boolean(config.adminToken) || id.adminLocked, isAdmin: id.isAdmin, adminLocked: id.adminLocked, adminHostAllowed: adminHostAllowed(c) });
+  });
 
   app.get("/api/items", (c) => {
     const q = c.req.query();
-    const limit = Math.min(Math.max(Number(q.limit ?? 40), 1), 200);
-    const offset = Math.max(Number(q.offset ?? 0), 0);
-    const includeBlocked = q.includeBlocked === "1";
-    const rules = loadActiveBlockRules();
+    const limit = Math.min(Math.max(Math.floor(Number(q.limit ?? 40)), 1), 200);
+    const offset = Math.max(Math.floor(Number(q.offset ?? 0)), 0);
     const id = identityOf(c);
+    const includeBlocked = q.includeBlocked === "1" && (id.isAdmin || Boolean(id.user));
+    const rules = id.siteMode === "public" && id.user
+      ? loadUserBlockRules(id.user.id, getUserPushConfig(id.user.id).useGlobalBlocks)
+      : loadActiveBlockRules();
     const scope: QueryScope = { userId: id.user?.id ?? null, publicMode: id.siteMode === "public" };
     // 公开站未登录访客：个人收藏/已关闭在 localStorage，前端带 ids 列表来查
     if (scope.publicMode && !scope.userId && q.ids) {
       const ids = q.ids.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0).slice(0, 100);
       if (!ids.length) return c.json({ total: 0, limit, offset, items: [] });
       const rows = all<ItemRow>(
-        "SELECT * FROM items WHERE id IN (" + ids.map(() => "?").join(",") + ")",
+        `SELECT ${LIST_COLUMNS} FROM items WHERE status = 'active' AND id IN (` + ids.map(() => "?").join(",") + ")",
         ...ids,
       );
       return c.json({ total: rows.length, limit, offset, items: rows.map((r) => ({ ...shape(r, [], null), dupCount: 1 })) });
@@ -694,7 +721,7 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
 
     if (!merge) {
       const rows = all<ItemRow>(
-        `SELECT items.* FROM items ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`,
+        `SELECT ${LIST_COLUMNS} FROM items ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`,
         ...params,
         limit,
         offset,
@@ -715,7 +742,7 @@ const keyOk = "LENGTH(CAST(title_key AS BLOB)) >= 6";
 
 const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const candidates = all<ItemRow>(
-      `SELECT items.* FROM items ${clause} ORDER BY ${order} LIMIT ?`,
+      `SELECT ${LIST_COLUMNS} FROM items ${clause} ORDER BY ${order} LIMIT ?`,
       ...params,
       fetchLimit,
     );
@@ -793,14 +820,16 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
   app.get("/api/export", (c) => {
     const q = c.req.query();
     const format = q.format === "json" ? "json" : "md";
-    const rules = loadActiveBlockRules();
-    const { where, params, subKeywords } = buildItemsQuery(q, rules, false);
+    const viewer = identityOf(c);
+    const rules = viewer.siteMode === "public" && viewer.user
+      ? loadUserBlockRules(viewer.user.id, getUserPushConfig(viewer.user.id).useGlobalBlocks) : loadActiveBlockRules();
+    const { where, params, subKeywords } = buildItemsQuery(q, rules, false, { userId: viewer.user?.id ?? null, publicMode: viewer.siteMode === "public" });
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = SORTS[q.sort ?? "newest"] ?? SORTS.newest;
     const rows = all<ItemRow>(`SELECT * FROM items ${clause} ORDER BY ${order} LIMIT 300`, ...params);
 
     if (format === "json") {
-      return c.json({ count: rows.length, items: rows.map((r) => shape(r, subKeywords)) });
+      return c.json({ count: rows.length, items: applyUserStates(rows.map((r) => shape(r, subKeywords)), viewer.user?.id ?? null) });
     }
     const lines = [`# 资源雷达导出 (${new Date().toISOString().slice(0, 10)}) · ${rows.length} 条`, ""];
     for (const r of rows) {
@@ -819,12 +848,38 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const row = get<ItemRow>("SELECT * FROM items WHERE id = ?", Number(c.req.param("id")));
     if (!row) return c.json({ error: "not found" }, 404);
     const id = identityOf(c);
+    if (id.siteMode === "public" && !id.isAdmin && row.status !== "active") return c.json({ error: "not found" }, 404);
     const pubUser = id.siteMode === "public" ? (id.user?.id ?? null) : null;
     const subKeywords =
-      pubUser !== null
-        ? loadUserSubscriptions(pubUser)
+      id.siteMode === "public" ? pubUser !== null ? loadUserSubscriptions(pubUser) : []
         : all<{ keyword: string }>("SELECT keyword FROM subscriptions").map((r) => r.keyword);
-    return c.json(applyUserStates([shape(row, subKeywords)], pubUser)[0]);
+    return c.json({ ...applyUserStates([shape(row, subKeywords)], pubUser)[0],
+      ...(id.isAdmin ? { manualClassification: getManualClassification(row.id) } : {}),
+    });
+  });
+  app.patch("/api/admin/items/:id/classification", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isSafeInteger(id) || id < 1) return c.json({ error: "条目 ID 无效" }, 400);
+    if (!get("SELECT id FROM items WHERE id=?", id)) return c.json({ error: "资源不存在" }, 404);
+    const body = await c.req.json().catch(() => null) as { category?: unknown; kind?: unknown; note?: unknown; clear?: unknown } | null;
+    if (!body) return c.json({ error: "请求体无效" }, 400);
+    if (body.clear !== true) {
+      if (body.category !== null && !isCategory(body.category)) return c.json({ error: "分类必须是合法分类或 null（保持自动）" }, 400);
+      if (body.kind !== null && !isContentKind(body.kind)) return c.json({ error: "内容形态必须是合法频道形态或 null（保持自动）" }, 400);
+      if (body.category === null && body.kind === null) return c.json({ error: "至少选择分类或内容形态；取消人工设置请恢复自动" }, 400);
+      if (body.note !== undefined && (typeof body.note !== "string" || body.note.length > 200)) return c.json({ error: "备注最多 200 字" }, 400);
+    }
+    tx(() => {
+      run("DELETE FROM item_classification_overrides WHERE item_id=?", id);
+      // First recompute automatic fields (including expired/hidden rows); then apply selected manual fields.
+      reclassifyStoredItems("all", { itemId: id, forceAutomatic: true });
+      if (body.clear !== true) {
+        run("INSERT INTO item_classification_overrides(item_id,category,kind,note,updated_at) VALUES(?,?,?,?,?)",
+          id, body.category as string | null, body.kind as string | null, typeof body.note === "string" ? body.note.trim() : "", new Date().toISOString());
+        reclassifyStoredItems("all", { itemId: id });
+      }
+    });
+    return c.json({ ok: true, item: shape(get<ItemRow>("SELECT * FROM items WHERE id=?", id)!), manualClassification: getManualClassification(id) });
   });
 
   app.patch("/api/items/:id", async (c) => {
@@ -941,13 +996,7 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const pattern = (body?.pattern ?? "").trim();
     if (!pattern || pattern.length > 80) return c.json({ error: "pattern 必填且不超过 80 字" }, 400);
     const mode = body?.mode === "regex" ? "regex" : "keyword";
-    if (mode === "regex") {
-      try {
-        new RegExp(pattern, "i");
-      } catch {
-        return c.json({ error: "正则表达式语法无效" }, 400);
-      }
-    }
+    if (mode === "regex" && !safeRegex(pattern)) return c.json({ error: "正则无效或复杂度过高；不支持回溯引用、前后查找和重复分组" }, 400);
     const scope = (body?.scope ?? "all").trim() || "all";
     run(
       "INSERT INTO block_rules (pattern, mode, scope, enabled, created_at) VALUES (?, ?, ?, 1, ?) ON CONFLICT(pattern, scope) DO UPDATE SET mode = excluded.mode, enabled = 1",
@@ -981,10 +1030,13 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const byId = new Map(stats.map((s) => [s.source_id, s]));
     return c.json({
       sources: sourceRows.map((s) => ({
-        ...s,
+        ...(identityOf(c).isAdmin ? s : {
+          id: s.id, name: s.name, kind: s.kind, interval_sec: s.interval_sec,
+          last_run_at: s.last_run_at, last_status: s.last_status,
+        }),
         enabled: s.enabled === 1,
         builtIn: BUILTIN_SOURCE_IDS.has(String(s.id)),
-        config: JSON.parse(String(s.config ?? "{}")),
+        config: identityOf(c).isAdmin ? JSON.parse(String(s.config ?? "{}")) : {},
         items: byId.get(String(s.id))?.n ?? 0,
         latest_item_at: byId.get(String(s.id))?.last_published ?? null,
       })),
@@ -998,11 +1050,12 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       intervalSec?: number;
       kindHint?: string;
       categoryHint?: string;
+      fixedCategory?: string;
     } | null;
     const name = (body?.name ?? "").trim();
     const url = (body?.url ?? "").trim();
     if (!name || !/^https?:\/\//i.test(url)) return c.json({ error: "名称与合法的 http(s) RSS 地址必填" }, 400);
-    const hintErr = checkSourceHints(body?.kindHint, body?.categoryHint);
+    const hintErr = checkSourceHints(body?.kindHint, body?.categoryHint, body?.fixedCategory);
     if (hintErr) return c.json({ error: hintErr }, 400);
     const id = addCustomRssSource({
       name,
@@ -1010,6 +1063,7 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       intervalSec: body?.intervalSec,
       kindHint: body?.kindHint,
       categoryHint: body?.categoryHint,
+      fixedCategory: body?.fixedCategory,
     });
     const summary = await runSource(id).catch((err) => ({
       sourceId: id,
@@ -1055,14 +1109,16 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
         return c.json({ error: "config 必须为 JSON 对象" }, 400);
       }
       const cfg = body.config as Record<string, unknown>;
-      const hintErr = checkSourceHints(cfg.kindHint, cfg.categoryHint);
+      const hintErr = checkSourceHints(cfg.kindHint, cfg.categoryHint, cfg.fixedCategory);
       if (hintErr) return c.json({ error: hintErr }, 400);
       if (existing.kind === "rss") {
         const feeds = (body.config as { feeds?: unknown }).feeds;
         if (!Array.isArray(feeds) || feeds.length === 0) {
           return c.json({ error: "RSS 源 config.feeds 必须至少包含一条订阅地址" }, 400);
         }
+        if (feeds.length > 30) return c.json({ error: "每个源最多 30 条 RSS 地址" }, 400);
         for (const f of feeds) {
+          if (!f || typeof f !== "object" || Array.isArray(f)) return c.json({ error: "每条 RSS 配置必须是对象" }, 400);
           const url = typeof (f as { url?: unknown })?.url === "string" ? (f as { url: string }).url.trim() : "";
           if (!/^https?:\/\//i.test(url)) {
             return c.json({ error: "RSS 订阅地址必须是合法的 http(s):// URL" }, 400);
@@ -1072,6 +1128,12 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
             (f as { categoryHint?: unknown })?.categoryHint,
           );
           if (feedHintErr) return c.json({ error: `feeds 里的 ${feedHintErr}` }, 400);
+          for (const key of ["titleKeywords", "excludeTitleKeywords", "includeCategories", "excludeCategories"] as const) {
+            const values = (f as Record<string, unknown>)[key];
+            if (values !== undefined && (!Array.isArray(values) || values.length > 50 || values.some((value) => typeof value !== "string" || !value.trim() || value.length > 80))) {
+              return c.json({ error: `${key} 必须是最多 50 个非空字符串的数组，每个不超过 80 字` }, 400);
+            }
+          }
         }
       }
       sets.push("config = ?");
@@ -1079,8 +1141,11 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     }
     if (!sets.length) return c.json({ error: "nothing to update" }, 400);
     params.push(id);
-    run(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`, ...params);
-    return c.json({ ok: true });
+    const reclassified = tx(() => {
+      run(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`, ...params);
+      return body.config === undefined ? 0 : reconcileSourceCategory(id);
+    });
+    return c.json({ ok: true, reclassified });
   });
 
   app.delete("/api/sources/:id", (c) => {
@@ -1173,6 +1238,8 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
 
   app.get("/api/stats", (c) => {
     const q = c.req.query();
+    const viewer = identityOf(c);
+    const queryScope: QueryScope = { userId: viewer.user?.id ?? null, publicMode: viewer.siteMode === "public" };
     const statsCutoff = new Date(Date.now() - 14 * 86_400_000).toISOString();
     const totals = get<{
       total: number;
@@ -1200,15 +1267,16 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     );
 
     const hasChannelFilter = Boolean(
-      q.kind || q.obtain || q.aiOnly || q.hideRejected || q.unexpired || q.freeOnly || q.maxPrice ||
+      q.preset || q.kind || q.obtain || q.aiOnly || q.hideRejected || q.unexpired || q.freeOnly || q.maxPrice ||
       q.source || q.search || q.since || q.lang || q.hasCodes || q.expiring || q.starred ||
       q.unread || q.subscribed || q.minScore || q.status,
     );
     let byCategory: { category: string | null; n: number }[];
     if (hasChannelFilter) {
       const { category: _omit, ...restQ } = q;
-      const rules = loadActiveBlockRules();
-      const { where, params } = buildItemsQuery(restQ, rules, false);
+      const rules = queryScope.publicMode && queryScope.userId
+        ? loadUserBlockRules(queryScope.userId, getUserPushConfig(queryScope.userId).useGlobalBlocks) : loadActiveBlockRules();
+      const { where, params } = buildItemsQuery(restQ, rules, false, queryScope);
       const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
       byCategory = all<{ category: string | null; n: number }>(
         `SELECT category, COUNT(*) AS n FROM items ${clause} GROUP BY category ORDER BY n DESC`,
@@ -1345,6 +1413,33 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     return c.json(reclassifyStoredItems(scope));
   });
 
+  app.get("/api/admin/classification", (c) => c.json({
+    settings: getClassificationSettings(),
+    audit: reclassifyStoredItems("all", { dryRun: true }),
+  }));
+  app.patch("/api/admin/classification", async (c) => {
+    const body = await c.req.json().catch(() => null) as { guardEnabled?: unknown } | null;
+    if (typeof body?.guardEnabled !== "boolean") return c.json({ error: "guardEnabled 必须是布尔值" }, 400);
+    return c.json({ settings: saveClassificationSettings(body.guardEnabled) });
+  });
+  app.post("/api/admin/classification/preview", async (c) => {
+    const body = await c.req.json().catch(() => null) as { title?: unknown; summary?: unknown; sourceId?: unknown; aiKind?: unknown } | null;
+    if (typeof body?.title !== "string" || !body.title.trim() || body.title.length > 200) return c.json({ error: "标题必填，最多 200 字" }, 400);
+    const sourceId = typeof body.sourceId === "string" ? body.sourceId : "";
+    const summary = typeof body.summary === "string" ? body.summary.slice(0, 2000) : "";
+    const hints = getSourceHints(sourceId);
+    const item = enrichItem({ externalId: "preview", title: body.title, summary, url: "https://example.com/classification-preview" }, sourceId, hints);
+    if (!item) return c.json({ error: "无法识别标题" }, 400);
+    const kind = resolveKind(body.aiKind, true, { title: item.title, summary, sourceId, category: item.category, obtain: guessObtain(item.title, summary), isFree: item.isFree, price: item.price, ...hints });
+    return c.json({ category: item.category, ruleKind: item.kind, finalKind: kind, signals: contentSignals(item.title, summary), hints, note: "规则试算，不调用 AI；AI kind 仅用于模拟误判后的校验结果" });
+  });
+  app.post("/api/admin/classification/reclassify", async (c) => {
+    const body = await c.req.json().catch(() => ({})) as { sourceId?: unknown };
+    const sourceId = typeof body.sourceId === "string" && body.sourceId ? body.sourceId : undefined;
+    if (sourceId && !get("SELECT id FROM sources WHERE id = ?", sourceId)) return c.json({ error: "数据源不存在" }, 400);
+    return c.json(tx(() => reclassifyStoredItems("all", { sourceId })));
+  });
+
   app.post("/api/ai/dedup", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { limit?: number };
     const limit = Math.min(Math.max(Number(body.limit ?? 80), 10), 200);
@@ -1402,6 +1497,7 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     if (auth !== "Bearer " + config.ingestToken) return c.json({ error: "unauthorized" }, 401);
     const body = (await c.req.json().catch(() => null)) as { sourceId?: string; items?: unknown[] } | null;
     if (!body?.sourceId || !Array.isArray(body.items)) return c.json({ error: "sourceId 与 items 必填" }, 400);
+    if (body.items.length > 500) return c.json({ error: "每次最多回传 500 条" }, 400);
     const items = body.items
       .filter((i): i is RawItem => {
         const r = i as RawItem | null;
@@ -1587,14 +1683,28 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       hidden?: number[];
       starred?: number[];
       read?: number[];
+      blocked?: string[];
     } | null;
     if (!body) return c.json({ error: "invalid json" }, 400);
+    if ([body.hidden, body.starred, body.read].some((arr) => Array.isArray(arr) && arr.length > 500)) {
+      return c.json({ error: "单次最多合并每类 500 条偏好；本机数据未清除" }, 400);
+    }
+    const patterns = Array.isArray(body.blocked) ? [...new Set(body.blocked.filter((s): s is string => typeof s === "string").map((s) => s.trim()).filter(Boolean))] : [];
+    if (patterns.length > 100 || patterns.some((s) => s.length > 80)) return c.json({ error: "屏蔽词最多 100 条，每条不超过 80 字" }, 400);
+    const ownPatterns = new Set(all<{ pattern: string }>("SELECT pattern FROM user_block_rules WHERE user_id = ?", userId).map((r) => r.pattern));
+    if (ownPatterns.size + patterns.filter((s) => !ownPatterns.has(s)).length > 100) return c.json({ error: "合并后屏蔽规则超过 100 条，请先整理规则" }, 400);
     const clean = (arr: unknown): number[] =>
       Array.isArray(arr) ? arr.filter((n): n is number => Number.isInteger(n) && n > 0).slice(0, 500) : [];
     let imported = 0;
-    for (const id of clean(body.hidden)) { upsertUserState(userId, id, { hidden: true }); imported += 1; }
-    for (const id of clean(body.starred)) { upsertUserState(userId, id, { starred: true }); imported += 1; }
-    for (const id of clean(body.read)) { upsertUserState(userId, id, { read: true }); imported += 1; }
+    tx(() => {
+      for (const id of clean(body.hidden)) { upsertUserState(userId, id, { hidden: true }); imported += 1; }
+      for (const id of clean(body.starred)) { upsertUserState(userId, id, { starred: true }); imported += 1; }
+      for (const id of clean(body.read)) { upsertUserState(userId, id, { read: true }); imported += 1; }
+      for (const pattern of patterns) run(
+        "INSERT INTO user_block_rules(user_id, pattern, mode, scope, enabled, created_at) VALUES(?, ?, 'keyword', 'all', 1, ?) ON CONFLICT(user_id, pattern, scope) DO UPDATE SET enabled = 1, mode = 'keyword'",
+        userId, pattern, new Date().toISOString(),
+      );
+    });
     return c.json({ ok: true, imported });
   });
 
@@ -1629,14 +1739,14 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       "SELECT id, source_id, title, summary FROM items WHERE status = 'active'",
     );
     const enriched = rules.map((r) => {
-      const matcher = compileRule(r);
+      const matcher = r.mode === "regex" ? () => false : compileRule(r);
       let hits = 0;
       for (const it of activeItems) {
         if (matcher(it.title + " " + (it.summary ?? ""), it.source_id)) hits += 1;
       }
-      return { ...r, enabled: r.enabled === 1, hits };
+      return { ...r, enabled: r.enabled === 1 && r.mode !== "regex", hits };
     });
-    const enabledRules = rules.filter((r) => r.enabled === 1);
+    const enabledRules = rules.filter((r) => r.enabled === 1 && r.mode !== "regex");
     let totalBlocked = 0;
     if (enabledRules.length) {
       const matchers = enabledRules.map((r) => compileRule(r));
@@ -1659,6 +1769,9 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     } | null;
     const now = new Date().toISOString();
     if (body?.presets) {
+      const count = get<{ n: number }>("SELECT COUNT(*) AS n FROM user_block_rules WHERE user_id = ?", userId)?.n ?? 0;
+      const additional = PRESET_NOISE_PATTERNS.filter((pr) => !get("SELECT id FROM user_block_rules WHERE user_id = ? AND pattern = ? AND scope = ?", userId, pr.pattern, pr.scope)).length;
+      if (count + additional > 100) return c.json({ error: "导入后超过 100 条规则，请先删除不用的规则" }, 400);
       for (const pr of PRESET_NOISE_PATTERNS) {
         run(
           "INSERT INTO user_block_rules (user_id, pattern, mode, scope, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT(user_id, pattern, scope) DO UPDATE SET enabled = 1",
@@ -1669,9 +1782,11 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     }
     const pattern = (body?.pattern ?? "").trim();
     if (!pattern || pattern.length > 80) return c.json({ error: "pattern 必填且不超过 80 字" }, 400);
-    const mode = body?.mode === "regex" ? "regex" : "keyword";
-    if (mode === "regex") {
-      try { new RegExp(pattern, "i"); } catch { return c.json({ error: "正则表达式语法无效" }, 400); }
+    if (body?.mode === "regex") return c.json({ error: "个人屏蔽仅支持关键词，不支持正则表达式" }, 400);
+    const mode = "keyword";
+    const existing = get("SELECT id FROM user_block_rules WHERE user_id = ? AND pattern = ? AND scope = ?", userId, pattern, body?.scope ?? "all");
+    if (!existing && (get<{ n: number }>("SELECT COUNT(*) AS n FROM user_block_rules WHERE user_id = ?", userId)?.n ?? 0) >= 100) {
+      return c.json({ error: "个人屏蔽规则最多 100 条，请先删除不用的规则" }, 400);
     }
     const scope = (body?.scope ?? "all").trim() || "all";
     run(
@@ -1685,6 +1800,9 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const userId = currentUserId(c);
     const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean };
     if (typeof body.enabled !== "boolean") return c.json({ error: "enabled required" }, 400);
+    if (body.enabled && get<{ mode: string }>("SELECT mode FROM user_block_rules WHERE id = ? AND user_id = ?", Number(c.req.param("id")), userId)?.mode === "regex") {
+      return c.json({ error: "个人正则规则已停用，请改成关键词" }, 400);
+    }
     run("UPDATE user_block_rules SET enabled = ? WHERE id = ? AND user_id = ?", body.enabled ? 1 : 0, Number(c.req.param("id")), userId);
     return c.json({ ok: true });
   });
@@ -1711,6 +1829,10 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const body = (await c.req.json().catch(() => null)) as { keyword?: string } | null;
     const keyword = (body?.keyword ?? "").trim();
     if (!keyword || keyword.length > 40) return c.json({ error: "keyword 必填且不超过 40 字" }, 400);
+    if ((get<{ n: number }>("SELECT COUNT(*) AS n FROM user_subscriptions WHERE user_id = ?", userId)?.n ?? 0) >= 100 &&
+        !get("SELECT id FROM user_subscriptions WHERE user_id = ? AND keyword = ?", userId, keyword)) {
+      return c.json({ error: "个人关注词最多 100 个" }, 400);
+    }
     run(
       "INSERT INTO user_subscriptions (user_id, keyword, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id, keyword) DO NOTHING",
       userId, keyword, new Date().toISOString(),
@@ -1742,8 +1864,8 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       defaults: DEFAULT_SETTINGS,
       stats: userPushStats(userId),
       quiet: isQuietNow(cfg.settings),
-      channel: "telegram",
-      ready: cfg.enabled && cfg.hasToken && Boolean(cfg.chatId),
+      channel: cfg.settings.deliverVia,
+      ready: cfg.settings.deliverVia === "webhook" ? Boolean(cfg.settings.webhookUrl) : cfg.hasToken && Boolean(cfg.chatId),
       caps: { maxPerHour: config.userPushMaxPerHour, maxPerInstant: config.userPushMaxPerInstant },
     });
   });
@@ -1762,12 +1884,15 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
 
   app.post("/api/me/push/detect-chat", async (c) => {
     const userId = currentUserId(c);
+    const limited = limitUserAction(c, userId, "detect");
+    if (limited) return limited;
     const body = (await c.req.json().catch(() => ({}))) as { botToken?: string };
     let token = (body.botToken ?? "").trim();
     if (!token) {
       token = resolveUserBotToken(userId) ?? "";
       if (!token) return c.json({ error: "请先填写 Bot Token" }, 400);
     }
+    if (!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(token)) return c.json({ error: "Bot Token 格式不正确" }, 400);
     try {
       const chats = await detectTelegramChatIds(token);
       return c.json({ ok: true, chats });
@@ -1778,6 +1903,8 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
 
   app.post("/api/me/push/test", async (c) => {
     const userId = currentUserId(c);
+    const limited = limitUserAction(c, userId, "test");
+    if (limited) return limited;
     const cfg = getUserPushConfig(userId);
     const viaWebhook = cfg.settings.deliverVia === "webhook";
     if (viaWebhook ? !cfg.settings.webhookUrl : !cfg.hasToken || !cfg.chatId)
@@ -1797,7 +1924,9 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
 
   app.post("/api/me/push/flush", async (c) => {
     const userId = currentUserId(c);
-    const sent = await flushUserBatches(true);
+    const limited = limitUserAction(c, userId, "flush");
+    if (limited) return limited;
+    const sent = await flushUserBatches(true, userId);
     return c.json({ ok: true, sent, queued: userPushStats(userId).queued });
   });
 
@@ -1964,7 +2093,7 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       limit: items.length,
     });
     c.header("Content-Type", "application/rss+xml; charset=utf-8");
-    c.header("Cache-Control", "public, max-age=300");
+    c.header("Cache-Control", salt.startsWith("user-") ? "private, no-store" : "public, max-age=300");
     c.header("ETag", etag);
     return c.body(xml);
   }

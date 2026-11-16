@@ -11,6 +11,8 @@ export type RawItem = {
   tags?: string[];
   /** 来源自带的结构化分类提示（例如 GitHub 清单的分节名） */
   categoryHint?: string | null;
+  /** Per-feed content-kind fallback; cannot bypass source-level fixed classification. */
+  kindHint?: string | null;
   /** 正文全文（可选，用于抽取兑换码与留档，避免原帖被删后信息丢失） */
   content?: string | null;
   /** 封面/缩略图 URL（可选，仅限合法 http(s) 地址） */

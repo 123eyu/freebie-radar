@@ -26,7 +26,7 @@ const bool = (key: string, fallback: boolean) => {
 
 export const config = {
   port: num("PORT", 8788),
-  host: str("HOST", "0.0.0.0"),
+  host: str("HOST", "127.0.0.1"),
   databasePath: str("DATABASE_PATH", "./data/radar.db"),
   databaseDir: str("DATABASE_DIR", ""),
 
@@ -119,6 +119,13 @@ export const config = {
   appRepo: str("APP_REPO", "ZiChuanLan/freebie-radar"),
   /** 管理端密码；留空则 selfhost 下管理接口开放、public 下管理区锁定（安全兜底） */
   adminToken: str("ADMIN_TOKEN"),
+  /** 留空兼容单域名部署；设置后管理 API 只在这些 Host 上接受凭据。 */
+  adminHosts: str("ADMIN_HOSTS").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  /** 只有源站已封口、反代会覆盖转发头时才开启。 */
+  trustProxy: bool("TRUST_PROXY", false),
+  rateLimitEnabled: bool("RATE_LIMIT_ENABLED", true),
+  /** 仅 selfhost 可显式允许内网 Webhook，公开站始终禁止。 */
+  webhookAllowPrivate: bool("WEBHOOK_ALLOW_PRIVATE", false),
 } as const;
 
 /**
@@ -128,7 +135,7 @@ export const config = {
 export const siteMode: "selfhost" | "public" =
   config.siteMode === "selfhost" || config.siteMode === "public"
     ? config.siteMode
-    : config.linuxdoClientId && config.linuxdoClientSecret
+    : (config.linuxdoClientId && config.linuxdoClientSecret) || (config.githubClientId && config.githubClientSecret)
       ? "public"
       : "selfhost";
 
@@ -140,13 +147,13 @@ export const linuxdoConfigured = Boolean(config.linuxdoClientId && config.linuxd
 export const githubConfigured = Boolean(config.githubClientId && config.githubClientSecret);
 
 /** 本地模拟登录：只在非生产环境且显式开启时可用 */
-export const devMockEnabled = config.authDevMock && process.env.NODE_ENV !== "production";
+export const devMockEnabled = config.authDevMock && process.env.NODE_ENV === "development";
 
 /**
- * 公开站没配 ADMIN_TOKEN 时管理区必须锁死，否则 OAuth 用户随手就能改全站配置。
- * 自建站保持向后兼容（未设置 = 开放）。
+ * 公开站及生产环境未配 ADMIN_TOKEN 时管理区必须锁死。
+ * 非生产自建站保持向后兼容；默认监听回环地址。
  */
-export const adminLocked = isPublicSite && !config.adminToken;
+export const adminLocked = (isPublicSite || process.env.NODE_ENV === "production") && !config.adminToken;
 
 export const aiEnabled = Boolean(config.aiBaseUrl && config.aiModel);
 export const pushEnabled = config.pushChannel !== "none" && Boolean(config.telegramBotToken && config.telegramChatId);

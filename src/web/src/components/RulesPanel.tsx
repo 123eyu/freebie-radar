@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Bell, Eye, Plus, ShieldBan, Sparkles, Trash2 } from "lucide-react";
 import type { BlockPreset, BlockRule, Item, Source, Subscription } from "../types.ts";
+import { PageHeading } from "./PageHeading.tsx";
 
 export function RulesPanel({
   subscriptions,
@@ -18,6 +19,7 @@ export function RulesPanel({
   onDeleteRule,
   onLoadBlockedPreview,
   sourceName,
+  allowRegex = true,
 }: {
   subscriptions: Subscription[];
   rules: BlockRule[];
@@ -34,20 +36,31 @@ export function RulesPanel({
   onDeleteRule: (id: number) => Promise<void>;
   onLoadBlockedPreview: () => void;
   sourceName: (id: string) => string;
+  allowRegex?: boolean;
 }) {
   const [kw, setKw] = useState("");
   const [pattern, setPattern] = useState("");
   const [mode, setMode] = useState<"keyword" | "regex">("keyword");
   const [scope, setScope] = useState("all");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const addKeyword = async () => {
+    if (busy || !kw.trim()) return;
+    setBusy(true); setError("");
+    try { await onAddSub(kw.trim()); setKw(""); }
+    catch (e) { setError(e instanceof Error ? e.message : "添加失败，请重试"); }
+    finally { setBusy(false); }
+  };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-12">
+    <div>
+      <PageHeading eyebrow={allowRegex ? "管理工作台 · 全站设置" : "个人空间 · 仅对你生效"} title="关注与屏蔽" description="关注词标出想看的内容，屏蔽词过滤不想看的内容。两者分别设置，不会相互覆盖。" />
+    <div className="settings-layout grid items-start gap-5 lg:grid-cols-12">
       {/* 左栏：关键词订阅 */}
       <section className="panel space-y-4 p-5 lg:col-span-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[14.5px] font-semibold text-ink-950">
-            <Bell size={16} className="text-accent" /> 我的关注关键词
+            <Bell size={16} className="text-accent" /> {allowRegex ? "全站关注关键词" : "我的关注关键词"}
           </div>
           <span className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] font-medium text-ink-700">
             {subscriptions.length} 个
@@ -62,22 +75,14 @@ export function RulesPanel({
           <input
             value={kw}
             onChange={(e) => setKw(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === "Enter" && kw.trim()) {
-                await onAddSub(kw.trim());
-                setKw("");
-              }
-            }}
+            onKeyDown={(e) => { if (e.key === "Enter") void addKeyword(); }}
             placeholder="例如：epic / Claude / 域名…"
             className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[13px] text-ink-950 outline-none focus:border-brand"
           />
           <button
             type="button"
-            onClick={async () => {
-              if (!kw.trim()) return;
-              await onAddSub(kw.trim());
-              setKw("");
-            }}
+            disabled={busy || !kw.trim()}
+            onClick={() => void addKeyword()}
             className="inline-flex items-center gap-1 rounded-lg bg-brand px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-brand-hover"
           >
             <Plus size={14} /> 添加
@@ -160,7 +165,7 @@ export function RulesPanel({
             className="rounded-lg border border-ink-200 bg-surface px-2.5 py-2 text-[12.5px] text-ink-800 outline-none focus:border-brand sm:col-span-2"
           >
             <option value="keyword">关键词</option>
-            <option value="regex">正则</option>
+            {allowRegex && <option value="regex">安全正则</option>}
           </select>
           <select
             value={scope}
@@ -180,18 +185,23 @@ export function RulesPanel({
             onClick={async () => {
               if (!pattern.trim()) return;
               setBusy(true);
+              setError("");
               try {
-                await onAddRule(pattern.trim(), mode, scope);
+                await onAddRule(pattern.trim(), allowRegex ? mode : "keyword", scope);
                 setPattern("");
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "添加失败，请重试");
               } finally {
                 setBusy(false);
               }
             }}
-            className="rounded-lg bg-alert px-3 py-2 text-[12.5px] font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-40 sm:col-span-2"
+            className="rounded-lg bg-brand px-3 py-2 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40 sm:col-span-2"
           >
             添加屏蔽
           </button>
         </div>
+        {!allowRegex && <p className="text-[11.5px] text-ink-500">个人规则仅支持关键词，最多 100 条；只影响你自己的内容与推送。</p>}
+        {error && <p role="alert" className="text-[12px] text-alert">{error}</p>}
 
         <div className="max-h-[420px] divide-y divide-ink-100 overflow-auto rounded-lg border border-ink-200 bg-surface">
           {rules.map((r) => (
@@ -208,7 +218,7 @@ export function RulesPanel({
                   {r.mode === "regex" ? "正则" : "词"}
                 </span>
                 <span className="shrink-0 truncate rounded bg-ink-100 px-1.5 py-0.5 text-[11px] text-ink-600">
-                  {r.scope === "all" ? "全局" : sourceName(r.scope)}
+                  {r.scope === "all" ? "全部来源" : sourceName(r.scope)}
                 </span>
               </div>
 
@@ -276,6 +286,7 @@ export function RulesPanel({
           )}
         </div>
       </section>
+    </div>
     </div>
   );
 }

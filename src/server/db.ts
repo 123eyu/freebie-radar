@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { config } from "./config.ts";
 
 let db: DatabaseSync | null = null;
+let dbGeneration = 0;
 
 const SCHEMA_VERSION = 1;
 
@@ -468,6 +469,54 @@ const MIGRATIONS: string[] = [
           OR title LIKE '%转租%' OR title LIKE '%租房%' OR title LIKE '%合租%'
           OR title LIKE '%记者%' OR title LIKE '%发布会%' OR title LIKE '%峰会%');
   `,
+  /* v30：资源荟萃默认固定归网盘；保留自定义 config、启停和全部个人状态 */
+  `
+  UPDATE sources SET config = json_set(config, '$.fixedCategory', 'pan')
+   WHERE id = 'linuxdo-resource' AND json_valid(config)
+     AND json_type(config, '$.fixedCategory') IS NULL;
+  UPDATE items SET category = 'pan',
+    ai = CASE WHEN json_valid(ai) THEN CASE WHEN json_type(ai) = 'object' THEN json_set(ai, '$.category', 'pan') ELSE ai END ELSE ai END
+   WHERE source_id = 'linuxdo-resource' AND
+     NOT EXISTS (
+       SELECT 1 FROM sources WHERE id = 'linuxdo-resource' AND json_valid(config)
+         AND json_type(config, '$.fixedCategory') IS NOT NULL
+         AND json_extract(config, '$.fixedCategory') IS NOT 'pan'
+     );
+  `,
+  /* v31：人工分类优先于所有自动写入；SQLite 护栏覆盖 CLI/后台重审等写入 */
+  `
+  CREATE TABLE IF NOT EXISTS item_classification_overrides (
+    item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    category TEXT,
+    kind TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    CHECK(category IS NOT NULL OR kind IS NOT NULL)
+  );
+  CREATE TRIGGER IF NOT EXISTS enforce_manual_item_classification
+  AFTER UPDATE OF category, kind ON items
+  WHEN EXISTS (
+    SELECT 1 FROM item_classification_overrides o WHERE o.item_id = NEW.id
+      AND ((o.category IS NOT NULL AND NEW.category IS NOT o.category)
+        OR (o.kind IS NOT NULL AND NEW.kind IS NOT o.kind))
+  )
+  BEGIN
+    UPDATE items SET
+      category = COALESCE((SELECT category FROM item_classification_overrides WHERE item_id = NEW.id), category),
+      kind = COALESCE((SELECT kind FROM item_classification_overrides WHERE item_id = NEW.id), kind)
+      WHERE id = NEW.id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS apply_manual_item_classification
+  AFTER INSERT ON item_classification_overrides
+  BEGIN
+    UPDATE items SET category = COALESCE(NEW.category, category), kind = COALESCE(NEW.kind, kind) WHERE id = NEW.item_id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS update_manual_item_classification
+  AFTER UPDATE OF category, kind ON item_classification_overrides
+  BEGIN
+    UPDATE items SET category = COALESCE(NEW.category, category), kind = COALESCE(NEW.kind, kind) WHERE id = NEW.item_id;
+  END;
+  `,
 ];
 
 export function dbPath(): string {
@@ -480,6 +529,7 @@ export function getDb(): DatabaseSync {
   const path = dbPath();
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   db = new DatabaseSync(path);
+  dbGeneration += 1;
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   // 调度器与手动 CLI 是两个进程共用一个 SQLite 文件，写锁竞争时多等一会儿，
@@ -515,6 +565,14 @@ export function migrate(): number {
 export function closeDb(): void {
   db?.close();
   db = null;
+}
+
+/** O(1) 版本号：覆盖本连接写入、外部 CLI 写入及数据库重新打开。 */
+export function dbRevision(): string {
+  const conn = getDb();
+  const local = conn.prepare("SELECT total_changes() AS n").get() as { n: number };
+  const external = conn.prepare("PRAGMA data_version").get() as { data_version: number };
+  return `${dbGeneration}:${local.n}:${external.data_version}`;
 }
 
 export type SqlValue = string | number | bigint | null | Uint8Array;

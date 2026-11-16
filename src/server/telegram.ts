@@ -1,5 +1,13 @@
 import { config } from "./config.ts";
 
+const proxyAgents = new Map<string, import("undici").ProxyAgent>();
+async function proxyFetch(proxy: string) {
+  const undici = await import("undici");
+  let agent = proxyAgents.get(proxy);
+  if (!agent) { agent = new undici.ProxyAgent(proxy); proxyAgents.set(proxy, agent); }
+  return { agent, fetch: undici.fetch as unknown as typeof fetch };
+}
+
 export type TelegramTarget = {
   botToken: string;
   chatId: string;
@@ -30,9 +38,9 @@ export async function sendTelegramWith(target: TelegramTarget, text: string): Pr
     // 必须用「包内 undici」自己的 fetch：Node 内置 undici(7.x) 与 node_modules 里的
     // undici(8.x) 的 dispatcher handler 协议不同，混用会抛
     // InvalidArgumentError: invalid onRequestStart method
-    const undici = await import("undici");
-    init.dispatcher = new undici.ProxyAgent(proxy);
-    doFetch = undici.fetch as unknown as typeof fetch;
+    const client = await proxyFetch(proxy);
+    init.dispatcher = client.agent;
+    doFetch = client.fetch;
   }
   const res = await doFetch(url, init);
   if (!res.ok) throw new Error("Telegram HTTP " + res.status + " " + (await res.text()).slice(0, 150));
@@ -60,9 +68,9 @@ export async function detectTelegramChatIds(botToken: string): Promise<DetectedC
   };
   let doFetch: typeof fetch = fetch;
   if (config.telegramProxy) {
-    const undici = await import("undici");
-    init.dispatcher = new undici.ProxyAgent(config.telegramProxy);
-    doFetch = undici.fetch as unknown as typeof fetch;
+    const client = await proxyFetch(config.telegramProxy);
+    init.dispatcher = client.agent;
+    doFetch = client.fetch;
   }
   const res = await doFetch(url, init);
   const body = (await res.json().catch(() => ({}))) as {

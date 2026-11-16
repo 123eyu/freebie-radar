@@ -37,13 +37,15 @@ import {
 } from "lucide-react";
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { AdminGate } from "./components/AdminGate.tsx";
-import { getToken } from "./lib/auth.ts";
+import { PageHeading } from "./components/PageHeading.tsx";
+import { ADMIN_AUTH_EVENT } from "./lib/auth.ts";
 import {
   guestAddBlock,
   guestBatch,
   guestBlocks,
   guestPatch,
   importGuestToAccount,
+  selectGuestItems,
   readGuest,
   useBootstrap,
   type GuestState,
@@ -111,45 +113,57 @@ const sourceName = (id: string) => SOURCE_NAMES[id] ?? SOURCE_LABEL[id] ?? id;
 
 type Tab = "feed" | "hot" | "digest" | "me" | "rules" | "push" | "ai" | "ops";
 
-function useApi<T>(url: string | null): { data: T | null; loading: boolean; error: string | null; reload: () => void } {
+function useApi<T>(url: string | null, scope = ""): { data: T | null; loading: boolean; error: string | null; reload: () => void; update: (updater: (current: T | null) => T | null) => void } {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(Boolean(url));
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [loadedKey, setLoadedKey] = useState("");
+  const key = (url ?? "") + ":" + scope;
+  const update = useCallback((updater: (current: T | null) => T | null) => {
+    setData(updater);
+    setLoadedKey(key);
+  }, [key]);
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!url) {
+      setData(null);
+      setError(null);
       setLoading(false);
       return;
     }
     const ac = new AbortController();
     setLoading(true);
-    fetch(url, { signal: ac.signal })
+    fetch(url, { signal: ac.signal, cache: nonce > 0 ? "no-cache" : "default" })
       .then(async (r) => {
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({})) as { error?: string };
+          throw new Error(body.error ?? `${r.status} ${r.statusText}`);
+        }
         return (await r.json()) as T;
       })
       .then((d) => {
-        setData(d);
-        setError(null);
+        if (!ac.signal.aborted) { setData(d); setLoadedKey(key); setError(null); }
       })
       .catch((e: unknown) => {
-        if (e instanceof DOMException && e.name === "AbortError") return;
+        if (ac.signal.aborted) return;
+        setLoadedKey(key);
+        setData(null);
         setError(String(e));
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => ac.abort();
-  }, [url, nonce]);
+  }, [url, nonce, key]);
 
-  return { data, loading, error, reload };
+  return { data: url && loadedKey === key ? data : null, loading: Boolean(url) && (loading || loadedKey !== key), error, reload, update };
 }
 
 function Toast({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12.5px] font-medium text-white shadow-lg">
-      <Check size={14} className="text-emerald-400" />
+    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12.5px] font-medium text-white shadow-lg">
+      <Bell size={14} className="text-ink-300" />
       {message}
     </div>
   );
@@ -176,6 +190,20 @@ const SECONDARY_VIEWS: Preset[] = [
 ];
 
 const PRESETS: Preset[] = [...PRIMARY_CHANNELS, ...SECONDARY_VIEWS];
+const CHANNEL_DESCRIPTION: Record<string, string> = {
+  verified: "已通过 AI 审核的近期福利，优先展示可直接领取与有条件领取的内容。",
+  pan: "网盘资源与课程资料集中查看，不混进限时领取的福利流。",
+  offline: "门店、现场与线下活动福利；领取前请核对地点和参与条件。",
+  deal: "近期特价与促销活动，可用价格上限进一步筛选。",
+  opensource: "值得关注的开源工具与项目，点击标题查看介绍或打开原项目。",
+  news: "重要新闻单独阅读，不与领取型福利混在一起。",
+  info: "行业动态与实用资讯，按方向筛选并快速扫读。",
+  codes: "含兑换码的近期资源；可直接复制，领取前请核对截止时间。",
+  urgent: "即将截止的活动，优先核对时间与领取条件。",
+  starred: "收藏的内容集中在这里；登录后可跨设备同步。",
+  hidden: "你主动隐藏的内容，可随时恢复到资源流。",
+  all: "浏览全部已收录内容，可继续按分类、来源和时间缩小范围。",
+};
 
 
 // 主仓库地址：顶栏 GitHub 图标跳这里
@@ -204,19 +232,21 @@ export function App() {
   const [relatedMap, setRelatedMap] = useState<Record<number, (Item & { sourceName?: string })[]>>({});
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const mobileNavRef = useRef<HTMLElement | null>(null);
   // 展开合并组时按需拉取其他来源报道（同一 title_key 的兄弟条目）
   useEffect(() => {
     const id = relatedOpen;
     if (!id || relatedMap[id]) return;
     let alive = true;
     fetch(`/api/items/${id}/related`, { headers: { accept: "application/json" } })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error("关联来源加载失败"); return r.json(); })
       .then((d: { items?: (Item & { sourceName?: string })[] }) => {
         if (alive && Array.isArray(d.items)) setRelatedMap((m) => ({ ...m, [id]: d.items! }));
       })
       .catch(() => {
-        if (alive) setRelatedMap((m) => ({ ...m, [id]: [] }));
+        if (alive) { setRelatedOpen(null); setToast("关联来源加载失败，请稍后重试"); }
       });
+    return () => { alive = false; };
     return () => {
       alive = false;
     };
@@ -224,23 +254,40 @@ export function App() {
   // 服务端是否启用管理密码（决定是否拦截管理区）
   const [authChecked, setAuthChecked] = useState(false);
   const [protectedMode, setProtectedMode] = useState(false);
-  const [adminAuthed, setAdminAuthed] = useState(() => Boolean(getToken()));
+  const [adminEntryAllowed, setAdminEntryAllowed] = useState(true);
+  const [adminAuthed, setAdminAuthed] = useState(false);
   useEffect(() => {
     fetch("/api/auth/check")
       .then((r) => r.json())
-      .then((j: { protected?: boolean }) => {
+      .then((j: { protected?: boolean; isAdmin?: boolean; adminHostAllowed?: boolean }) => {
         const prot = Boolean(j.protected);
         setProtectedMode(prot);
-        if (!prot) setAdminAuthed(true);
+        setAdminAuthed(Boolean(j.isAdmin));
+        setAdminEntryAllowed(j.adminHostAllowed !== false);
       })
       .catch(() => undefined)
       .finally(() => setAuthChecked(true));
   }, []);
-  const adminReady = authChecked && (!protectedMode || adminAuthed);
+  const adminReady = authChecked && adminAuthed;
 
   const boot = useBootstrap();
   const bootData = boot.data;
+  useEffect(() => { boot.reload(); }, [adminAuthed, boot.reload]);
+  useEffect(() => {
+    const expire = () => setAdminAuthed(false);
+    window.addEventListener(ADMIN_AUTH_EVENT, expire);
+    return () => window.removeEventListener(ADMIN_AUTH_EVENT, expire);
+  }, []);
   const me = bootData?.user ?? null;
+  useEffect(() => {
+    const nav = mobileNavRef.current;
+    if (!nav || window.matchMedia("(min-width: 1024px)").matches) return;
+    const selected = nav.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    if (!selected) return;
+    const bounds = nav.getBoundingClientRect(), item = selected.getBoundingClientRect();
+    if (item.left < bounds.left) nav.scrollLeft -= bounds.left - item.left;
+    else if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right;
+  }, [tab, me?.id, adminReady]);
   const isPublicSite = bootData?.siteMode === "public";
   const [authOpen, setAuthOpen] = useState(false);
   const [authHash, setAuthHash] = useState<string | null>(null);
@@ -267,7 +314,7 @@ export function App() {
   useEffect(() => {
     const h = location.hash.replace("#", "");
     if (!h) return;
-    if (h === "invite-required" || h.startsWith("login-") || h.startsWith("register-") || h === "invite-invalid") {
+    if (h === "invite-required" || h.startsWith("login-") || h.startsWith("register-") || h === "invite-invalid" || h === "quota-full") {
       setAuthHash(h);
       setAuthOpen(true);
     }
@@ -285,8 +332,13 @@ export function App() {
   }, [bootData?.onboarding]);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    boot.reload();
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) { setToast("退出失败，请重试"); return; }
+      setTab("feed");
+      setDetail(null);
+      boot.reload();
+    } catch { setToast("网络异常，退出未完成，请重试"); }
   }, [boot]);
 
   const [search, setSearch] = useState("");
@@ -308,6 +360,16 @@ export function App() {
     const saved = localStorage.getItem("radar_view_mode");
     return saved === "grid2" || saved === "grid3" || saved === "compact" ? saved : "compact";
   });
+  const [showRowSummary, setShowRowSummary] = useState(() => {
+    try { return localStorage.getItem("radar_row_summary") === "true"; } catch { return false; }
+  });
+  const toggleRowSummary = () => {
+    setShowRowSummary((current) => {
+      const next = !current;
+      try { localStorage.setItem("radar_row_summary", String(next)); } catch { /* optional preference */ }
+      return next;
+    });
+  };
   const updateViewMode = useCallback((m: "compact" | "grid2" | "grid3") => {
     setViewMode(m);
     try {
@@ -321,6 +383,7 @@ export function App() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   /** 移动端：顶部筛选面板（含快捷视图、数据源与筛选条）展开态 */
   const [mobileFilterBar, setMobileFilterBar] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -357,7 +420,7 @@ export function App() {
   useEffect(() => {
     const onHash = () => {
       const h = location.hash.replace("#", "");
-      setTab(h === "hot" || h === "digest" || h === "rules" || h === "push" || h === "ai" || h === "ops" ? (h as Tab) : "feed");
+      setTab(h === "hot" || h === "digest" || h === "me" || h === "rules" || h === "push" || h === "ai" || h === "ops" ? (h as Tab) : "feed");
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -404,6 +467,7 @@ export function App() {
 
   const query = useMemo(() => {
     const p = new URLSearchParams();
+    p.set("preset", preset);
     if (debounced) p.set("search", debounced);
     if (source) p.set("source", source);
     if (categories.length) p.set("category", categories.join(","));
@@ -426,7 +490,7 @@ export function App() {
       if (categories.length === 0) p.set("category", "offline");
     } else if (preset === "pan") {
       p.set("unexpired", "1");
-      if (kindFilter === "auto") p.set("kind", "freebie,deal,info");
+      if (kindFilter === "auto") p.set("kind", "freebie,deal,info,opensource,news");
       if (categories.length === 0) p.set("category", "pan,course");
       p.set("hideRejected", "1");
     } else if (preset === "deal") {
@@ -454,12 +518,14 @@ export function App() {
     }
     if (preset === "all") p.set("hideRejected", "1");
 
-    if (kindFilter !== "auto" && kindFilter !== "all") p.set("kind", kindFilter);
+    if (kindFilter === "all") p.set("kind", "");
+    else if (kindFilter !== "auto") p.set("kind", kindFilter);
 
     if (priceCap === "free") p.set("freeOnly", "1");
     else if (priceCap !== "auto" && priceCap !== "all") p.set("maxPrice", priceCap);
 
-    if (obtain !== "auto" && obtain !== "all" && obtain) p.set("obtain", obtain);
+    if (obtain === "all") p.set("obtain", "");
+    else if (obtain !== "auto" && obtain) p.set("obtain", obtain);
     if (minScore !== "all") p.set("minScore", minScore);
     if (unreadOnly) p.set("unread", "1");
 
@@ -517,19 +583,22 @@ export function App() {
     setObtain("auto");
     setRange("auto");
     setSort("newest");
-    setPreset("verified");
   }, []);
-  const stats = useApi<Stats>(statsQuery ? `/api/stats?${statsQuery}` : "/api/stats");
-  const items = useApi<{ total: number; items: Item[] }>(`/api/items?${query}`);
+  const identityScope = `${me?.id ?? "guest"}:${adminReady}`;
+  const stats = useApi<Stats>(statsQuery ? `/api/stats?${statsQuery}` : "/api/stats", identityScope);
+  const guestIds = guestMode && (preset === "starred" || preset === "hidden")
+    ? `&ids=${(preset === "starred" ? guest.starred : guest.hidden).slice(0, 100).join(",") || "0"}` : "";
+  const items = useApi<{ total: number; items: Item[] }>(`/api/items?${query}${guestIds}`, identityScope);
   // 公开站登录用户读写的是自己的订阅与屏蔽词；自建站与管理区沿用全局接口
   const rulesBase = adminReady ? "/api" : isPublicSite && me ? "/api/me" : null;
   // 推送规则同样分两套：站长改全局，登录用户改自己的（同一套面板，只是接口不同）
   const pushBase = adminReady ? "/api/push" : isPublicSite && me ? "/api/me/push" : null;
-  const subs = useApi<{ subscriptions: Subscription[] }>(rulesBase ? rulesBase + "/subscriptions" : null);
-  const sources = useApi<{ sources: Source[] }>("/api/sources");
+  const subs = useApi<{ subscriptions: Subscription[] }>(rulesBase ? rulesBase + "/subscriptions" : null, identityScope);
+  const sources = useApi<{ sources: Source[] }>("/api/sources", identityScope);
   const runs = useApi<{ runs: Run[] }>(adminReady ? "/api/runs?limit=40" : null);
   const blockRules = useApi<{ rules: BlockRule[]; totalBlocked: number; presets: BlockPreset[] }>(
     rulesBase ? rulesBase + "/block-rules" : null,
+    identityScope,
   );
   const digests = useApi<{ digests: { date: string; created_at: string; pushed_at: string | null; kind: string; count: number }[] }>(
     "/api/digests",
@@ -538,9 +607,9 @@ export function App() {
   const [hotScope, setHotScope] = useState<HotScope>("all");
   const hot = useApi<HotReport>(tab === "hot" ? `/api/hot?hours=${hotHours}&scope=${hotScope}` : null);
   // 管理接口只在就绪后请求，避免公开区刷出一堆 401，也避免无密码模式卡住加载
-  const push = useApi<PushPayload>(pushBase);
+  const push = useApi<PushPayload>(pushBase, identityScope);
   const ai = useApi<AiPayload>(adminReady && tab === "ai" ? "/api/ai" : null);
-  const pushLogs = useApi<{ logs: PushLogItem[] }>(pushBase && tab === "push" ? pushBase + "/log?limit=40" : null);
+  const pushLogs = useApi<{ logs: PushLogItem[] }>(pushBase && tab === "push" ? pushBase + "/log?limit=40" : null, identityScope);
   const [pushPreview, setPushPreview] = useState<PushPreview | null>(null);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const activeDate = pickedDate ?? digests.data?.digests?.[0]?.date ?? null;
@@ -554,9 +623,30 @@ export function App() {
   }>(activeDate && tab === "digest" ? "/api/digests/" + activeDate : null);
 
   const [blockedPreview, setBlockedPreview] = useState<Item[] | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailNonce, setDetailNonce] = useState(0);
+  useEffect(() => {
+    setDetail(null); setRelatedOpen(null); setRelatedMap({}); setPushPreview(null); setBlockedPreview(null);
+  }, [identityScope]);
+  const detailId = detail?.id;
+  useEffect(() => {
+    if (!detailId) return;
+    const ac = new AbortController();
+    setDetailLoading(true); setDetailError(null);
+    fetch(`/api/items/${detailId}`, { signal: ac.signal }).then(async (res) => {
+      if (!res.ok) throw new Error("详情加载失败，请重试");
+      return await res.json() as Item;
+    }).then((full) => {
+      if (!ac.signal.aborted) setDetail((current) => current?.id === detailId ? { ...current, ...full } : current);
+    }).catch((err: unknown) => { if (!ac.signal.aborted) setDetailError(String(err)); })
+      .finally(() => { if (!ac.signal.aborted) setDetailLoading(false); });
+    return () => ac.abort();
+  }, [detailId, detailNonce]);
 
   const patch = useCallback(
     async (id: number, body: Record<string, unknown>) => {
+      if (!bootData) { notify("站点配置加载中，请稍后重试"); return; }
       // 公开站未登录：只改本机 localStorage，不发请求，谁也不影响
       if (guestMode) {
         guestPatch(id, body as { starred?: boolean; read?: boolean; status?: string });
@@ -586,10 +676,10 @@ export function App() {
       stats.reload();
       if (detail && detail.id === id) {
         const next = await fetch(`/api/items/${id}`).then((r) => r.json());
-        setDetail(next as Item);
+        setDetail((current) => current?.id === id ? next as Item : current);
       }
     },
-    [items, stats, detail, guestMode, isPublicSite, syncGuest, notify],
+    [items, stats, detail, guestMode, isPublicSite, syncGuest, notify, bootData],
   );
 
   const addRule = useCallback(
@@ -602,7 +692,7 @@ export function App() {
         items.reload();
         return;
       }
-      const ruleUrl = isPublicSite ? "/api/me/block-rules" : "/api/block-rules";
+      const ruleUrl = rulesBase + "/block-rules";
       const res = await fetch(ruleUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -611,7 +701,7 @@ export function App() {
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         notify(err.error ?? "添加失败");
-        return;
+        throw new Error(err.error ?? "添加失败");
       }
       notify("已屏蔽「" + pattern + "」");
       blockRules.reload();
@@ -620,7 +710,7 @@ export function App() {
       setBlockedPreview(null);
       setRelatedMap({});
     },
-    [blockRules, items, stats, notify, guestMode, isPublicSite, syncGuest],
+    [blockRules, items, stats, notify, guestMode, rulesBase, syncGuest],
   );
 
   const quickBlockAdd = useCallback(
@@ -636,25 +726,27 @@ export function App() {
         notify("登录后才能订阅关键词（访客偏好只存在本机）");
         return;
       }
-      await fetch(isPublicSite ? "/api/me/subscriptions" : "/api/subscriptions", {
+      const res = await fetch(rulesBase + "/subscriptions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ keyword: kw }),
       });
+      if (!res.ok) { notify(((await res.json()) as { error?: string }).error ?? "订阅失败"); throw new Error("订阅失败"); }
       subs.reload();
       items.reload();
       notify("已订阅「" + kw + "」");
     },
-    [subs, items, notify, guestMode, isPublicSite],
+    [subs, items, notify, guestMode, rulesBase],
   );
 
   const removeSubscription = useCallback(
     async (id: number) => {
-      await fetch((isPublicSite ? "/api/me/subscriptions/" : "/api/subscriptions/") + id, { method: "DELETE" });
+      const res = await fetch(rulesBase + "/subscriptions/" + id, { method: "DELETE" });
+      if (!res.ok) { notify("删除关注词失败"); return; }
       subs.reload();
       items.reload();
     },
-    [subs, items, isPublicSite],
+    [subs, items, rulesBase, notify],
   );
 
   const refreshAll = useCallback(() => {
@@ -667,7 +759,8 @@ export function App() {
   }, [items, stats, sources, runs, blockRules]);
 
   const markVisibleRead = useCallback(async () => {
-    const unreadIds = (items.data?.items ?? []).filter((i) => !i.read).map((i) => i.id);
+    const page = guestMode ? selectGuestItems(items.data?.items ?? [], guest, preset, unreadOnly) : items.data?.items ?? [];
+    const unreadIds = page.filter((i) => !i.read).map((i) => i.id);
     if (!unreadIds.length) return;
     if (guestMode) {
       guestBatch(unreadIds, "read");
@@ -675,30 +768,19 @@ export function App() {
       notify(`已在本机把 ${unreadIds.length} 条标为已读`);
       return;
     }
-    await fetch(isPublicSite ? "/api/me/items/batch" : "/api/items/batch", {
+    const res = await fetch(isPublicSite ? "/api/me/items/batch" : "/api/items/batch", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: unreadIds, action: "read" }),
     });
+    if (!res.ok) { notify("标记已读失败，请重试"); return; }
     notify(`已将本页 ${unreadIds.length} 条标为已读`);
     items.reload();
     stats.reload();
-  }, [items, stats, notify, guestMode, isPublicSite, syncGuest]);
+  }, [items, stats, notify, guestMode, isPublicSite, syncGuest, guest, preset, unreadOnly]);
 
 // 访客本地隐藏 / 收藏 / 已读与本地屏蔽词在客户端生效；登录用户由服务端按 user_item_states 过滤
-  const visible = (guestMode
-    ? (items.data?.items ?? []).map((i) => ({
-        ...i,
-        starred: guest.starred.includes(i.id),
-        read: guest.read.includes(i.id),
-      }))
-    : (items.data?.items ?? [])
-  ).filter((i) => {
-    if (!guestMode) return true;
-    if (guest.hidden.includes(i.id)) return false;
-    if (guestBlocks(i.title, i.summary, guest.blocked)) return false;
-    return true;
-  });
+  const visible = guestMode ? selectGuestItems(items.data?.items ?? [], guest, preset, unreadOnly) : items.data?.items ?? [];
   const currentIndex = detail ? visible.findIndex((i) => i.id === detail.id) : -1;
 
   const enabledSources = (sources.data?.sources ?? []).filter((s) => s.enabled || showAllSources);
@@ -726,9 +808,7 @@ export function App() {
           { key: "ai" as Tab, label: "AI 引擎", icon: Bot },
           { key: "ops" as Tab, label: "数据源运维", icon: Wrench },
         ]
-      : me
-        ? []
-        : [{ key: "admin" as const, label: "管理区", icon: Lock }]),
+      : [{ key: "admin" as const, label: "管理区", icon: Lock }]),
   ];
 
   const handleTab = (key: Tab | "admin") => {
@@ -782,6 +862,7 @@ export function App() {
   // 账号态：移动端放进导航行右侧，桌面端留在侧栏第二行
   const accountNode = me ? (
     <div className="flex min-w-0 items-center gap-1">
+      <button type="button" onClick={() => setTab("me")} aria-label="打开个人中心" title="个人中心与推送渠道" className="flex min-w-0 items-center gap-1 rounded hover:bg-ink-100">
       {me.avatarUrl ? (
         <img src={me.avatarUrl} alt="" className="h-6 w-6 shrink-0 rounded-full border border-ink-200" />
       ) : (
@@ -791,10 +872,11 @@ export function App() {
       )}
       <span
         className="hidden min-w-0 truncate text-[11.5px] font-medium text-ink-800 sm:inline"
-        title={`${me.name ?? me.username} · LINUX DO 信任等级 ${me.trustLevel}`}
+        title={`${me.name ?? me.username} · ${me.linuxdoId < 0 ? "GitHub" : `LINUX DO 信任等级 ${me.trustLevel}`}`}
       >
         {me.name ?? me.username}
       </span>
+      </button>
       <button
         type="button"
         onClick={() => void logout()}
@@ -879,12 +961,13 @@ export function App() {
           全部来源
         </button>
         {grouped.map((g) => {
-          const collapsed = collapsedGroups[g.key];
+          const collapsed = collapsedGroups[g.key] ?? !g.sources.some((s) => s.id === source);
           const total = g.sources.reduce((n, s) => n + s.items, 0);
           return (
             <div key={g.key} className="mb-1">
               <button
                 type="button"
+                aria-expanded={!collapsed}
                 onClick={() => setCollapsedGroups((m) => ({ ...m, [g.key]: !m[g.key] }))}
                 className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-ink-400 hover:text-ink-700"
               >
@@ -922,9 +1005,9 @@ export function App() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface lg:flex-row">
+    <div className="workspace-shell flex min-h-screen flex-col bg-surface lg:flex-row">
       {/* 左侧连续导轨（移动端为顶部收拢区） */}
-      <aside className="w-full shrink-0 border-b border-ink-200 bg-canvas/70 px-3.5 py-3 lg:flex lg:w-[240px] lg:flex-col lg:gap-4 lg:border-r lg:border-b-0 lg:bg-canvas lg:px-3 lg:py-4">
+      <aside className="workspace-rail w-full shrink-0 border-b border-ink-200 bg-canvas/70 px-3.5 py-3 lg:flex lg:w-[240px] lg:flex-col lg:gap-4 lg:border-r lg:border-b-0 lg:bg-canvas lg:px-3 lg:py-4">
         {/* 品牌行：说明/RSS/GitHub/导出/刷新 全部收进这一行，省掉整条第二栏 */}
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-2">
@@ -937,9 +1020,9 @@ export function App() {
           <div className="flex items-center gap-1 lg:hidden">
             {helpRssNode}
             {githubNode}
-            <a href={exportUrl} className={ICON_BTN} title="按当前筛选导出 Markdown">
+            {tab === "feed" && <a href={exportUrl} className={ICON_BTN} title="按当前筛选导出 Markdown">
               <Download size={14} />
-            </a>
+            </a>}
             <button type="button" onClick={refreshAll} className={ICON_BTN} title="刷新数据">
               <RefreshCw size={14} className={items.loading ? "animate-spin" : ""} />
             </button>
@@ -953,26 +1036,28 @@ export function App() {
           <div className="ml-auto min-w-0">{accountNode}</div>
         </div>
 
-        {guestMode && (guest.hidden.length > 0 || guest.starred.length > 0 || guest.read.length > 0) && (
+        {isPublicSite && (guest.hidden.length > 0 || guest.starred.length > 0 || guest.read.length > 0 || guest.blocked.length > 0) && (
           <div className="mt-2 rounded-md border border-ink-200 bg-surface-hover px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-600">
             本机偏好：收藏 {guest.starred.length} · 已读 {guest.read.length} · 已关闭 {guest.hidden.length}
             {bootData?.loginEnabled && (
               <button
                 type="button"
                 onClick={async () => {
+                  if (!me) { setAuthOpen(true); return; }
                   const r = await importGuestToAccount(guest);
                   if (r.ok) {
                     notify(`已合并 ${r.imported} 条偏好到账号`);
                     syncGuest();
                     items.reload();
                     stats.reload();
+                    blockRules.reload();
                   } else {
                     notify(r.error ?? "合并失败");
                   }
                 }}
                 className="ml-1 font-medium text-accent hover:underline"
               >
-                登录后合并
+                {me ? "合并到当前账号" : "登录后合并"}
               </button>
             )}
           </div>
@@ -1018,11 +1103,14 @@ export function App() {
 
         {/* 导航：手机横向可滚 + 右侧账号，桌面纵列无边框 */}
         <div className="-mx-3.5 mt-2.5 flex items-center gap-1.5 px-3.5 pb-0.5 lg:mx-0 lg:mt-0 lg:block lg:px-0 lg:pb-0">
-          <nav className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:block lg:flex-none lg:space-y-0.5 lg:overflow-visible">
+          <nav ref={mobileNavRef} aria-label="页面导航" className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:block lg:flex-none lg:space-y-0.5 lg:overflow-visible">
           {tabs.slice(0, 3).map((t) => (
             <button
               key={t.key}
               type="button"
+              data-tab={t.key}
+              aria-label={t.label}
+              aria-current={tab === t.key ? "page" : undefined}
               onClick={() => handleTab(t.key)}
               className={
                 "flex shrink-0 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors lg:w-full " +
@@ -1049,12 +1137,15 @@ export function App() {
           ))}
           <div className="mx-1 h-4 w-px shrink-0 self-center bg-ink-200 lg:hidden" />
           <div className="hidden px-2.5 pt-3 pb-1 text-[11px] font-medium text-ink-400 lg:block">
-            管理
+            {adminReady ? "管理" : me ? "个人空间" : "管理"}
           </div>
           {tabs.slice(3).map((t) => (
             <button
               key={t.key}
               type="button"
+              data-tab={t.key}
+              aria-label={t.label}
+              aria-current={tab === t.key ? "page" : undefined}
               onClick={() => handleTab(t.key)}
               className={
                 "flex shrink-0 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors lg:w-full " +
@@ -1098,34 +1189,13 @@ export function App() {
         {/* 桌面 48px 顶栏 */}
         <header className="sticky top-0 z-20 hidden h-12 items-center justify-between gap-4 border-b border-ink-200 bg-surface/95 px-6 backdrop-blur-sm lg:flex">
           <div className="flex min-w-0 items-center gap-2 text-[13px]">
-            {tab === "feed" ? (
-              <div className="flex items-center gap-1">
-                {PRIMARY_CHANNELS.map((p) => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    onClick={() => switchPreset(p.key)}
-                    className={
-                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] transition-all active:scale-[0.97] " +
-                      (preset === p.key
-                        ? "bg-ink-950 font-medium text-white shadow-xs"
-                        : "text-ink-600 hover:bg-ink-100 hover:text-ink-950")
-                    }
-                  >
-                    <p.icon size={12} className={preset === p.key ? "text-white/85" : "text-ink-400"} />
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <span className="font-semibold text-ink-950">
-                {tabs.find((t) => t.key === tab)?.label ?? "管理区"}
-              </span>
-            )}
+            <span className="text-ink-500">{adminReady && ADMIN_TABS.has(tab) ? "管理工作台" : tab === "me" || (me && (tab === "rules" || tab === "push")) ? "个人空间" : "公开内容"}</span>
+            <ChevronRight size={12} className="text-ink-300" />
+            <span className="font-medium text-ink-900">{tabs.find((t) => t.key === tab)?.label ?? "管理区"}</span>
           </div>
 
           <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-500">
-            <span className="font-mono tabular-nums">
+            {tab === "feed" && <><span className="font-mono tabular-nums">
               24h <strong className="font-semibold text-ink-900">+{stats.data?.totals.last24h ?? "—"}</strong>
             </span>
             <span className="text-ink-300" aria-hidden="true">·</span>
@@ -1145,6 +1215,7 @@ export function App() {
             >
               <Download size={12} /> 导出
             </a>
+            </>}
             <button
               type="button"
               onClick={refreshAll}
@@ -1157,7 +1228,7 @@ export function App() {
         </header>
 
         {/* 主内容区 */}
-        <main className={tab === "feed" ? "min-w-0 flex-1" : "min-w-0 flex-1 px-3.5 py-3.5 sm:px-6 sm:py-5"}>
+        <main className={tab === "feed" ? "workspace-content min-w-0 flex-1" : "workspace-content min-w-0 flex-1 px-3.5 py-3.5 sm:px-6 sm:py-5"}>
           {/* 懒加载的面板首次进入时给一个轻量占位，避免整页闪白 */}
           <Suspense
             fallback={
@@ -1167,7 +1238,7 @@ export function App() {
             }
           >
           {((tab as string) === "admin" || (ADMIN_TABS.has(tab) && !adminReady && !((tab === "rules" || tab === "push") && me))) && (
-            <AdminGate protectedMode={protectedMode} onAuthChange={setAdminAuthed}>
+            <AdminGate protectedMode={protectedMode} entryAllowed={adminEntryAllowed} onAuthChange={setAdminAuthed}>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   { key: "rules" as Tab, label: "订阅与屏蔽", desc: "关键词订阅、屏蔽词防火墙", icon: ShieldBan },
@@ -1192,27 +1263,26 @@ export function App() {
 
           {tab === "feed" && (
             <>
+              <div className="feed-heading">
+                <PageHeading eyebrow="资源流" title={PRESETS.find((p) => p.key === preset)?.label ?? "资源流"} description={CHANNEL_DESCRIPTION[preset] ?? ""} />
+              </div>
               {/* 移动端：频道胶囊 + 筛选/视图压成一行，省掉两条整行按钮 */}
-              <div className="flex items-stretch border-b border-ink-100 bg-surface lg:hidden">
-                <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-3.5 py-1.5">
+              <div className="flex items-stretch border-b border-ink-100 bg-surface">
+                <div className="channel-nav no-scrollbar min-w-0 flex-1" role="group" aria-label="内容频道">
                   {PRIMARY_CHANNELS.map((p) => (
                     <button
                       key={p.key}
                       type="button"
+                      aria-pressed={preset === p.key}
                       onClick={() => switchPreset(p.key)}
-                      className={
-                        "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] whitespace-nowrap transition-colors active:scale-[0.97] " +
-                        (preset === p.key
-                          ? "bg-ink-950 font-medium text-white"
-                          : "bg-ink-100/80 text-ink-600 hover:text-ink-950")
-                      }
+                      className="whitespace-nowrap transition-colors"
                     >
                       <p.icon size={11} />
                       {p.label}
                     </button>
                   ))}
                 </div>
-                <div className="relative flex shrink-0 items-center gap-1 border-l border-ink-100 bg-surface px-2">
+                <div className="relative flex shrink-0 items-center gap-1 border-l border-ink-100 bg-surface px-2 lg:hidden">
                   {/* 左侧渐隐，避免横向滚动的频道胶囊被硬切一半 */}
                   <span className="pointer-events-none absolute inset-y-0 -left-4 w-4 bg-gradient-to-l from-surface to-transparent" aria-hidden="true" />
                   <button
@@ -1226,6 +1296,7 @@ export function App() {
                     }
                     title="筛选条件"
                     aria-label="筛选条件"
+                    aria-expanded={mobileFilterBar}
                   >
                     <SlidersHorizontal size={14} />
                     {activeFilterCount > 0 && (
@@ -1313,13 +1384,13 @@ export function App() {
               {/* 40px 细线筛选条（根据当前频道自适应隐藏无关的价格/方式筛选） */}
               <div
                 className={
-                  "border-b border-ink-200 bg-[#FCFCFD] px-3.5 py-2.5 sm:px-6 sm:py-2 " +
+                  "feed-controls border-b border-ink-200 bg-surface-hover px-3.5 py-2.5 sm:px-6 sm:py-2 " +
                   (mobileFilterBar ? "block" : "hidden sm:block")
                 }
               >
                 <div className="flex flex-wrap items-center gap-1">
                   {/* 分类多选浮层（展开查看全部分类） */}
-                  <div className="relative" ref={catRef}>
+                  <div className="filter-category relative" ref={catRef}>
                     <button
                       type="button"
                       onClick={() => setCatOpen((v) => !v)}
@@ -1393,7 +1464,7 @@ export function App() {
                   </div>
 
                   {/* 内容形态筛选 */}
-                  <select
+                  {advancedFilters && <select
                     value={kindFilter}
                     onChange={(e) => setKindFilter(e.target.value)}
                     className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
@@ -1406,7 +1477,7 @@ export function App() {
                         {KIND_LABEL[k]}
                       </option>
                     ))}
-                  </select>
+                  </select>}
 
                   {/* 语言筛选 */}
                   <select
@@ -1439,7 +1510,7 @@ export function App() {
                         <option value="100">≤ 100 元</option>
                       </select>
 
-                      <select
+                      {advancedFilters && <select
                         value={obtain}
                         onChange={(e) => setObtain(e.target.value)}
                         className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
@@ -1454,7 +1525,7 @@ export function App() {
                         <option value="lottery">抽奖/开奖</option>
                         <option value="trial">免费试用</option>
                         <option value="promo">推广/引流</option>
-                      </select>
+                      </select>}
                     </>
                   )}
 
@@ -1474,7 +1545,7 @@ export function App() {
                     <option value="30d">一个月内</option>
                   </select>
 
-                  <select
+                  {advancedFilters && <select
                     value={minScore}
                     onChange={(e) => setMinScore(e.target.value)}
                     className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
@@ -1484,7 +1555,11 @@ export function App() {
                     <option value="50">≥ 50 分</option>
                     <option value="60">≥ 60 分</option>
                     <option value="70">≥ 70 分</option>
-                  </select>
+                  </select>}
+                  <button type="button" aria-label={advancedFilters ? "收起高级筛选" : "高级筛选"} aria-expanded={advancedFilters} onClick={() => setAdvancedFilters((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-2 text-[12px] font-medium text-accent hover:bg-brand-subtle">
+                    <SlidersHorizontal size={12} /> {advancedFilters ? "收起高级筛选" : "高级筛选"}
+                    {(kindFilter !== "auto" || obtain !== "auto" || minScore !== "all") && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-label="高级条件已生效" />}
+                  </button>
 
                   <select
                     value={sort}
@@ -1501,6 +1576,7 @@ export function App() {
 
                   <button
                     type="button"
+                    aria-pressed={unreadOnly}
                     onClick={() => setUnreadOnly((v) => !v)}
                     className={
                       "h-7 rounded-md border px-2.5 text-[12px] font-medium transition-colors active:scale-[0.97] " +
@@ -1511,6 +1587,9 @@ export function App() {
                   >
                     未读
                   </button>
+                  {viewMode === "compact" && <button type="button" aria-pressed={showRowSummary} onClick={toggleRowSummary}
+                    className={"inline-flex items-center gap-1 rounded-md border px-2.5 text-[12px] font-medium " + (showRowSummary ? "border-brand-border bg-brand-subtle text-accent" : "border-ink-200 bg-surface text-ink-600")}
+                    title="展开或收起每条资源的 AI 摘要，不影响筛选结果">显示摘要</button>}
 
                   {visible.some((i) => !i.read) && (
                     <button
@@ -1548,7 +1627,7 @@ export function App() {
                     </span>
                     <div className="flex items-center gap-0.5 rounded-md border border-ink-200 bg-surface p-0.5">
                       {[
-                        { key: "compact" as const, icon: AlignJustify, label: "单行紧凑列表", text: "紧凑" },
+                        { key: "compact" as const, icon: AlignJustify, label: "紧凑列表，适合快速扫读", text: "列表" },
                         { key: "grid2" as const, icon: LayoutGrid, label: "双列图文卡片", text: "2列" },
                         { key: "grid3" as const, icon: LayoutGrid, label: "三列图文卡片", text: "3列" },
                       ].map((v) => (
@@ -1653,6 +1732,7 @@ export function App() {
                         评分：≥{minScore} ×
                       </button>
                     )}
+                    {kindFilter !== "auto" && <button type="button" onClick={() => setKindFilter("auto")} className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70">形态：{kindFilter === "all" ? "全部" : KIND_LABEL[kindFilter]} ×</button>}
                     {unreadOnly && (
                       <button
                         type="button"
@@ -1662,16 +1742,26 @@ export function App() {
                         仅未读 ×
                       </button>
                     )}
+                    <button type="button" onClick={resetFilters} className="ml-auto font-medium text-accent hover:underline">清除条件</button>
                   </div>
                 )}
               </div>
+              {activeFilterCount > 0 && !mobileFilterBar && <div className="flex items-center justify-between gap-3 border-b border-ink-100 bg-brand-subtle/40 px-3.5 py-2 text-[12px] sm:hidden">
+                <button type="button" onClick={() => setMobileFilterBar(true)} className="min-w-0 truncate text-ink-700">已筛选 {activeFilterCount} 项{source ? ` · ${sourceName(source)}` : ""}{categories.length ? ` · ${categories.map((cat) => categoryLabelForPreset(cat, preset)).join("、")}` : ""} · 查看条件</button>
+                <button type="button" onClick={resetFilters} className="shrink-0 font-medium text-accent">清除</button>
+              </div>}
 
 
               {items.error && (
-                <div className="mx-3.5 my-3 rounded-lg border border-alert-border bg-alert-subtle p-4 text-[13px] text-alert sm:mx-6">
-                  加载失败：{items.error}
+                <div role="alert" className="mx-3.5 my-3 rounded-lg border border-alert-border bg-alert-subtle p-4 text-[13px] text-alert sm:mx-6">
+                  加载失败：{items.error} <button type="button" onClick={items.reload} className="ml-2 underline">重新加载</button>
                 </div>
               )}
+              {items.loading && !visible.length && <div role="status" aria-label="资源加载中" className="divide-y divide-ink-100">
+                {Array.from({ length: 5 }, (_, index) => <div key={index} className="flex items-center gap-4 px-6 py-5">
+                  <div className="h-4 w-9 rounded bg-ink-100" /><div className="flex-1 space-y-2"><div className="h-3 w-2/3 rounded bg-ink-100" /><div className="h-2.5 w-1/3 rounded bg-ink-100" /></div>
+                </div>)}
+              </div>}
 
               {viewMode === "compact" ? (
                 <div key={`compact-${preset}`} className="list-enter">
@@ -1679,6 +1769,7 @@ export function App() {
                     <Fragment key={item.id}>
                       <CompactRow
                         item={item}
+                        showSummary={showRowSummary}
                         sourceName={sourceName}
                         selected={detail?.id === item.id}
                         onPatch={patch}
@@ -1743,23 +1834,17 @@ export function App() {
                 </div>
               )}
 
-              {!items.loading && !visible.length && (
+              {!items.loading && !items.error && !visible.length && (
                 <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
                   <Radar size={28} className="text-ink-300" />
-                  <div className="text-[15px] font-medium text-ink-900">当前条件下没有福利资源</div>
+                  <div className="text-[15px] font-medium text-ink-900">{preset === "hidden" ? "还没有已关闭的内容" : preset === "starred" ? "还没有符合条件的收藏" : "当前条件下暂无内容"}</div>
                   <p className="max-w-md text-[12.5px] leading-relaxed text-ink-500">
-                    试试把「常用场景」切到「全部收录」，或放宽价格上限；也可能是屏蔽词把结果挡掉了。
+                    {preset === "hidden" ? "列表里点“不想看”的内容会来到这里，需要时可恢复。" : preset === "starred" ? "点资源旁的星标即可收藏；已收藏但未显示时，可先清除筛选。" : `「${PRESETS.find((p) => p.key === preset)?.label ?? "当前频道"}」暂时没有匹配结果，可以清除条件或浏览全部收录。`}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetFilters();
-                      setPreset("all");
-                    }}
-                    className="mt-1 rounded-md bg-brand px-4 py-2 text-[12.5px] font-medium text-white hover:bg-brand-hover"
-                  >
-                    清除全部筛选
-                  </button>
+                  <div className="flex gap-2">
+                    {activeFilterCount > 0 && <button type="button" onClick={resetFilters} className="rounded-md border border-ink-200 px-4 py-2 text-[12.5px] font-medium text-ink-700 hover:bg-ink-100">清除当前条件</button>}
+                    <button type="button" onClick={() => { resetFilters(); setPreset("all"); }} className="rounded-md bg-brand px-4 py-2 text-[12.5px] font-medium text-white hover:bg-brand-hover">浏览全部收录</button>
+                  </div>
                 </div>
               )}
             </>
@@ -1850,6 +1935,7 @@ export function App() {
 
           {(adminReady || me) && tab === "rules" && (
             <RulesPanel
+              allowRegex={adminReady}
               subscriptions={subs.data?.subscriptions ?? []}
               rules={blockRules.data?.rules ?? []}
               presets={blockRules.data?.presets ?? []}
@@ -1866,28 +1952,31 @@ export function App() {
               }}
               onAddRule={addRule}
               onImportPresets={async () => {
-                await fetch("/api/block-rules", {
+                const res = await fetch(rulesBase + "/block-rules", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ presets: true }),
                 });
+                if (!res.ok) { notify("导入屏蔽词失败"); return; }
                 blockRules.reload();
                 items.reload();
                 stats.reload();
                 notify("已导入常见噪音屏蔽词");
               }}
               onToggleRule={async (id, enabled) => {
-                await fetch((isPublicSite && !adminReady ? "/api/me/block-rules/" : "/api/block-rules/") + id, {
+                const res = await fetch(rulesBase + "/block-rules/" + id, {
                   method: "PATCH",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ enabled }),
                 });
+                if (!res.ok) { notify("修改规则失败"); return; }
                 blockRules.reload();
                 items.reload();
                 setBlockedPreview(null);
               }}
               onDeleteRule={async (id) => {
-                await fetch((isPublicSite && !adminReady ? "/api/me/block-rules/" : "/api/block-rules/") + id, { method: "DELETE" });
+                const res = await fetch(rulesBase + "/block-rules/" + id, { method: "DELETE" });
+                if (!res.ok) { notify("删除规则失败"); return; }
                 blockRules.reload();
                 items.reload();
                 stats.reload();
@@ -1915,8 +2004,9 @@ export function App() {
                   body: JSON.stringify(p),
                 });
                 if (!res.ok) {
-                  notify("保存失败");
-                  return;
+                  const error = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "保存失败";
+                  notify(error);
+                  throw new Error(error);
                 }
                 push.reload();
                 setPushPreview(null);
@@ -1924,11 +2014,13 @@ export function App() {
               }}
               onPreview={async () => {
                 const res = await fetch((pushBase ?? "/api/push") + "/preview?limit=6");
+                if (!res.ok) { notify("试算失败，请稍后重试"); return; }
                 setPushPreview((await res.json()) as PushPreview);
               }}
               onFlush={async () => {
                 const res = await fetch((pushBase ?? "/api/push") + "/flush", { method: "POST" });
-                const data = (await res.json().catch(() => ({}))) as { sent?: number; queued?: number };
+                const data = (await res.json().catch(() => ({}))) as { sent?: number; queued?: number; error?: string };
+                if (!res.ok) { notify(data.error ?? "发送失败"); return; }
                 notify(`已发送 ${data.sent ?? 0} 条，队列剩 ${data.queued ?? 0} 条`);
                 push.reload();
                 pushLogs.reload();
@@ -1936,7 +2028,8 @@ export function App() {
               }}
               onTest={async () => {
                 const res = await fetch((pushBase ?? "/api/push") + "/test", { method: "POST" });
-                notify(res.ok ? "测试消息已发送到 Telegram" : "推送未启用或缺少凭据");
+                const data = await res.json().catch(() => ({})) as { error?: string };
+                notify(res.ok ? "测试消息已发送到当前渠道" : data.error ?? "推送未启用或缺少凭据");
                 pushLogs.reload();
               }}
             />
@@ -1968,10 +2061,11 @@ export function App() {
             />
           )}
 
-          {me && tab === "me" && bootData && <UserPushPanel boot={bootData} />}
+          {me && tab === "me" && bootData && <UserPushPanel key={me.id} boot={bootData} />}
           {adminReady && tab === "ops" && <SiteAdminPanel />}
           {adminReady && tab === "ops" && (
             <OpsPanel
+              onClassificationChanged={() => { refreshAll(); hot.reload(); digestDetail.reload(); }}
               sources={sources.data?.sources ?? []}
               runs={runs.data?.runs ?? []}
               sourceName={sourceName}
@@ -2009,12 +2103,12 @@ export function App() {
                 sources.reload();
                 notify("采集周期已改为 " + formatInterval(sec));
               }}
-              onAddRss={async (name, url, intervalSec, kindHint, categoryHint) => {
+              onAddRss={async (name, url, intervalSec, kindHint, categoryHint, fixedCategory) => {
                 notify("正在添加并试采…");
                 const res = await fetch("/api/sources", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ name, url, intervalSec, kindHint, categoryHint }),
+                  body: JSON.stringify({ name, url, intervalSec, kindHint, categoryHint, fixedCategory }),
                 });
                 const data = (await res.json().catch(() => ({}))) as {
                   error?: string;
@@ -2031,13 +2125,18 @@ export function App() {
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify(patch),
                 });
-                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                const data = (await res.json().catch(() => ({}))) as { error?: string; reclassified?: number };
                 if (!res.ok) {
                   notify(data.error ?? "保存失败");
                   return false;
                 }
-                sources.reload();
-                notify("数据源配置已更新");
+                // Commit the acknowledged config locally before closing/reopening the editor.
+                // A background refresh must not make immediate re-edit show the previous values.
+                sources.update((current) => current ? { ...current, sources: current.sources.map((source) => source.id === id ? { ...source, ...patch } : source) } : current);
+                refreshAll();
+                hot.reload();
+                digestDetail.reload();
+                notify(data.reclassified ? `配置已更新，${data.reclassified} 条历史资源已重新归类` : "数据源配置已更新");
                 return true;
               }}
               onDeleteSource={async (id) => {
@@ -2068,6 +2167,9 @@ export function App() {
       {detail && (
         <ItemDetailDrawer
           item={detail}
+          loading={detailLoading}
+          error={detailError}
+          onRetry={() => setDetailNonce((n) => n + 1)}
           sourceName={sourceName}
           hasPrev={currentIndex > 0}
           hasNext={currentIndex >= 0 && currentIndex < visible.length - 1}
@@ -2075,6 +2177,18 @@ export function App() {
           onNext={() => currentIndex >= 0 && currentIndex < visible.length - 1 && setDetail(visible[currentIndex + 1] ?? null)}
           onClose={() => setDetail(null)}
           onPatch={patch}
+          onClassificationSave={adminReady ? async (id, update) => {
+            const response = await fetch(`/api/admin/items/${id}/classification`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(update) });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error ?? "保存分类失败");
+            // A fresh detail carries personal state and manual metadata without crossing user/admin scopes.
+            const fullResponse = await fetch(`/api/items/${id}`);
+            if (fullResponse.ok) {
+              const full = await fullResponse.json() as Item;
+              setDetail((current) => current?.id === id ? full : current);
+            }
+            refreshAll(); hot.reload(); digestDetail.reload();
+          } : undefined}
           onQuickBlock={setQuickBlock}
           onCopyCode={copyCode}
         />

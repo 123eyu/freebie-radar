@@ -6,9 +6,9 @@
 
 | `SITE_MODE` | 适用场景 | 收藏 / 已读 / 屏蔽 / 关注词 | 管理区 |
 | --- | --- | --- | --- |
-| `selfhost` | 自己一个人用、内网用 | 全局（`items.starred`、`block_rules`、`subscriptions`） | 未设 `ADMIN_TOKEN` 时开放 |
+| `selfhost` | 自己一个人用、内网用 | 全局（`items.starred`、`block_rules`、`subscriptions`） | 非生产未设 `ADMIN_TOKEN` 时开放；生产锁定 |
 | `public` | 给一群人用 | 按登录用户隔离（`user_*` 表）；未登录访客只存浏览器 | **只认 `ADMIN_TOKEN`**，没配就锁死 |
-| `auto`（默认） | 懒人模式 | 配了 `LINUXDO_CLIENT_ID` + `SECRET` → `public`，否则 `selfhost` | 同上 |
+| `auto`（默认） | 懒人模式 | 配齐 LINUX DO 或 GitHub 的 OAuth 凭据 → `public`，否则 `selfhost` | 同上 |
 
 > 关键点：**LINUX DO 登录永远不构成管理权限**。管理员身份只来自 `.env` 里的 `ADMIN_TOKEN`，与 OAuth 完全正交。
 
@@ -80,7 +80,7 @@ SESSION_SECRET=
 | `/rss/u/<token>.xml?mode=push` | 完全按你的个人推送规则过滤 |
 | `/rss/u/<token>.xml?mode=subs` | 只输出命中你关注关键词的条目 |
 
-- 响应带 `ETag`，命中返回 `304`
+- 响应带 `ETag`，命中返回 `304`；个人源为 `private, no-store`，不能作为公共 CDN 缓存
 - 描述用 CDATA 包纯文本（不是 HTML），阅读器不会把正文里的 `<` 当标签
 - 个人链接本身就是凭据，泄露了就到「我的」里重置 Token
 
@@ -110,7 +110,8 @@ SESSION_SECRET=
 
 ```env
 SITE_MODE=public
-AUTH_DEV_MOCK=true      # 仅 NODE_ENV != production 生效
+NODE_ENV=development
+AUTH_DEV_MOCK=true      # 还必须通过 localhost/127.0.0.1 访问
 ADMIN_TOKEN=test-admin-secret
 ```
 

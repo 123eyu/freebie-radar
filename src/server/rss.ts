@@ -1,4 +1,5 @@
 import { CATEGORY_LABEL, KIND_LABEL } from "../shared/taxonomy.ts";
+import { createHash } from "node:crypto";
 
 export type RssItem = {
   id: number;
@@ -133,14 +134,7 @@ export function buildRssXml(items: readonly RssItem[], opts: RssFeedOptions): st
   return [...head, ...body, "</channel>", "</rss>"].join("\n");
 }
 
-/** 弱 ETag：条目 id + 最新发布时间，够用来支持 304 */
+/** Classification/summary edits must change the ETag even when IDs and dates do not. */
 export function rssEtag(items: readonly RssItem[], salt: string): string {
-  const ids = items.map((i) => i.id).join(",");
-  const last = items[0]?.published_at ?? items[0]?.first_seen_at ?? "";
-  let hash = 0;
-  const src = salt + "|" + ids + "|" + last;
-  for (let i = 0; i < src.length; i += 1) {
-    hash = (hash * 31 + src.charCodeAt(i)) | 0;
-  }
-  return 'W/"' + (hash >>> 0).toString(36) + "-" + items.length + '"';
+  return `W/"${createHash("sha256").update(salt).update(JSON.stringify(items)).digest("hex").slice(0, 24)}-${items.length}"`;
 }

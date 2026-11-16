@@ -1,4 +1,4 @@
-import { all, get } from "./db.ts";
+import { all, get, dbRevision } from "./db.ts";
 import { TitleDeduper } from "./enrich/dedup.ts";
 
 /** 通用虚词 + 福利域里的「无信息量」词：这类词每条标题都有，进词云只会淹没真正的热点 */
@@ -170,10 +170,7 @@ export function buildHotReport(windowHours = 24, rawScope?: string): HotReport {
   const hours = Math.min(Math.max(Math.round(windowHours), 1), 168);
   const scope = normalizeScope(rawScope);
   const now = new Date();
-  const sig = get<{ n: number; maxId: number }>(
-    "SELECT COUNT(*) AS n, COALESCE(MAX(id), 0) AS maxId FROM items WHERE status = 'active'",
-  );
-  const bucket = `${hours}:${scope}:${Math.floor(now.getTime() / 600_000)}:${sig?.n ?? 0}:${sig?.maxId ?? 0}`;
+  const bucket = `${hours}:${scope}:${Math.floor(now.getTime() / 600_000)}:${dbRevision()}`;
   const hit = cache.get(bucket);
   if (hit) return hit;
   if (cache.size > 8) cache.clear();
@@ -238,7 +235,7 @@ export function buildHotReport(windowHours = 24, rawScope?: string): HotReport {
   const dealCandidates = rawCurrent.filter((r) => {
     const k = r.kind ?? "freebie";
     if (k !== "freebie" && k !== "deal") return false;
-    if (r.category === "trade" || r.category === "carpool") return false;
+    if (r.category === "trade" || r.category === "carpool" || r.category === "pan" || r.category === "course") return false;
     if (r.obtain === "promo") return false;
     return true;
   });

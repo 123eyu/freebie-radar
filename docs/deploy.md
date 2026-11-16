@@ -1,5 +1,7 @@
 # 部署与运维指南
 
+> 公网上线先阅读 [安全边界与管理入口隔离](security.md)。当前 Docker 默认只向宿主机回环地址发布端口；生产环境必须设置 `ADMIN_TOKEN`。
+
 ## Docker Compose 一键部署（推荐）
 
 本项目使用 `node:24-alpine` 单容器运行（成品镜像 ~340 MB），内置 Node.js 原生 `node:sqlite`（WAL 模式），无需外接 PostgreSQL / Redis，且设置了 V8 堆与 SQLite 缓存限制，主服务容器实测常驻内存约 **80–100 MiB**。
@@ -11,7 +13,7 @@ cd freebie-radar
 # 可选：复制并编辑环境变量（配置 ADMIN_TOKEN / Telegram 推送 / 代理等）
 cp .env.example .env
 
-# 启动主服务（不建 .env 也可直接启动，会自动建表并初始化 63 个内置源）
+# 启动主服务（会自动建表；不设 ADMIN_TOKEN 时生产管理区锁定）
 docker compose up -d --build
 ```
 

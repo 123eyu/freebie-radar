@@ -12,6 +12,7 @@ import {
 } from "./config.ts";
 import { createHttp } from "./http.ts";
 import { randomToken, signToken, timingSafeEqualStr, verifySignedToken } from "./crypto.ts";
+import { adminHostAllowed } from "./security.ts";
 import {
   admissionBlocked,
   findUserByLinuxdoId,
@@ -144,11 +145,11 @@ export function resolveIdentity(c: Context): Identity {
   const token = config.adminToken;
   let isAdmin = false;
   if (!token) {
-    isAdmin = !isPublicSite;
+    isAdmin = !adminLocked && adminHostAllowed(c);
   } else {
     const auth = c.req.header("authorization") ?? "";
     const given = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-    isAdmin = Boolean(given) && timingSafeEqualStr(given, token);
+    isAdmin = adminHostAllowed(c) && Boolean(given) && timingSafeEqualStr(given, token);
   }
   return {
     siteMode,
@@ -327,7 +328,7 @@ export function registerAuthRoutes(app: Hono): void {
       isAdmin: id.isAdmin,
       user: id.user,
       onboarding: getOnboarding(),
-      features: { rss: true, userPush: true },
+      features: { rss: true, userPush: true, personalRegex: false },
     });
   });
 
@@ -542,7 +543,7 @@ function finishLogin(c: Context, profile: LinuxdoProfile, invite: string): Respo
 
   /** 本地模拟登录：只在非生产 + 显式开启时可用，用来验证多账号隔离与双 Bot 推送 */
   app.post("/api/auth/dev-login", async (c) => {
-    if (!devMockEnabled) return c.json({ error: "本地模拟登录未开启" }, 403);
+    if (!devMockEnabled || !["localhost", "127.0.0.1", "[::1]"].includes(new URL(c.req.url).hostname)) return c.json({ error: "本地模拟登录未开启" }, 403);
     const access = getAccessControl();
     if (!access.loginEnabled) return c.json({ error: "站点当前已关闭登录" }, 403);
     const body = (await c.req.json().catch(() => ({}))) as { preset?: string; trustLevel?: number; invite?: string };

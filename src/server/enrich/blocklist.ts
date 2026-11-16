@@ -39,6 +39,7 @@ export function compileRule(rule: BlockRule): (text: string, sourceId: string) =
   const scope = rule.scope || "all";
   if (rule.mode === "regex") {
     let re: RegExp | null = null;
+    if (!safeRegex(rule.pattern)) return () => false;
     try {
       re = new RegExp(rule.pattern, "i");
     } catch {
@@ -46,7 +47,7 @@ export function compileRule(rule: BlockRule): (text: string, sourceId: string) =
     }
     return (text, sourceId) => {
       if (scope !== "all" && scope !== sourceId) return false;
-      if (re) return re.test(text);
+      if (re) return re.test(text.slice(0, 2048));
       return text.toLowerCase().includes(rule.pattern.toLowerCase());
     };
   }
@@ -55,6 +56,14 @@ export function compileRule(rule: BlockRule): (text: string, sourceId: string) =
     if (scope !== "all" && scope !== sourceId) return false;
     return text.toLowerCase().includes(needle);
   };
+}
+
+/** Conservative admin-only subset; unsafe legacy patterns are never executed. */
+export function safeRegex(pattern: string): boolean {
+  if (!pattern || pattern.length > 80 || /\\[1-9]|\(\?/.test(pattern)) return false;
+  const tokens = pattern.replace(/\\./g, "_").replace(/\[(?:\\.|[^\]\\])*\]/g, "_");
+  if (/\)[*+?{]/.test(tokens) || (tokens.match(/[*+{]/g)?.length ?? 0) > 1) return false;
+  try { new RegExp(pattern, "i"); return true; } catch { return false; }
 }
 
 export function matchBlockRules(

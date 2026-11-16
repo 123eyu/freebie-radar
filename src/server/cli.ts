@@ -6,6 +6,8 @@ import { runAll, runSource, ensureSources } from "./collectors/index.ts";
 import { lastDigests, runDaily } from "./digest.ts";
 import { getPushSettings, passesPushFilters } from "./push.ts";
 import { guessObtain } from "./enrich/obtain.ts";
+import { getSourceHints, reconcileSourceCategory, applyManualClassification } from "./source-settings.ts";
+import { categoryForSource } from "../shared/source-classification.ts";
 const [cmd = "help", ...args] = process.argv.slice(2);
 migrate();
 ensureSources();
@@ -43,6 +45,7 @@ async function main() {
       if (!id || json === undefined) throw new Error("usage: config <sourceId> <json>");
       JSON.parse(json);
       run("UPDATE sources SET config = ? WHERE id = ?", json, id);
+      reconcileSourceCategory(id);
       console.log("config updated:", id);
       break;
     }
@@ -68,6 +71,7 @@ async function main() {
       }>("SELECT id, source_id, external_id, url, title, summary, author, published_at, expires_at, tags, category, ai, ai_keep, obtain FROM items");
       let changed = 0;
       for (const row of rows) {
+        const hints = getSourceHints(row.source_id);
         let tags: string[] = [];
         try { tags = JSON.parse(row.tags) as string[]; } catch { tags = []; }
         const e = enrichItem({
@@ -79,7 +83,7 @@ async function main() {
           publishedAt: row.published_at,
           expiresAt: row.expires_at,
           tags,
-        }, row.source_id);
+        }, row.source_id, hints);
         if (!e) continue;
         let finalCategory = e.category;
         let finalObtain = row.obtain;
@@ -97,8 +101,9 @@ async function main() {
           } catch { /* ignore */ }
         }
         if (finalCategory !== row.category) changed += 1;
+        finalCategory = categoryForSource(row.source_id, e.category === "pan" ? "pan" : finalCategory, hints);
         const aiKeepBool = row.ai_keep === null ? null : row.ai_keep === 1;
-        const finalKind = resolveKind(aiKind, aiKeepBool, {
+        let finalKind = resolveKind(aiKind, aiKeepBool, {
           title: row.title,
           summary: row.summary ?? "",
           sourceId: row.source_id,
@@ -107,6 +112,8 @@ async function main() {
           isFree: e.isFree,
           price: e.price,
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(row.source_id),
+          kindHint: hints.kindHint,
+          guardEnabled: hints.guardEnabled,
         });
         // 资讯/水帖不许落进实地福利（AI 或旧规则标错的在这里降级）
         finalCategory = demoteOfflineCategory(
@@ -116,6 +123,7 @@ async function main() {
           row.summary ?? "",
           e.category,
         ) as typeof finalCategory;
+        ({ category: finalCategory, kind: finalKind } = applyManualClassification(row.id, finalCategory, finalKind) as { category: typeof finalCategory; kind: typeof finalKind });
         const finalScore = calibrateScoreByObtain(e.baseScore, finalObtain, aiKeepBool, finalQuality, finalKind, {
           title: e.title,
 summary: e.summary ?? "",

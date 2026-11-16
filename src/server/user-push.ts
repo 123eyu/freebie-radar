@@ -10,6 +10,7 @@ import {
   parseAiMeta,
   passesPushFilters,
   planInstant,
+  normalizeSettings,
   sourceLabel,
   type PushRoute,
   type PushSettings,
@@ -19,6 +20,7 @@ import { TitleDeduper, type DedupeEntry } from "./enrich/index.ts";
 import { matchesEntryNoise } from "./enrich/ai.ts";
 import { URGENT, hasValueSignal } from "./enrich/noise.ts";
 import type { FreshItem } from "./collectors/index.ts";
+import { postWebhook as sendWebhook, validateWebhookUrl } from "./webhook.ts";
 
 /* ------------------------------------------------------------------ *
  * 个人推送配置
@@ -58,7 +60,7 @@ type ConfigRow = {
 function parseSettings(raw: string | null): PushSettings {
   if (!raw) return { ...DEFAULT_SETTINGS };
   try {
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<PushSettings>) };
+    return normalizeSettings(JSON.parse(raw) as Partial<PushSettings>);
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -124,12 +126,13 @@ export type UserPushPatch = Partial<PushSettings> & {
 export function saveUserPushConfig(userId: number, patch: UserPushPatch): UserPushConfig {
   const cur = getUserPushConfig(userId);
   const now = new Date().toISOString();
-  const nextSettings: PushSettings = { ...cur.settings };
-  for (const [k, v] of Object.entries(patch)) {
-    if (k in DEFAULT_SETTINGS && v !== undefined) {
-      (nextSettings as unknown as Record<string, unknown>)[k] = v;
-    }
+  const nextSettings = normalizeSettings(patch, cur.settings);
+  if (nextSettings.webhookUrl) validateWebhookUrl(nextSettings.webhookUrl);
+  if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(nextSettings.quietHours) ||
+      nextSettings.quietHours.split("-").some((part) => Number(part.slice(0, 2)) > 23 || Number(part.slice(3)) > 59)) {
+    throw new Error("免打扰时段格式应为 HH:MM-HH:MM");
   }
+  try { new Intl.DateTimeFormat("en", { timeZone: nextSettings.timezone }); } catch { throw new Error("时区无效"); }
   // 阈值联动与上限夹紧，防止用户填出「攒批阈值 > 即时阈值」这种自相矛盾
   const instantScore = clampNum(nextSettings.instantScore, 0, 100, cur.settings.instantScore);
   const batchScore = Math.min(clampNum(nextSettings.batchScore, 0, 100, cur.settings.batchScore), instantScore);
@@ -156,6 +159,9 @@ export function saveUserPushConfig(userId: number, patch: UserPushPatch): UserPu
   const chatId = typeof patch.chatId === "string" ? patch.chatId.trim().slice(0, 64) : cur.chatId;
   const useGlobalBlocks = typeof patch.useGlobalBlocks === "boolean" ? patch.useGlobalBlocks : cur.useGlobalBlocks;
   const dailyEnabled = typeof patch.dailyEnabled === "boolean" ? patch.dailyEnabled : cur.dailyEnabled;
+  const ready = nextSettings.deliverVia === "webhook" ? Boolean(nextSettings.webhookUrl) : Boolean(enc) && Boolean(chatId);
+  if (enabled && !ready) throw new Error(nextSettings.deliverVia === "webhook" ? "请先保存 Webhook 地址再开启推送" : "请先保存 Bot Token 与 Chat ID 再开启推送");
+  nextSettings.enabled = enabled;
 
   run(
     `INSERT INTO user_push_configs
@@ -173,7 +179,7 @@ export function saveUserPushConfig(userId: number, patch: UserPushPatch): UserPu
        consecutive_fails = CASE WHEN excluded.bot_token_enc IS NOT NULL THEN 0 ELSE user_push_configs.consecutive_fails END,
        updated_at = excluded.updated_at`,
     userId,
-    enabled && Boolean(enc) && Boolean(chatId) ? 1 : 0,
+    enabled && ready ? 1 : 0,
     enc,
     mask,
     chatId,
@@ -199,7 +205,7 @@ export function loadUserBlockRules(userId: number, includeGlobal: boolean): Bloc
   const own = all<BlockRule>(
     "SELECT id, pattern, mode, scope, enabled, created_at FROM user_block_rules WHERE user_id = ? AND enabled = 1 ORDER BY id",
     userId,
-  );
+  ).filter((r) => r.mode !== "regex");
   if (!includeGlobal) return own;
   const global = all<BlockRule>(
     "SELECT id, pattern, mode, scope, enabled, created_at FROM block_rules WHERE enabled = 1 ORDER BY id",
@@ -254,7 +260,11 @@ function markSent(userId: number, itemIds: readonly number[]): void {
 function sentLastHour(userId: number): number {
   return (
     get<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM user_push_deliveries WHERE user_id = ? AND status = 'sent' AND sent_at >= ?",
+      `SELECT
+         (SELECT COUNT(*) FROM user_push_deliveries WHERE user_id = ? AND status = 'sent' AND sent_at >= ?) +
+         COALESCE((SELECT SUM(count) FROM user_push_logs WHERE user_id = ? AND kind = 'daily' AND ok = 1 AND created_at >= ?), 0) AS n`,
+      userId,
+      new Date(Date.now() - 3_600_000).toISOString(),
       userId,
       new Date(Date.now() - 3_600_000).toISOString(),
     )?.n ?? 0
@@ -279,8 +289,11 @@ function recentUserSeeds(userId: number, includeQueued = true): DedupeEntry[] {
 
 type ActiveUser = { userId: number; settings: PushSettings; chatId: string; token: string; useGlobalBlocks: boolean; via: "telegram" | "webhook" };
 
-function activeUsers(): ActiveUser[] {
-  const rows = all<ConfigRow>("SELECT * FROM user_push_configs WHERE enabled = 1");
+function activeUsers(userId?: number): ActiveUser[] {
+  const rows = all<ConfigRow>(
+    "SELECT c.* FROM user_push_configs c JOIN users u ON u.id = c.user_id WHERE c.enabled = 1 AND u.disabled = 0" + (userId === undefined ? "" : " AND c.user_id = ?"),
+    ...(userId === undefined ? [] : [userId]),
+  );
   const out: ActiveUser[] = [];
   for (const row of rows) {
     const settings = parseSettings(row.settings);
@@ -380,17 +393,7 @@ function canBatchForUser(item: FreshItem, s: PushSettings, d: UserDecision): boo
  * 所以 webhook 才是能真正落地的路子（顺带覆盖 Bark / 飞书 / 钉钉 / Slack / 自建）。
  */
 async function postWebhook(settings: PushSettings, text: string): Promise<void> {
-  const url = settings.webhookUrl.trim();
-  if (!/^https?:\/\//i.test(url)) throw new Error("webhook 地址必须是 http(s):// 开头");
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (settings.webhookSecret) headers["x-radar-secret"] = settings.webhookSecret;
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ source: "freebie-radar", text, sentAt: new Date().toISOString() }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new Error(`webhook 返回 ${res.status}`);
+  await sendWebhook(settings.webhookUrl, text, settings.webhookSecret);
 }
 async function sendToUser(user: ActiveUser, text: string): Promise<void> {
   try {
@@ -451,7 +454,7 @@ export async function dispatchUserPush(sourceId: string, fresh: FreshItem[]): Pr
   const batchSize = 3;
   for (let i = 0; i < users.length; i += batchSize) {
     const slice = users.slice(i, i + batchSize);
-    const results = await Promise.allSettled(slice.map((u) => dispatchForUser(u, sourceId, fresh)));
+    const results = await Promise.allSettled(slice.map((u) => withDeliveryLock(u.userId, () => dispatchForUser(u, sourceId, fresh))));
     for (const r of results) if (r.status === "fulfilled") totalSent += r.value;
   }
   return totalSent;
@@ -463,8 +466,10 @@ async function dispatchForUser(user: ActiveUser, sourceId: string, fresh: FreshI
   const rules = loadUserBlockRules(user.userId, user.useGlobalBlocks);
   const subKeywords = loadUserSubscriptions(user.userId);
   const hasRoutes = s.routes?.some((r) => r.enabled);
+  const hidden = new Set(all<{ item_id: number }>("SELECT item_id FROM user_item_states WHERE user_id = ? AND hidden = 1", user.userId).map((r) => r.item_id));
 
   const candidates = fresh
+    .filter((it) => !hidden.has(it.id))
     .filter((it) => !isBlocked({ ...it, sourceId }, rules))
     .filter((it) => passesPushFilters({ ...it, sourceId }, s));
   if (!candidates.length) return 0;
@@ -479,6 +484,7 @@ async function dispatchForUser(user: ActiveUser, sourceId: string, fresh: FreshI
     if (deduper?.isDuplicate(it)) continue;
     const subHits = matchUserSubscriptions(it, subKeywords);
     const route = hasRoutes ? matchRoute({ ...it, sourceId }, s.routes) : null;
+    if (hasRoutes && !route) continue;
     const d = decideForUser(it, s, subHits, route);
     if (d.push && !quiet) {
       instant.push({ it, reason: d.reason, subHits, route });
@@ -532,13 +538,13 @@ async function dispatchForUser(user: ActiveUser, sourceId: string, fresh: FreshI
  * 攒批冲刷
  * ------------------------------------------------------------------ */
 
-export async function flushUserBatches(force = false): Promise<number> {
-  const users = activeUsers();
+export async function flushUserBatches(force = false, userId?: number): Promise<number> {
+  const users = activeUsers(userId);
   if (!users.length) return 0;
   let total = 0;
   for (const user of users) {
     try {
-      total += await flushOneUser(user, force);
+      total += await flushUserLocked(user, force);
     } catch (err) {
       console.error("[user-push] 冲刷失败:", err instanceof Error ? err.message : err);
     }
@@ -546,10 +552,30 @@ export async function flushUserBatches(force = false): Promise<number> {
   return total;
 }
 
+const deliveries = new Map<number, Promise<void>>();
+async function withDeliveryLock<T>(userId: number, operation: () => Promise<T>): Promise<T> {
+  const previous = deliveries.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  const current = previous.then(() => barrier);
+  deliveries.set(userId, current);
+  await previous;
+  try { return await operation(); }
+  finally { release(); if (deliveries.get(userId) === current) deliveries.delete(userId); }
+}
+async function flushUserLocked(user: ActiveUser, force: boolean): Promise<number> {
+  return withDeliveryLock(user.userId, () => flushOneUser(user, force));
+}
+
 async function flushOneUser(user: ActiveUser, force: boolean): Promise<number> {
   const s = user.settings;
   if (!s.enabled) return 0;
   if (!force && isQuietNow(s)) return 0;
+  if (!force) {
+    if (!s.batchIntervalMin) return 0;
+    const last = get<{ last_flush_at: string | null }>("SELECT last_flush_at FROM user_push_configs WHERE user_id = ?", user.userId)?.last_flush_at;
+    if (last && Date.now() - Date.parse(last) < s.batchIntervalMin * 60_000) return 0;
+  }
 
   const budget = Math.max(0, s.maxPerHour - sentLastHour(user.userId));
   if (!budget) return 0;
@@ -588,6 +614,9 @@ async function flushOneUser(user: ActiveUser, force: boolean): Promise<number> {
     ...ids,
   );
   const byId = new Map(dbRows.map((r) => [r.id, r]));
+  const hidden = new Set(all<{ item_id: number }>(
+    `SELECT item_id FROM user_item_states WHERE user_id = ? AND hidden = 1 AND item_id IN (${ph})`, user.userId, ...ids,
+  ).map((r) => r.item_id));
 
   const rules = loadUserBlockRules(user.userId, user.useGlobalBlocks);
   const subKeywords = loadUserSubscriptions(user.userId);
@@ -597,7 +626,7 @@ async function flushOneUser(user: ActiveUser, force: boolean): Promise<number> {
   const picked: { row: (typeof dbRows)[number]; item: FreshItem; subHits: string[]; route: PushRoute | null; reason: string }[] = [];
   for (const q of rows) {
     const r = byId.get(q.item_id);
-    if (!r || r.status !== "active") continue;
+    if (!r || r.status !== "active" || hidden.has(r.id)) continue;
     if (isBlocked(r, rules)) continue;
     let codes: string[] = [];
     try {
@@ -627,7 +656,12 @@ async function flushOneUser(user: ActiveUser, force: boolean): Promise<number> {
     if (!passesPushFilters({ ...item, sourceId: r.source_id }, s)) continue;
     const subHits = matchUserSubscriptions(item, subKeywords);
     const route = hasRoutes ? matchRoute({ ...item, sourceId: r.source_id }, s.routes) : null;
+    if (hasRoutes && !route) continue;
     picked.push({ row: r, item, subHits, route, reason: q.reason ?? "攒批汇总" });
+  }
+  const pickedIds = new Set(picked.map((p) => p.item.id));
+  for (const q of rows) {
+    if (!pickedIds.has(q.item_id)) run("UPDATE user_push_deliveries SET status = 'failed' WHERE id = ?", q.id);
   }
   if (!picked.length) {
     // 全被过滤掉：标记为 failed，避免永远卡在队列里
@@ -664,7 +698,7 @@ async function flushOneUser(user: ActiveUser, force: boolean): Promise<number> {
  * ------------------------------------------------------------------ */
 
 export async function pushUserDaily(): Promise<number> {
-  const rows = all<ConfigRow>("SELECT * FROM user_push_configs WHERE enabled = 1 AND daily_enabled = 1");
+  const rows = all<ConfigRow>("SELECT c.* FROM user_push_configs c JOIN users u ON u.id = c.user_id WHERE c.enabled = 1 AND c.daily_enabled = 1 AND u.disabled = 0");
   let sent = 0;
   for (const row of rows) {
     const settings = parseSettings(row.settings);
@@ -680,7 +714,7 @@ export async function pushUserDaily(): Promise<number> {
       via,
     };
     try {
-      const n = await sendDailyDigest(user);
+      const n = await withDeliveryLock(user.userId, () => sendDailyDigest(user));
       sent += n;
     } catch (err) {
       console.error("[user-push] 个人日报失败:", err instanceof Error ? err.message : err);
@@ -691,6 +725,8 @@ export async function pushUserDaily(): Promise<number> {
 
 async function sendDailyDigest(user: ActiveUser): Promise<number> {
   const s = user.settings;
+  const budget = Math.max(0, s.maxPerHour - sentLastHour(user.userId));
+  if (!s.enabled || !budget) return 0;
   const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
   const rows = all<{
     id: number;
@@ -719,8 +755,10 @@ async function sendDailyDigest(user: ActiveUser): Promise<number> {
   );
   const rules = loadUserBlockRules(user.userId, user.useGlobalBlocks);
   const subKeywords = loadUserSubscriptions(user.userId);
+  const hidden = new Set(all<{ item_id: number }>("SELECT item_id FROM user_item_states WHERE user_id = ? AND hidden = 1", user.userId).map((r) => r.item_id));
   const items: { row: (typeof rows)[number]; item: FreshItem; subHits: string[] }[] = [];
   for (const r of rows) {
+    if (hidden.has(r.id)) continue;
     if (isBlocked(r, rules)) continue;
     let codes: string[] = [];
     try {
@@ -749,7 +787,7 @@ async function sendDailyDigest(user: ActiveUser): Promise<number> {
     };
     if (!passesPushFilters({ ...item, sourceId: r.source_id }, s)) continue;
     items.push({ row: r, item, subHits: matchUserSubscriptions(item, subKeywords) });
-    if (items.length >= 12) break;
+    if (items.length >= Math.min(12, budget)) break;
   }
   if (!items.length) return 0;
   const lines = [`📰 资源雷达 · 个人日报（${new Date().toISOString().slice(0, 10)}，${items.length} 条）`];
@@ -825,20 +863,22 @@ export function userPushStats(userId: number): {
       userId,
       new Date(Date.now() - 86_400_000).toISOString(),
     )?.n ?? 0;
+  const daily24 = get<{ n: number }>("SELECT COALESCE(SUM(count),0) AS n FROM user_push_logs WHERE user_id = ? AND kind = 'daily' AND ok = 1 AND created_at >= ?", userId, new Date(Date.now() - 86_400_000).toISOString())?.n ?? 0;
   const sentHour = sentLastHour(userId);
   const total =
     get<{ n: number }>("SELECT COUNT(*) AS n FROM user_push_deliveries WHERE user_id = ? AND status = 'sent'", userId)?.n ?? 0;
+  const dailyTotal = get<{ n: number }>("SELECT COALESCE(SUM(count),0) AS n FROM user_push_logs WHERE user_id = ? AND kind = 'daily' AND ok = 1", userId)?.n ?? 0;
   return {
     queued,
-    sentLast24h: sent24,
+    sentLast24h: sent24 + daily24,
     sentLastHour: sentHour,
-    totalSent: total,
+    totalSent: total + dailyTotal,
     failures:
       get<{ n: number }>("SELECT COUNT(*) AS n FROM user_push_logs WHERE user_id = ? AND ok = 0", userId)?.n ?? 0,
     lastError: cfg.lastError,
     pushedLastHour: sentHour,
-    pushedLast24h: sent24,
-    totalPushed: total,
+    pushedLast24h: sent24 + daily24,
+    totalPushed: total + dailyTotal,
     lastHourLogs:
       get<{ n: number }>("SELECT COUNT(*) AS n FROM user_push_logs WHERE user_id = ? AND created_at >= ?", userId, new Date(Date.now() - 3_600_000).toISOString())?.n ?? 0,
   };
@@ -870,6 +910,12 @@ export function previewUserPush(userId: number, limit = 6): {
   matched: number;
   rejectedBy: Record<string, number>;
   queued: number;
+  instantTotal: number;
+  sendableInstant: number;
+  batchTotal: number;
+  deferred: number;
+  usedThisHour: number;
+  caps: { maxPerInstant: number; maxPerHour: number; maxPerBatch: number; batchIntervalMin: number; budget: number };
 } {
   const cfg = getUserPushConfig(userId);
   const s = cfg.settings;
@@ -895,13 +941,17 @@ export function previewUserPush(userId: number, limit = 6): {
   }>(
     `SELECT id, source_id, title, summary, url, category, kind, score, codes, price, is_free, obtain,
             expires_at, published_at, ai, canonical_id
-       FROM items WHERE status = 'active' ORDER BY COALESCE(published_at, first_seen_at) DESC LIMIT 180`,
+       FROM items WHERE status = 'active' AND NOT EXISTS (
+         SELECT 1 FROM user_push_deliveries d WHERE d.user_id = ? AND d.item_id = items.id AND d.status = 'sent'
+       ) ORDER BY COALESCE(published_at, first_seen_at) DESC LIMIT 180`,
+    userId,
   );
   const rejectedBy: Record<string, number> = {};
   const instant: string[] = [];
   const batch: string[] = [];
   let matched = 0;
   const hasRoutes = s.routes?.some((r) => r.enabled);
+  const hidden = new Set(all<{ item_id: number }>("SELECT item_id FROM user_item_states WHERE user_id = ? AND hidden = 1", userId).map((r) => r.item_id));
   const deduper = s.dedupeByTitle
     ? new TitleDeduper(
         rows.map((r) => ({ title: r.title, canonicalId: r.canonical_id ?? null })),
@@ -910,6 +960,7 @@ export function previewUserPush(userId: number, limit = 6): {
     : null;
 
   for (const r of rows) {
+    if (hidden.has(r.id)) { rejectedBy.hidden = (rejectedBy.hidden ?? 0) + 1; continue; }
     if (isBlocked(r, rules)) {
       rejectedBy.blocked = (rejectedBy.blocked ?? 0) + 1;
       continue;
@@ -952,18 +1003,31 @@ export function previewUserPush(userId: number, limit = 6): {
     matched += 1;
     const subHits = matchUserSubscriptions(item, subKeywords);
     const route = hasRoutes ? matchRoute({ ...item, sourceId: r.source_id }, s.routes) : null;
+    if (hasRoutes && !route) { rejectedBy.route = (rejectedBy.route ?? 0) + 1; continue; }
     const d = decideForUser(item, s, subHits, route);
     const line = `[${sourceLabel(r.source_id)}] ${r.title.slice(0, 60)} · ${Math.round(r.score)} 分`;
-    if (d.push && instant.length < limit) instant.push(line);
-    else if (canBatchForUser(item, s, d) && batch.length < limit) batch.push(line);
+    if (d.push) instant.push(line);
+    else if (canBatchForUser(item, s, d)) batch.push(line);
   }
+  const used = sentLastHour(userId);
+  const plan = planInstant(instant.length, s, used);
+  const quiet = isQuietNow(s);
+  const sendable = quiet ? 0 : plan.send;
+  const overflow = instant.slice(sendable);
+  const batched = s.batchIntervalMin > 0 && !(quiet && s.quietAction === "drop") ? [...batch, ...overflow] : [];
   return {
-    instant,
-    batch,
+    instant: instant.slice(0, sendable).slice(0, limit),
+    batch: batched.slice(0, limit),
     scanned: rows.length,
     matched,
     rejectedBy,
     queued: userPushStats(userId).queued,
+    instantTotal: instant.length,
+    sendableInstant: sendable,
+    batchTotal: batched.length,
+    deferred: overflow.length,
+    usedThisHour: used,
+    caps: { maxPerInstant: s.maxPerInstant, maxPerHour: s.maxPerHour, maxPerBatch: s.maxPerBatch, batchIntervalMin: s.batchIntervalMin, budget: Math.max(0, s.maxPerHour - used) },
   };
 }
 

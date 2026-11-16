@@ -64,6 +64,8 @@ export function AuthModal({
         return;
       }
       onDone();
+    } catch {
+      setError("网络异常，请重试");
     } finally {
       setBusy(null);
     }
@@ -85,6 +87,8 @@ export function AuthModal({
         return;
       }
       onDone();
+    } catch {
+      setError("网络异常，请重试");
     } finally {
       setBusy(null);
     }
@@ -96,11 +100,11 @@ export function AuthModal({
         <div className="flex items-start justify-between gap-3 border-b border-ink-100 px-5 py-3.5">
           <div>
             <h2 className="text-[15px] font-semibold text-ink-950">
-              {inviteMode ? "输入邀请码完成注册" : "用 LINUX DO 登录"}
+              {inviteMode ? "输入邀请码完成注册" : "登录资源雷达"}
             </h2>
             <p className="mt-0.5 text-[11.5px] text-ink-500">
               {inviteMode
-                ? "你的 LINUX DO 身份已验证，再填一枚邀请码即可开通账号"
+                ? "你的登录身份已验证，再填一枚邀请码即可开通账号"
                 : "登录后可跨设备同步收藏与屏蔽，并绑定自己的 Telegram Bot"}
             </p>
           </div>

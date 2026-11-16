@@ -48,7 +48,7 @@ export function useBootstrap(): { data: Bootstrap | null; loading: boolean; relo
       .then((r) => (r.ok ? (r.json() as Promise<Bootstrap>) : null))
       .then((d) => d && setData(d))
       .catch(() => undefined)
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => ac.abort();
   }, [nonce]);
   return { data, loading, reload };
@@ -164,7 +164,7 @@ export async function importGuestToAccount(s: GuestState): Promise<{ ok: boolean
   const res = await fetch("/api/me/items/import-guest", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hidden: s.hidden, starred: s.starred, read: s.read }),
+    body: JSON.stringify({ hidden: s.hidden, starred: s.starred, read: s.read, blocked: s.blocked }),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -173,4 +173,16 @@ export async function importGuestToAccount(s: GuestState): Promise<{ ok: boolean
   const data = (await res.json()) as { imported: number };
   clearGuest();
   return { ok: true, imported: data.imported };
+}
+
+export function selectGuestItems<T extends { id: number; title: string; summary: string | null; starred: boolean; read: boolean }>(
+  items: T[], state: GuestState, preset: string, unreadOnly = false,
+): T[] {
+  return items.map((item) => ({ ...item, starred: state.starred.includes(item.id), read: state.read.includes(item.id), ...(state.hidden.includes(item.id) ? { status: "ignored" } : {}) }))
+    .filter((item) => {
+      if (preset === "hidden") return state.hidden.includes(item.id);
+      if (state.hidden.includes(item.id) || guestBlocks(item.title, item.summary, state.blocked)) return false;
+      if (preset === "starred" && !item.starred) return false;
+      return !unreadOnly || !item.read;
+    });
 }

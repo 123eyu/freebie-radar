@@ -663,7 +663,7 @@ test("多兴趣频道重构：kind 分流、取消 paid 25分封顶、放行好�
     "linuxdo-resource",
   )!;
   assert.equal(osItem.kind, "opensource");
-  assert.equal(osItem.category, "opensource");
+  assert.equal(osItem.category, "pan"); // 资源荟萃按可配置的固定分类隔离
   assert.equal(hasValueSignal(osItem.title, osItem.kind), true);
   assert.ok(calibrateScoreByObtain(osItem.score, "free", true, 5, "opensource") >= 75);
 
@@ -978,7 +978,7 @@ test("重要新闻严格限定于权威新闻源，禁止什么值得买/社区�
   const { resolveKind } = await import("../src/server/enrich/kind.ts");
   assert.equal(
     resolveKind("news", true, { title: "胖东来称有问题会负责，这次赔付规则是什么？", sourceId: "rss-smzdm", category: "headline", isFree: false }),
-    "deal",
+    "info",
   );
   assert.equal(
     resolveKind("news", true, { title: "2026 商保创新药目录扩容至 28 种", sourceId: "rss-ithome", category: "headline", isFree: false }),

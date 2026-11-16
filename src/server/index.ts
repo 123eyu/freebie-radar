@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { Server as HttpServer } from "node:http";
 import { logger } from "hono/logger";
 import { compress } from "hono/compress";
 import { config } from "./config.ts";
@@ -18,18 +19,26 @@ import { releaseFlareSession } from "./flaresolverr.ts";
 import { pushUserDaily, startUserPushScheduler } from "./user-push.ts";
 import { purgeExpiredSessions } from "./auth.ts";
 import { getBuildInfo } from "./updater.ts";
+import { registerSecurity } from "./security.ts";
+import { reconcileFixedSourceCategories } from "./source-settings.ts";
 
 migrate();
 ensureSources();
+const rerouted = reconcileFixedSourceCategories();
+if (rerouted) console.log(`[sources] 固定分类已重整 ${rerouted} 条历史资源（未触发 AI 或推送）`);
 // 上次进程意外退出可能遗留 status='running' 的记录，启动时收口
 run(
   "UPDATE runs SET status = 'failed', finished_at = ?, error = COALESCE(error, '进程重启中断') WHERE status = 'running'",
   new Date().toISOString(),
 );
 const app = new Hono();
+registerSecurity(app);
 // JSON 接口动辄几十 KB，先压缩再发；/api/items?limit=100 从 75KB 降到 ~15KB
 app.use("*", compress());
-app.use("*", logger());
+app.use("*", logger((message, ...rest) => console.log(
+  message.replace(/\/rss\/u\/[^?\s\u001b]+/g, "/rss/u/[redacted]").replace(/([?&](?:code|state|invite)=)[^&\s\u001b]+/g, "$1[redacted]"),
+  ...rest,
+)));
 
 app.get("/health", async (c) => {
   const row = getDb().prepare("SELECT 1 AS ok").get() as { ok: number } | undefined;
@@ -132,6 +141,11 @@ if (config.enableScheduler) {
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
   console.log(`[radar] listening on http://${config.host}:${info.port}`);
 });
+if (server instanceof HttpServer) {
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 10_000;
+  server.keepAliveTimeout = 5_000;
+}
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {

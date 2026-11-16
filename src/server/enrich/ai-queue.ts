@@ -5,6 +5,9 @@ import { calibrateScoreByObtain } from "./alias.ts";
 import type { RawItem } from "../collectors/types.ts";
 import { get, run } from "../db.ts";
 import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
+import { getSourceHints, applyManualClassification } from "../source-settings.ts";
+import { categoryForSource } from "../../shared/source-classification.ts";
+import { isSharedResource } from "./evidence.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
 
@@ -16,18 +19,6 @@ function parseCodes(raw: string | null): string[] {
     return [];
   }
 }
-function readSourceKindHint(sourceId: string | undefined): string | null {
-  if (!sourceId) return null;
-  const row = get<{ config: string }>("SELECT config FROM sources WHERE id = ?", sourceId);
-  if (!row?.config) return null;
-  try {
-    const cfg = JSON.parse(row.config) as { kindHint?: unknown };
-    return typeof cfg.kindHint === "string" && cfg.kindHint.trim() ? cfg.kindHint.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * AI 异步审核队列：
  * - 支持「极速抢码先推后审」模式在后台补齐 AI 结论
@@ -107,13 +98,17 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       price: number | null;
       published_at: string | null;
       codes: string | null;
+      content: string | null;
+      url: string;
     }>(
-      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes FROM items WHERE id = ?",
+      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes, content, url FROM items WHERE id = ?",
       itemId,
     );
-    const rawCategory = nextCategory ?? cur?.category ?? null;
+    if (!cur) return null;
+    const hints = getSourceHints(cur.source_id);
+    const rawCategory = categoryForSource(cur.source_id, isSharedResource(cur.title, cur.summary ?? "", cur.content ?? "", cur.url) ? "pan" : nextCategory ?? cur.category ?? null, hints);
     const effectiveObtain = nextObtain ?? cur?.obtain ?? null;
-    const effectiveKind = resolveKind(verdict.kind, verdict.keep, {
+    const autoKind = resolveKind(verdict.kind, verdict.keep, {
       title: cur?.title ?? "",
       summary: cur?.summary ?? "",
       sourceId: cur?.source_id,
@@ -122,16 +117,18 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       isFree: cur?.is_free === 1,
       price: cur?.price ?? null,
       freebieOnlySource: Boolean(cur?.source_id && FREEBIE_ONLY_SOURCES.has(cur.source_id)),
-      kindHint: readSourceKindHint(cur?.source_id),
+      kindHint: hints.kindHint,
+      guardEnabled: hints.guardEnabled,
     });
     // 资讯/水帖不许落进实地福利：AI 标错时统一降级到兜底分类
-    const effectiveCategory = demoteOfflineCategory(
+    const autoCategory = demoteOfflineCategory(
       rawCategory,
-      effectiveKind,
+      autoKind,
       cur?.title ?? "",
       cur?.summary ?? "",
     );
-    const effectiveKeep = effectiveKind === "noise" ? false : verdict.keep;
+    const { kind: effectiveKind, category: effectiveCategory } = applyManualClassification(itemId, autoCategory, autoKind);
+    const effectiveKeep = autoKind === "noise" ? false : verdict.keep;
     const keep = effectiveKeep ? 1 : 0;
     const nextScore = cur
       ? calibrateScoreByObtain(
@@ -161,7 +158,7 @@ codes: parseCodes(cur.codes),
               score = ?,
               ai_reviewed_at = ?
         WHERE id = ?`,
-      JSON.stringify({ ...verdict, keep: effectiveKeep, kind: effectiveKind }),
+      JSON.stringify({ ...verdict, keep: effectiveKeep, kind: autoKind, category: autoCategory }),
       keep,
       effectiveKind,
       nextQuality,

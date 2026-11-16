@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Activity, Check, Copy, Database, ExternalLink, Gauge, KeyRound, Loader2, Pencil, Play, Plus, Rss, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import {
   CATEGORY_LABEL,
@@ -9,6 +9,8 @@ import {
   timeAgo,
 } from "../lib/sources.ts";
 import type { RetentionSettings, Run, Source, SourceQuality } from "../types.ts";
+import { DEFAULT_FIXED_CATEGORIES } from "../../../shared/source-classification.ts";
+import { ClassificationPanel } from "./ClassificationPanel.tsx";
 
 const INTERVAL_OPTIONS = [
   { label: "60 秒", sec: 60 },
@@ -56,7 +58,8 @@ function sourceHints(source: Source): { category: string; kind: string } {
     if (unique.length === 1) return labelOf(unique[0]!);
     return `${labelOf(unique[0]!)} +${unique.length - 1}`;
   };
-  return { category: pick("categoryHint"), kind: pick("kindHint") };
+  const fixed = typeof cfg.fixedCategory === "string" ? cfg.fixedCategory : DEFAULT_FIXED_CATEGORIES[source.id];
+  return { category: fixed ? `固定 · ${categoryHintLabel(fixed)}` : pick("categoryHint"), kind: pick("kindHint") };
 }
 
 type OpsTab = "sources" | "runs" | "quality" | "retention";
@@ -66,6 +69,9 @@ type FeedRow = {
   categoryHint: string;
   kindHint: string;
   titleKeywords: string;
+  excludeTitleKeywords: string;
+  includeCategories: string;
+  excludeCategories: string;
 };
 
 function feedToRow(feed: Record<string, unknown>): FeedRow {
@@ -75,10 +81,13 @@ function feedToRow(feed: Record<string, unknown>): FeedRow {
     categoryHint: typeof feed.categoryHint === "string" ? feed.categoryHint : "",
     kindHint: typeof feed.kindHint === "string" ? feed.kindHint : "",
     titleKeywords: Array.isArray(feed.titleKeywords) ? (feed.titleKeywords as string[]).join(", ") : "",
+    excludeTitleKeywords: Array.isArray(feed.excludeTitleKeywords) ? (feed.excludeTitleKeywords as string[]).join(", ") : "",
+    includeCategories: Array.isArray(feed.includeCategories) ? (feed.includeCategories as string[]).join(", ") : "",
+    excludeCategories: Array.isArray(feed.excludeCategories) ? (feed.excludeCategories as string[]).join(", ") : "",
   };
 }
 
-const EMPTY_FEED_ROW: FeedRow = { url: "", limit: "30", categoryHint: "", kindHint: "", titleKeywords: "" };
+const EMPTY_FEED_ROW: FeedRow = { url: "", limit: "30", categoryHint: "", kindHint: "", titleKeywords: "", excludeTitleKeywords: "", includeCategories: "", excludeCategories: "" };
 
 function splitKeywords(raw: string): string[] {
   return raw
@@ -92,15 +101,19 @@ function CategoryHintSelect({
   value,
   onChange,
   className,
+  emptyLabel = "分类：自动识别",
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  emptyLabel?: string;
+  ariaLabel?: string;
 }) {
   const known = Boolean(value && value in CATEGORY_LABEL);
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
-      <option value="">分类：自动识别</option>
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className} aria-label={ariaLabel}>
+      <option value="">{emptyLabel}</option>
       {value && !known && <option value={value}>{value}（未知分类）</option>}
       {CATEGORY_HINT_GROUPS.map((group) => (
         <optgroup key={group.label} label={group.label}>
@@ -134,11 +147,12 @@ function SourceInlineEditor({
   const [intervalSec, setIntervalSec] = useState(source.interval_sec);
   const [kindHint, setKindHint] = useState(typeof cfg.kindHint === "string" ? cfg.kindHint : "");
   const [categoryHint, setCategoryHint] = useState(typeof cfg.categoryHint === "string" ? cfg.categoryHint : "");
+  const [fixedCategory, setFixedCategory] = useState(typeof cfg.fixedCategory === "string" ? cfg.fixedCategory : DEFAULT_FIXED_CATEGORIES[source.id] ?? "");
   const [feedRows, setFeedRows] = useState<FeedRow[]>(() =>
     feeds.length ? feeds.map(feedToRow) : [{ ...EMPTY_FEED_ROW }],
   );
   const [tgChannels, setTgChannels] = useState(channels.join(", "));
-  const [showJson, setShowJson] = useState(source.kind !== "rss" && source.kind !== "telegram");
+  const [showJson, setShowJson] = useState(source.kind !== "rss" && source.kind !== "telegram" && source.kind !== "linuxdo");
   const [rawJson, setRawJson] = useState(() => JSON.stringify(cfg, null, 2));
   const [jsonErr, setJsonErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -168,6 +182,8 @@ function SourceInlineEditor({
 
     if (categoryHint.trim()) base.categoryHint = categoryHint.trim();
     else delete base.categoryHint;
+    // Empty is explicit opt-out, so a built-in default does not silently reappear.
+    base.fixedCategory = fixedCategory.trim();
 
     if (!showJson && source.kind === "rss") {
       base.feeds = feedRows.map((row, i) => {
@@ -183,9 +199,11 @@ function SourceInlineEditor({
         else delete next.categoryHint;
         if (row.kindHint.trim()) next.kindHint = row.kindHint.trim();
         else delete next.kindHint;
-        const kws = splitKeywords(row.titleKeywords);
-        if (kws.length) next.titleKeywords = kws;
-        else delete next.titleKeywords;
+        for (const key of ["titleKeywords", "excludeTitleKeywords", "includeCategories", "excludeCategories"] as const) {
+          const values = splitKeywords(row[key]);
+          if (values.length) next[key] = values;
+          else delete next[key];
+        }
         return next;
       });
     }
@@ -278,12 +296,24 @@ function SourceInlineEditor({
           </select>
         </label>
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-[11px] text-ink-500">源级兜底分类（feed 未指定时生效）</span>
+          <span className="text-[11px] text-ink-500">兜底分类（内容识别不出时采用）</span>
           <CategoryHintSelect
             value={categoryHint}
             onChange={setCategoryHint}
             className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
           />
+        </label>
+      </div>
+
+      <div className="grid gap-3 rounded-lg border border-brand-border bg-brand-subtle/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
+        <div>
+          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-accent"><ShieldCheck size={14} /> 固定分类（硬规则）</div>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-ink-600">选定后，该源资源固定归入此类，优先于关键词、RSS 提示和 AI（单条人工纠正除外）；保存时同步重整历史条目，不触发 AI 或推送。启停和收藏不受影响。取消固定后，新条目恢复自动分类，已有条目保持原分类。</p>
+        </div>
+        <label className="space-y-1">
+          <span className="text-[12px] font-medium text-ink-700">固定分类</span>
+          <CategoryHintSelect value={fixedCategory} onChange={setFixedCategory} emptyLabel="不固定 · 按内容自动分类" ariaLabel="固定分类" className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand" />
+          {source.id === "linuxdo-resource" && <span className="block text-[11px] text-ink-500">资源荟萃推荐：网盘资源；不会再混进真福利。</span>}
         </label>
       </div>
 
@@ -367,6 +397,17 @@ function SourceInlineEditor({
                   </button>
                 )}
               </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { key: "includeCategories" as const, label: "只采这些 RSS 栏目", placeholder: "info, promotion" },
+                  { key: "excludeCategories" as const, label: "排除这些 RSS 栏目", placeholder: "trade, discussion" },
+                  { key: "excludeTitleKeywords" as const, label: "标题排除词", placeholder: "求助, 广告, 招募" },
+                ].map((field) => <label key={field.key} className="space-y-1">
+                  <span className="text-[11px] text-ink-500">{field.label}</span>
+                  <input value={row[field.key]} onChange={(event) => updateFeed(i, { [field.key]: event.target.value })} placeholder={field.placeholder} className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand" />
+                </label>)}
+              </div>
+              <p className="text-[11px] leading-relaxed text-ink-500">逗号分隔，排除优先。这些栏目是原站 RSS 标签，不是本站分类；采集过滤从下次采集起生效，不删除历史资源。</p>
             </div>
           ))}
         </div>
@@ -451,6 +492,7 @@ export function OpsPanel({
   onToggleSource,
   onChangeInterval,
   onAddRss,
+  onClassificationChanged,
   onUpdateSource,
   onDeleteSource,
   onNotify,
@@ -461,7 +503,8 @@ export function OpsPanel({
   onCollectSource: (id: string) => Promise<void>;
   onToggleSource: (id: string, enabled: boolean) => Promise<void>;
   onChangeInterval: (id: string, sec: number) => Promise<void>;
-  onAddRss: (name: string, url: string, intervalSec: number, kindHint?: string, categoryHint?: string) => Promise<void>;
+  onAddRss: (name: string, url: string, intervalSec: number, kindHint?: string, categoryHint?: string, fixedCategory?: string) => Promise<void>;
+  onClassificationChanged?: () => void;
   onUpdateSource: (id: string, patch: { name?: string; interval_sec?: number; config?: Record<string, unknown> }) => Promise<boolean>;
   onDeleteSource: (id: string) => Promise<boolean>;
   onNotify?: (msg: string) => void;
@@ -480,12 +523,18 @@ export function OpsPanel({
     }
   };
   const [editingId, setEditingId] = useState<string | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const editingSource = sources.find((source) => source.id === editingId);
+  useEffect(() => {
+    if (editingId) editorRef.current?.scrollIntoView({ block: "nearest" });
+  }, [editingId]);
   const [showAddRss, setShowAddRss] = useState(false);
   const [rssName, setRssName] = useState("");
   const [rssUrl, setRssUrl] = useState("");
   const [rssInterval, setRssInterval] = useState(1800);
   const [rssKindHint, setRssKindHint] = useState("");
   const [rssCategoryHint, setRssCategoryHint] = useState("");
+  const [rssFixedCategory, setRssFixedCategory] = useState("");
   const [addingRss, setAddingRss] = useState(false);
   const [showIngestGuide, setShowIngestGuide] = useState(false);
   const [cookieStatus, setCookieStatus] = useState<{
@@ -1053,6 +1102,11 @@ export function OpsPanel({
                     />
                   </div>
                 </div>
+                <label className="flex flex-wrap items-center gap-3 text-[12px] text-ink-600">
+                  <span className="font-medium">固定分类（可选）</span>
+                  <CategoryHintSelect value={rssFixedCategory} onChange={setRssFixedCategory} emptyLabel="不固定 · 按内容自动分类" className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800" />
+                  <span className="text-[11.5px] text-ink-500">适合网盘、课程等专源；AI 不会改到其它分类。</span>
+                </label>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-[12px] text-ink-500">
                     <span>采集周期：</span>
@@ -1080,11 +1134,13 @@ export function OpsPanel({
                           rssInterval,
                           rssKindHint || undefined,
                           rssCategoryHint || undefined,
+                          rssFixedCategory || undefined,
                         );
                         setRssName("");
                         setRssUrl("");
                         setRssKindHint("");
                         setRssCategoryHint("");
+                        setRssFixedCategory("");
                         setShowAddRss(false);
                       } finally {
                         setAddingRss(false);
@@ -1099,6 +1155,13 @@ export function OpsPanel({
               </div>
             )}
 
+            <div className="px-4 py-4"><ClassificationPanel sources={sources} onChanged={onClassificationChanged ?? (() => {})} /></div>
+            {editingSource && <div ref={editorRef} className="border-b border-ink-200 bg-surface-hover px-4 py-3">
+              <SourceInlineEditor key={editingSource.id} source={editingSource}
+                onSave={(patch) => onUpdateSource(editingSource.id, patch)}
+                onDelete={!editingSource.builtIn ? () => onDeleteSource(editingSource.id) : undefined}
+                onCancel={() => setEditingId(null)} />
+            </div>}
             {/* 移动端：卡片式源列表（表格仅 ≥sm 显示，避免横向挤压） */}
             <div className="divide-y divide-ink-100 sm:hidden">
               {visibleSources.map((s) => {
@@ -1206,16 +1269,6 @@ export function OpsPanel({
                         </button>
                       )}
                     </div>
-                    {editingId === s.id && (
-                      <div className="mt-2.5">
-                        <SourceInlineEditor
-                          source={s}
-                          onSave={(patch) => onUpdateSource(s.id, patch)}
-                          onDelete={!s.builtIn ? () => onDeleteSource(s.id) : undefined}
-                          onCancel={() => setEditingId(null)}
-                        />
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -1368,18 +1421,6 @@ export function OpsPanel({
                           </div>
                         </td>
                       </tr>
-                      {editingId === s.id && (
-                        <tr className="bg-surface-hover/70">
-                          <td colSpan={8} className="px-4 py-3">
-                            <SourceInlineEditor
-                              source={s}
-                              onSave={(patch) => onUpdateSource(s.id, patch)}
-                              onDelete={!s.builtIn ? () => onDeleteSource(s.id) : undefined}
-                              onCancel={() => setEditingId(null)}
-                            />
-                          </td>
-                        </tr>
-                      )}
                       </Fragment>
                     );
                   })}

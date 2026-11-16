@@ -210,7 +210,7 @@ function normalizeRoutes(v: unknown): PushRoute[] {
     if (!name) continue;
     const id = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim().slice(0, 40) : `route-${i + 1}`;
     const keywords = Array.isArray(raw.keywords)
-      ? [...new Set(raw.keywords.filter((k): k is string => typeof k === "string").map((k) => k.trim()).filter(Boolean))].slice(0, 30)
+      ? [...new Set(raw.keywords.filter((k): k is string => typeof k === "string").map((k) => k.trim().slice(0, 80)).filter(Boolean))].slice(0, 30)
       : [];
     out.push({
       id,
@@ -230,10 +230,10 @@ function normalizeRoutes(v: unknown): PushRoute[] {
 }
 function normalizeSourceIds(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return [...new Set(v.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter(Boolean))].slice(0, 200);
+  return [...new Set(v.filter((x): x is string => typeof x === "string").map((s) => s.trim().slice(0, 100)).filter(Boolean))].slice(0, 200);
 }
 
-function normalizeSettings(raw: Partial<PushSettings>, base: PushSettings = DEFAULT_SETTINGS): PushSettings {
+export function normalizeSettings(raw: Partial<PushSettings>, base: PushSettings = DEFAULT_SETTINGS): PushSettings {
   const instantScore = numOr(raw.instantScore, base.instantScore, 0, 100);
   const rawBatchScore = numOr(raw.batchScore, base.batchScore, 0, 100);
   const batchScore = Math.min(rawBatchScore, instantScore);
@@ -263,7 +263,7 @@ function normalizeSettings(raw: Partial<PushSettings>, base: PushSettings = DEFA
     maxPerBatch: numOr(raw.maxPerBatch, base.maxPerBatch, 1, 20),
     quietEnabled: typeof raw.quietEnabled === "boolean" ? raw.quietEnabled : base.quietEnabled,
   quietHours: typeof raw.quietHours === "string" ? raw.quietHours : base.quietHours,
-  deliverVia: raw.deliverVia === "webhook" ? "webhook" : "telegram",
+  deliverVia: raw.deliverVia === "webhook" || raw.deliverVia === "telegram" ? raw.deliverVia : base.deliverVia,
   webhookUrl: typeof raw.webhookUrl === "string" ? raw.webhookUrl.trim().slice(0, 500) : base.webhookUrl,
   webhookSecret: typeof raw.webhookSecret === "string" ? raw.webhookSecret.trim().slice(0, 200) : base.webhookSecret,
     quietAction: raw.quietAction === "drop" || raw.quietAction === "batch" ? raw.quietAction : base.quietAction,

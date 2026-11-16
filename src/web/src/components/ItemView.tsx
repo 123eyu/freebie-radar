@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Ban,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { KIND_LABEL, OBTAIN_HINT, OBTAIN_LABEL, categoryLabelForKind, expiresLabel, extractBlockCandidates, timeAgo } from "../lib/sources.ts";
 import type { Item } from "../types.ts";
+import { ItemClassificationEditor, type ClassificationPatch } from "./ItemClassificationEditor.tsx";
 
 export function CodeChip({ code, onCopy }: { code: string; onCopy: (code: string) => void }) {
   const [copied, setCopied] = useState(false);
@@ -142,6 +143,7 @@ export function CompactRow({
   onToggleRelated,
   expanded,
   onCopyCode,
+  showSummary = false,
 }: {
   item: Item;
   sourceName: (id: string) => string;
@@ -153,6 +155,7 @@ export function CompactRow({
   /** 合并组：展开/收起同福利的其他来源 */
   onToggleRelated?: (id: number) => void;
   expanded?: boolean;
+  showSummary?: boolean;
 }) {
   const exp = expiresLabel(item.expires_at);
   const codes = Array.isArray(item.codes) ? item.codes : [];
@@ -164,11 +167,11 @@ export function CompactRow({
   return (
     <div
       onClick={() => onOpen(item)}
+      data-read={item.read}
       className={
-        "group grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1.5 border-b border-ink-100 px-3.5 py-3 transition-colors last:border-b-0 sm:flex sm:items-center sm:gap-x-3 sm:gap-y-0 sm:px-6 sm:py-3 " +
+        "resource-row group grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1.5 border-b border-ink-100 px-3.5 py-3 transition-colors last:border-b-0 sm:flex sm:items-center sm:gap-x-3 sm:gap-y-0 sm:px-6 sm:py-3 " +
         (selected ? "bg-surface-hover " : "hover:bg-surface-hover ") +
-        (topPick ? "border-l-2 border-l-deal " : "") +
-        (item.read ? "opacity-60 hover:opacity-100" : "")
+        (topPick ? "border-l-2 border-l-deal " : "")
       }
     >
       {/* 未读圆点 + 纯数字评分 */}
@@ -198,14 +201,16 @@ export function CompactRow({
       {/* 主信息 */}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); onOpen(item); }}
             className={
-              "[overflow-wrap:anywhere] text-[14px] leading-snug font-medium text-ink-950 transition-colors group-hover:text-accent " +
+              "row-title text-left [overflow-wrap:anywhere] text-[14px] leading-snug font-medium text-ink-950 transition-colors group-hover:text-accent " +
               (aiRejected ? "line-through decoration-ink-300 text-ink-500" : "")
             }
           >
             {item.title}
-          </span>
+          </button>
           <KindBadge kind={item.kind} inline />
           {showPrice && <PriceBadge item={item} inline />}
           {showPrice && <ObtainBadge obtain={item.obtain} inline />}
@@ -235,18 +240,10 @@ export function CompactRow({
           )}
         </div>
 
-        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-ink-500">
+        <div className="row-meta mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-ink-500">
           <span className="font-medium text-ink-700">{sourceName(item.source_id)}</span>
           <span aria-hidden="true">·</span>
           <span>{categoryLabelForKind(item.category, item.kind)}</span>
-          {item.ai?.reason && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className={item.ai.keep === false ? "text-ink-400" : "text-ink-600"}>
-                {item.ai.reason}
-              </span>
-            </>
-          )}
           {exp && (
             <>
               <span aria-hidden="true">·</span>
@@ -260,6 +257,7 @@ export function CompactRow({
             {timeAgo(item.published_at ?? item.first_seen_at)}
           </span>
         </div>
+        {showSummary && item.ai?.reason && <p title={item.ai.reason} className="row-summary mt-1 text-[12px] leading-relaxed text-ink-500">{item.ai.reason}</p>}
       </div>
 
       {/* 右端：兑换码 & 快捷操作 & 相对时间 */}
@@ -272,7 +270,7 @@ export function CompactRow({
             <CodeChip key={code} code={code} onCopy={onCopyCode} />
           ))}
         </div>
-        <div className="flex items-center gap-0.5 transition-opacity sm:opacity-45 sm:group-hover:opacity-100">
+        <div className="row-actions flex items-center gap-0.5 transition-opacity sm:opacity-70 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
           <a
             href={item.url}
             target="_blank"
@@ -290,7 +288,7 @@ export function CompactRow({
             onClick={() => onPatch(item.id, { starred: !item.starred })}
             className={
               "rounded-md p-2 transition-colors hover:bg-ink-100 sm:p-1.5 " +
-              (item.starred ? "text-amber-500" : "text-ink-400 hover:text-ink-800")
+              (item.starred ? "text-code" : "text-ink-400 hover:text-ink-800")
             }
             title={item.starred ? "取消收藏" : "收藏"}
           >
@@ -310,7 +308,7 @@ export function CompactRow({
             className="rounded-md p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-800 sm:p-1.5"
             title={item.status === "ignored" ? "恢复到列表" : "不想看，从列表移除（可在「已关闭」找回）"}
           >
-            <EyeOff size={14} />
+            {item.status === "ignored" ? <Eye size={14} /> : <EyeOff size={14} />}
           </button>
         </div>
         <span className="hidden w-14 text-right font-mono text-[11.5px] tabular-nums text-ink-400 sm:inline-block">
@@ -587,6 +585,10 @@ export function ItemDetailDrawer({
   onPatch,
   onQuickBlock,
   onCopyCode,
+  loading = false,
+  error = null,
+  onRetry,
+  onClassificationSave,
 }: {
   item: Item;
   sourceName: (id: string) => string;
@@ -598,12 +600,32 @@ export function ItemDetailDrawer({
   onPatch: (id: number, body: Record<string, unknown>) => void;
   onQuickBlock: (item: Item) => void;
   onCopyCode: (code: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  onClassificationSave?: (id: number, patch: ClassificationPatch) => Promise<void>;
 }) {
   const exp = expiresLabel(item.expires_at);
   const codes = Array.isArray(item.codes) ? item.codes : [];
+  const dialogRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
+    return () => { document.body.style.overflow = overflow; previous?.focus(); };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (e.key === "Tab" && dialogRef.current) {
+        const controls = Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input, select, textarea, [tabindex='0']"));
+        const first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowUp" && hasPrev) {
         e.preventDefault();
@@ -621,6 +643,11 @@ export function ItemDetailDrawer({
   return (
     <div className="backdrop-enter fixed inset-0 z-50 flex justify-end bg-ink-950/25 backdrop-blur-[1px]" onClick={onClose}>
       <aside
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="资源详情"
+        tabIndex={-1}
         className="drawer-enter drawer-shadow flex h-full w-full flex-col border-ink-200 bg-surface sm:max-w-[500px] sm:border-l"
         onClick={(e) => e.stopPropagation()}
       >
@@ -659,6 +686,8 @@ export function ItemDetailDrawer({
 
         {/* 内容区 */}
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+          {loading && <p role="status" className="text-[12px] text-ink-500">正在加载完整正文…</p>}
+          {error && <div role="alert" className="rounded-lg border border-alert-border bg-alert-subtle p-3 text-[12px] text-alert">{error} <button type="button" onClick={onRetry} className="ml-2 underline">重试</button></div>}
           <CoverImage src={item.image_url} className="aspect-[16/9] w-full rounded-lg border border-ink-100" />
           <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
             <KindBadge kind={item.kind} />
@@ -680,6 +709,7 @@ export function ItemDetailDrawer({
           </div>
 
           <h2 className="text-[17px] leading-snug font-semibold text-ink-950">{item.title}</h2>
+          {onClassificationSave && item.manualClassification !== undefined && !loading && !error && <ItemClassificationEditor key={item.id} item={item} onSave={onClassificationSave} />}
 
           {item.ai?.reason && (
             <div
@@ -692,8 +722,8 @@ export function ItemDetailDrawer({
             >
               <Sparkles size={14} className={item.ai.keep === false ? "text-ink-500" : "text-deal"} />
               <span>
-                <strong>AI 判定：</strong>
-                {item.ai.keep === false
+                <strong>{item.manualClassification ? "原 AI 说明：" : "AI 判定："}</strong>
+                {!item.manualClassification && (item.ai.keep === false
                   ? "低价值/水帖 · "
                   : item.kind === "news"
                     ? "重要新闻 · "
@@ -703,7 +733,7 @@ export function ItemDetailDrawer({
                         ? "开源项目 · "
                         : item.kind === "deal"
                           ? "特价好价 · "
-                          : "可领取福利 · "}
+                          : "可领取福利 · ")}
                 {item.ai.reason}
               </span>
             </div>

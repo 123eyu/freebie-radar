@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
-import { getToken, setToken, clearToken, verifyToken } from "../lib/auth.ts";
+import { getToken, setToken, clearToken, verifyToken, ADMIN_AUTH_EVENT } from "../lib/auth.ts";
 
 /**
  * 管理区登录门：拦在 #/admin/* 前面。
@@ -8,23 +8,44 @@ import { getToken, setToken, clearToken, verifyToken } from "../lib/auth.ts";
  */
 export function AdminGate({
   protectedMode,
+  entryAllowed = true,
   onAuthChange,
   children,
 }: {
   protectedMode: boolean;
+  entryAllowed?: boolean;
   onAuthChange?: (authed: boolean) => void;
   children: React.ReactNode;
 }) {
-  const [authed, setAuthed] = useState(() => Boolean(getToken()));
+  const [authed, setAuthed] = useState(false);
   const [input, setInput] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
 
   // 服务端没开保护时，登录门形同虚设
   useEffect(() => {
-    if (!protectedMode) setAuthed(true);
-  }, [protectedMode]);
+    let alive = true;
+    if (!entryAllowed) setAuthed(false);
+    else if (!protectedMode) setAuthed(true);
+    else if (getToken()) {
+      setChecking(true);
+      void verifyToken(getToken()).then((ok) => {
+        if (alive) { setAuthed(ok); onAuthChange?.(ok); }
+      }).catch(() => { if (alive) setError("无法验证管理凭据，请重试"); })
+        .finally(() => { if (alive) setChecking(false); });
+    }
+    return () => { alive = false; };
+  }, [protectedMode, onAuthChange, entryAllowed]);
 
+  useEffect(() => {
+    const expire = () => { setAuthed(false); setError("管理凭据已失效，请重新登录"); onAuthChange?.(false); };
+    window.addEventListener(ADMIN_AUTH_EVENT, expire);
+    return () => window.removeEventListener(ADMIN_AUTH_EVENT, expire);
+  }, [onAuthChange]);
+
+  if (!entryAllowed) {
+    return <div role="alert" className="panel mx-auto max-w-sm p-6 text-[13px] leading-relaxed text-ink-600">此域名不开放管理登录，请从站长配置的专用管理入口访问。普通登录与个人推送不受影响。</div>;
+  }
   if (!protectedMode || authed) {
     return (
       <div className="space-y-3">
@@ -111,7 +132,7 @@ export function AdminGate({
         </form>
 
         <p className="text-[11.5px] leading-relaxed text-ink-500">
-          密码只存在浏览器 sessionStorage，关掉标签页就失效。资源流和每日精选不需要密码即可访问。
+          凭据仅保存在当前标签页；关闭后不会继续保存。资源流和每日精选无需管理密码。
         </p>
       </div>
     </div>

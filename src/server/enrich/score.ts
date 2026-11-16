@@ -15,7 +15,7 @@
  */
 
 import { all } from "../db.ts";
-import { NOISE_TITLE, URGENT } from "./noise.ts";
+import { isNoiseTitle, URGENT } from "./noise.ts";
 
 /** 各维度权重，合计 1。改这里就是调口径。 */
 export const SCORE_WEIGHTS = {
@@ -175,7 +175,7 @@ const LURE_RE =
 export function penaltyFactor(title: string, summary = ""): { factor: number; notes: string[] } {
   const notes: string[] = [];
   let factor = 1;
-  if (NOISE_TITLE.test(title)) {
+  if (isNoiseTitle(title)) {
     factor *= 0.55;
     notes.push("疑问/求助");
   }
