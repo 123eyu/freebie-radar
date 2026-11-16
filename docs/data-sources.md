@@ -4,6 +4,13 @@
 
 > 实测时间：2026-11-10 / 2026-11-11。所有结论都来自真实请求输出，原始数据见 `docs/probe-results.json`、`docs/probe2-results.json`、`docs/fs-test.json`。
 
+## 当前源总览（2026-11-16 核对）
+
+- **111 个内置源，默认启用 62 个**：以 `SEEDS` 为准，实时状态用 `pnpm tsx src/server/cli.ts sources` 查看。
+- **采集器分布**：RSS 77、V2EX 5、GitHub readme 4、Telegram 3、NGA 3、CCTV 3、登录态回环（知乎/小红书/小黑盒）3、LINUX DO 2、GamerPower 2、Bluesky 2，OpenRouter / Epic / Steam / CheapShark / GOG / B站 / 微博各 1。
+- **27 个分类 × 6 种形态 × 8 个频道**，口径见 [classification.md](classification.md)。
+- 下文第 1–9 节是逐批侦察记录（带实测日期与原始输出），保留为历史证据；源的增删与启停以 `SEEDS` 和数据库 `sources` 表为准。
+
 ## 0. 网络拓扑（决定了整个架构）
 
 | 位置 | 出口 | 能访问 | 不能访问 |

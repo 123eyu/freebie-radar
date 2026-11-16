@@ -2,7 +2,7 @@
   <img src="docs/logo.svg" alt="Resource Radar Logo" width="88" height="88" />
   <h1>Resource Radar · 资源雷达</h1>
   <p><strong>Self-hosted multi-interest aggregator &amp; AI-routed radar for freebies, deals, group buys, open-source projects, and news</strong></p>
-  <p>5 Content Kinds · 21 Channel-Aware Categories · Unified Blocklist · Multi-Route Telegram Push · Zero External DB</p>
+  <p>6 Content Kinds · 27 Channel-Aware Categories · Unified Blocklist · Multi-Route Telegram Push · Zero External DB</p>
 
   <p>
     <a href="README.md">简体中文</a> · <a href="README.en.md">English</a>
@@ -21,7 +21,7 @@
 
 **Resource Radar (`freebie-radar`)** is a lightweight, self-hosted workbench that aggregates, classifies, and routes items from developer communities, gaming platforms, software giveaway feeds, GitHub, Reddit, Bluesky, Telegram channels, and custom RSS feeds.
 
-Instead of forcing every feed into a single freebie-only filter or dumping raw RSS noise, it separates **content kind** (`freebie | deal | opensource | info | noise`), **vertical category** (21 domains), and **obtain mode** (`free | conditional | lottery | trial | promo | paid`):
+Instead of forcing every feed into a single freebie-only filter or dumping raw RSS noise, it separates **content kind** (`freebie | deal | opensource | news | info | noise`), **vertical category** (27 domains), and **obtain mode** (`free | conditional | lottery | trial | promo | paid`):
 
 - Want **strictly verified freebies**? The default **Verified Freebies** channel stays locked to AI-verified `freebie` items (`free` + `conditional`), completely isolated from paid deals, carpools, secondhand listings, or news.
 - Want **Black Friday VPS deals, carpool seats, open-source releases, or tech & major news**? Switch channels in one click to get channel-specific sub-categories, noise-free live counts, responsive image-card views, and dedicated Telegram push routes.
@@ -38,7 +38,7 @@ Instead of forcing every feed into a single freebie-only filter or dumping raw R
 | :---: | :---: |
 | ![Workbench List View](docs/ui-public.png) | ![3-Column Visual Grid](docs/ui-grid.png) |
 
-| Multi-Route Push Editor (Per-Topic Instant/Batch Routing & Diagnostics) | AI Semantic Engine (21-Category Routing, Learning & 0-Token Reclassify) |
+| Multi-Route Push Editor (Per-Topic Instant/Batch Routing & Diagnostics) | AI Semantic Engine (27-Category Routing, Learning & 0-Token Reclassify) |
 | :---: | :---: |
 | ![Multi-Route Push Editor](docs/ui-push-panel.png) | ![AI Semantic Engine](docs/ui-ai-panel.png) |
 
@@ -51,9 +51,9 @@ Instead of forcing every feed into a single freebie-only filter or dumping raw R
 ## Key Features
 
 ### 1. Multi-Interest Channels & Orthogonal Taxonomy (`kind × category × obtain`)
-- **5 Content Kinds**: `freebie` (free giveaways & credits), `deal` (Black Friday VPS, historical lows, group-buy carpools, secondhand trades), `opensource` (GitHub & self-hosted tools), `info` (breaking/finance/tech news & guides), and `noise` (filtered chatter/requests).
-- **21 Categories**: `ai`, `vps`, `cloud`, `domain`, `opensource`, `software`, `dev`, `design`, `security`, `hardware`, `media`, `game`, `carpool`, `trade`, `headline`, `finance`, `news`, `goods`, `invite`, `edu`, `other`.
-- **Channel-Aware Sub-Categories**: Each channel displays only its relevant sub-categories with live noise-free counts (e.g., *News* maps to `headline`, `finance`, `ai`, `dev`, `opensource`, `security`, `hardware`, while *Verified Freebies* excludes `carpool`, `trade`, and `news`). Switching channels automatically resets incompatible filters.
+- **6 Content Kinds**: `freebie` (free giveaways & credits), `deal` (Black Friday VPS, historical lows, group-buy carpools, secondhand trades), `opensource` (GitHub & self-hosted tools), `news` (breaking headlines), `info` (industry news & guides), and `noise` (filtered chatter/requests).
+- **27 Categories**: `ai`, `vps`, `cloud`, `domain`, `opensource`, `software`, `dev`, `design`, `security`, `hardware`, `media`, `game`, `carpool`, `trade`, `headline`, `world`, `finance`, `stock`, `tech`, `news`, `goods`, `offline`, `invite`, `edu`, `pan`, `course`, `other`.
+- **Channel-Aware Sub-Categories**: 8 channels (Verified Freebies, All Freebies, Offline Perks, Cloud Drives & Courses, Deals, Open Source, Breaking News, Industry Info) each display only their relevant sub-categories with live noise-free counts; *Verified Freebies* excludes `carpool`, `trade`, `news`, `pan`, `course`, and `offline`. Switching channels automatically resets incompatible filters.
 - **6 Obtain Modes**: Separates `free` and `conditional` from `lottery`, `trial` (including free demos), `promo`, and `paid`.
 
 ### 2. Unified Blocklist, AI Grading & Zero-Token Reclassification
@@ -63,15 +63,15 @@ Instead of forcing every feed into a single freebie-only filter or dumping raw R
 
 ### 3. Compact List + Responsive 2/3-Column Image Cards
 - Switch between **Compact List**, **2-Column Grid**, and **3-Column Grid** with persistent layout preference.
-- Extracts cover images with zero extra HTTP requests across 10 collector paths (Epic, Steam, GamerPower, CheapShark, GOG, RSS `<media:content>` / `<img>`, Telegram, LINUX DO, V2EX, local CDP) and collapses the media slot cleanly on text-only items.
+- Extracts cover images with zero extra HTTP requests across 14 collector paths (Epic, Steam, GamerPower, CheapShark, GOG, RSS `<media:content>` / `<img>`, Telegram, LINUX DO, V2EX, Bilibili, Weibo, CCTV, Bluesky, local CDP) and collapses the media slot cleanly on text-only items.
 
 ### 4. Multi-Route Telegram Push
 - Configure global rules or create/edit independent **Topic Push Routes** (e.g., Verified Freebies Instant, Black Friday VPS Deals, Open-Source Batch Digest, News Morning Brief) with per-route kinds, categories, obtain modes, keywords, price cap, min score, instant vs. batch mode, and custom header prefix.
 - Supports **Wait for AI before pushing** or **Instant-first** with automatic backfill push, plus `strict` / `rule_fallback` / `ignore_ai` fallback modes, quiet hours, and pre-send DB/blocklist re-validation.
 
 ### 5. Lightweight Stack & Single-Token Admin Gate
-- Runs native TypeScript on `node:24-alpine` with built-in `node:sqlite` (WAL mode, Schema v17 auto-migration, < 100MB typical memory).
-- **63 Built-in Sources (33 High-Signal Curated Enabled by Default)** plus custom RSS and local browser/Tampermonkey ingestion for login-gated sites (Zhihu, Xiaohongshu, Xiaoheihe).
+- Runs native TypeScript on `node:24-alpine` with built-in `node:sqlite` (WAL mode, Schema v30 auto-migration, < 100MB typical memory).
+- **111 Built-in Sources (62 High-Signal Curated Enabled by Default)** covering LINUX DO, NodeSeek, V2EX, NGA (deals/carpools/secondhand), Bilibili, Weibo, CCTV News, OpenRouter `:free` models, GitHub, Epic, Steam, GamerPower, CheapShark, ITAD, SharewareOnSale, TickCoupon, Reddit, Bluesky, Telegram channels and Chinese VPS promo blogs, plus custom RSS and local browser/Tampermonkey ingestion for login-gated sites (Zhihu, Xiaohongshu, Xiaoheihe).
 - Set `ADMIN_TOKEN` to keep browsing & daily digests public while protecting all configuration and mutation endpoints.
 
 ---
@@ -155,7 +155,7 @@ Most policies (AI endpoint/model/prompts, multi-route push rules, block rules, s
 ## CLI Utilities
 
 ```bash
-pnpm tsx src/server/cli.ts sources              # List all 63 sources and run stats
+pnpm tsx src/server/cli.ts sources              # List all 111 sources and run stats
 pnpm tsx src/server/cli.ts collect [sourceId]   # Run collection immediately
 pnpm tsx src/server/cli.ts enable <id...>       # Enable source(s)
 pnpm tsx src/server/cli.ts disable <id...>      # Disable source(s)

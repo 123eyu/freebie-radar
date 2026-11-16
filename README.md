@@ -2,7 +2,7 @@
   <img src="docs/logo.svg" alt="Resource Radar Logo" width="88" height="88" />
   <h1>资源雷达 · Resource Radar</h1>
   <p><strong>全网福利、黑五好价、拼车交易、开源项目与新闻资讯的多兴趣自托管聚合雷达站</strong></p>
-  <p>五大内容形态分流 · 21 类分频道目录 · 统一屏蔽词省额度 · AI 语义定级 · 多路由精准推送</p>
+  <p>六大内容形态分流 · 27 类分频道目录 · 统一屏蔽词省额度 · AI 语义定级 · 多路由精准推送</p>
 
   <p>
     <a href="README.md">简体中文</a> · <a href="README.en.md">English</a>
@@ -36,7 +36,7 @@
 | :---: | :---: |
 | ![工作台列表视图](docs/ui-public.png) | ![三列图文卡片视图](docs/ui-grid.png) |
 
-| 多路由精准推送（分形态/分类/获取方式/关键词定制即时或攒批路由） | AI 语义引擎（21 类分流、自适应学习与零 Token 存量重整分类） |
+| 多路由精准推送（分形态/分类/获取方式/关键词定制即时或攒批路由） | AI 语义引擎（27 类分流、自适应学习与零 Token 存量重整分类） |
 | :---: | :---: |
 | ![多路由精准推送](docs/ui-push-panel.png) | ![AI 语义引擎](docs/ui-ai-panel.png) |
 
@@ -46,11 +46,11 @@
 ## 核心特性
 
 ### 1. 多兴趣频道与「形态 × 领域 × 获取方式」正交分类
-- **5 大内容形态（`kind`）**：`freebie`（白嫖福利）、`deal`（特价好价·含黑五 VPS/拼车/二手出鸡）、`opensource`（开源项目）、`info`（新闻资讯·指南）、`noise`（纯求助/灌水噪音）。
-- **21 个垂直领域（`category`）**：覆盖 `ai`（AI 额度）、`vps`（VPS/主机）、`cloud`（云服务）、`domain`（域名/建站）、`opensource`（开源软件）、`software`（软件授权）、`dev`（开发/工程）、`design`（设计/素材）、`security`（安全/网络）、`hardware`（硬件/数码）、`media`（影音会员）、`game`（游戏）、`carpool`（拼车/合租）、`trade`（二手/交易）、`headline`（时政/要闻）、`finance`（财经/商业）、`news`（综合快讯）、`goods`（实物/优惠/话费券）、`invite`（邀请码）、`edu`（教育/电子书）、`other`（其它）。
-- **分频道自适应下级分类**：
-  - 「真福利精选 / 完全白嫖」只展现福利类目（隐藏拼车/交易/新闻要闻），统计数字实时排除 `noise` 假数；
-  - 「新闻资讯」自动切换为资讯栏目视角（时政/要闻、财经/商业、AI 前沿、开发工程、开源生态、安全/漏洞、硬件数码、综合快讯）；
+- **6 大内容形态（`kind`）**：`freebie`（白嫖福利）、`deal`（特价好价·含黑五 VPS/拼车/二手出鸡）、`opensource`（开源项目）、`news`（重要新闻）、`info`（行业资讯·指南）、`noise`（纯求助/灌水噪音）。
+- **27 个垂直领域（`category`）**：覆盖 `ai`（AI 额度）、`vps`（VPS/主机）、`cloud`（云服务）、`domain`（域名/建站）、`opensource`（开源软件）、`software`（软件授权）、`dev`（开发/工程）、`design`（设计/素材）、`security`（安全/网络）、`hardware`（硬件/数码）、`media`（影音会员）、`game`（游戏）、`carpool`（拼车/合租）、`trade`（二手/交易）、`headline`（时政要闻）、`world`（国际要闻）、`finance`（经济/商业）、`stock`（股票/市场）、`tech`（科技动态）、`news`（综合资讯）、`goods`（实物/优惠）、`offline`（实地福利）、`invite`（邀请码）、`edu`（教育/考试）、`pan`（网盘资源）、`course`（网课/教程）、`other`（其它）。
+- **8 个兴趣频道与自适应下级分类**：真福利、全部白嫖、实地福利、网盘/网课、好价、开源、重要新闻、行业资讯；
+  - 「真福利 / 全部白嫖」只展现福利类目（隐藏拼车/交易/新闻要闻，网盘/网课/实地福利各自独立成频道），统计数字实时排除 `noise` 假数；
+  - 「重要新闻 / 行业资讯」自动切换为资讯栏目视角（时政要闻、国际要闻、经济/商业、股票/市场、科技前沿、AI 前沿、开发工程、开源生态、安全/漏洞、硬件数码、综合资讯）；
   - 切换频道自动重置不兼容的形态、获取方式与价格上限，避免空屏串态。
 - **6 级获取方式（`obtain`）**：严格区分 `free`（直接白嫖）、`conditional`（有条件）、`lottery`（抽奖）、`trial`（试用/Demo）、`promo`（推广/引流）、`paid`（需付费）。
 
@@ -61,7 +61,7 @@
 
 ### 3. 三种响应式视图与零请求封面图提取
 - **单行紧凑 / 2列卡片 / 3列卡片** 一键切换并记住偏好。
-- 10 路采集器（Epic / Steam / GamerPower / CheapShark / GOG / RSS `<media:content>` & `<img>` / Telegram / LINUX DO / V2EX / 本地回环）零额外请求提取封面图，纯文本条目自动收起封面区避免网格空洞。
+- 14 路采集器（Epic / Steam / GamerPower / CheapShark / GOG / RSS `<media:content>` & `<img>` / Telegram / LINUX DO / V2EX / B站 / 微博 / CCTV / Bluesky / 本地回环）零额外请求提取封面图，纯文本条目自动收起封面区避免网格空洞。
 
 ### 4. 多路由精准 Telegram 推送
 - **全局策略 + 多专题路由**：支持一键新增或可视化编辑独立路由（例如：「🎁 真福利直推」「🖥 黑五/VPS 即时提醒」「📦 开源项目攒批汇总」「📰 新闻资讯早报」），每条路由可单独设定形态、分类、获取方式、关键词、最高价、最低分、即时/攒批模式与自定义前缀头。
@@ -69,8 +69,8 @@
 - **防误推二次校验与诊断预览**：攒批发送前二次回查 DB 状态与最新屏蔽词；支持查看拦截原因分布与路由命中预览；内置夜间静默时段与多语言/时效闸门。
 
 ### 5. 极简部署与单密码鉴权分区
-- **零外部数据库**：基于 `node:24-alpine` 原生运行 TypeScript，内置 `node:sqlite`（WAL 模式 + 内存上限调优，自动增量迁移至 Schema v17），日常运行内存 < 100MB。
-- **63 个内置数据源（默认精选启用 33 个）**：覆盖 LINUX DO、NodeSeek（含福利/资讯/拼车交易板块）、V2EX、OpenRouter `:free` 模型、GitHub、Epic、Steam、GamerPower、CheapShark、ITAD、SharewareOnSale、TickCoupon、Reddit、Bluesky、Telegram 频道，并支持自定义 RSS 与本地回环/油猴脚本抓取知乎/小红书/小黑盒。
+- **零外部数据库**：基于 `node:24-alpine` 原生运行 TypeScript，内置 `node:sqlite`（WAL 模式 + 内存上限调优，自动增量迁移至 Schema v30），日常运行内存 < 100MB。
+- **111 个内置数据源（默认精选启用 62 个）**：覆盖 LINUX DO、NodeSeek（含福利/资讯/拼车交易板块）、V2EX、NGA（优惠/拼车/二手）、B站、微博、CCTV 新闻、OpenRouter `:free` 模型、GitHub、Epic、Steam、GamerPower、CheapShark、ITAD、SharewareOnSale、TickCoupon、Reddit、Bluesky、Telegram 频道与中文主机圈促销博客，并支持自定义 RSS 与本地回环/油猴脚本抓取知乎/小红书/小黑盒。
 - **公开/管理隔离**：配置 `ADMIN_TOKEN` 后，资源流与每日精选保持公开浏览，管理配置与写入接口全部自动鉴权保护。
 - **可选的公开多用户模式**：设 `SITE_MODE=public` + LINUX DO OAuth 后，公共内容仍只读共享，但「不想看 / 收藏 / 已读 / 屏蔽词 / 关注词」按登录用户隔离；未登录访客的偏好只存本机浏览器；登录用户可绑自己的 Telegram Bot 收个人推送，也能订阅公开 RSS 或个人专属 RSS。管理权限始终只认 `ADMIN_TOKEN`，OAuth 登录不会提权。详见 [docs/accounts.md](docs/accounts.md)。
 
@@ -80,7 +80,7 @@
 
 ```mermaid
 flowchart LR
-  S["63 个内置源 + 自定义 RSS + 回环/油猴"] --> E["规则初筛与特征抽取（10 路封面图 / 兑换码 / 价格 / 双语去重指纹）"]
+  S["111 个内置源 + 自定义 RSS + 回环/油猴"] --> E["规则初筛与特征抽取（14 路封面图 / 兑换码 / 价格 / 双语去重指纹）"]
   E --> F{"统一屏蔽与噪音初筛（block_rules + NOISE_TITLE）"}
   F -->|命中屏蔽/硬噪音| D["跳过 AI 省额度并隔离"]
   F -->|通过| M{"AI 审核分流"}
@@ -136,7 +136,7 @@ cd freebie-radar
 pnpm install
 cp .env.example .env      # 按需填写 ADMIN_TOKEN / 代理 / Telegram 等
 pnpm build                # 构建前端产物到 dist/web
-pnpm start                # 自动建表迁移 + 初始化 63 个数据源 + 启动 :8788
+pnpm start                # 自动建表迁移 + 初始化 111 个数据源 + 启动 :8788
 ```
 
 开发模式（前后端热更新）：
@@ -187,7 +187,7 @@ pnpm dev:web    # 前端 Vite :5173（自动代理 /api 到 8788）
 ## 常用 CLI 工具
 
 ```bash
-pnpm tsx src/server/cli.ts sources              # 查看全部 63 个数据源与最近运行状态
+pnpm tsx src/server/cli.ts sources              # 查看全部 111 个数据源与最近运行状态
 pnpm tsx src/server/cli.ts collect [sourceId]   # 立即采集（不传则跑全部启用源）
 pnpm tsx src/server/cli.ts enable <id...>       # 启用指定源
 pnpm tsx src/server/cli.ts disable <id...>      # 禁用指定源
@@ -209,7 +209,7 @@ pnpm tsx src/server/cli.ts obtain               # 按获取方式重算统计
 src/
 ├── server/
 │   ├── collectors/    # 采集器与调度（SEEDS / dispatchFresh / 封面图提取）
-│   ├── enrich/        # 归一化、双语去重、21 类规则、形态分流(kind)、获取方式(obtain)、AI 队列与屏蔽词
+│   ├── enrich/        # 归一化、双语去重、27 类规则、形态分流(kind)、获取方式(obtain)、AI 队列与屏蔽词
 │   ├── push.ts        # 多路由分流、Telegram 即时/攒批二次校验、静默时段、预览诊断
 │   ├── digest.ts      # 每日精选生成与格式化
 │   ├── retention.ts   # 数据保留策略与自动清理
