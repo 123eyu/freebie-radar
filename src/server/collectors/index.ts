@@ -1,6 +1,6 @@
 import { aiEnabled, config, pushEnabled } from "../config.ts";
 import { all, get, run, tx } from "../db.ts";
-import { demoteEditorialGoods, demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "../enrich/index.ts";
+import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "../enrich/index.ts";
 import { calibrateScoreByObtain, resolveDbMergeKey } from "../enrich/alias.ts";
 import { getAiSettings, matchesEntryNoise, shouldPassSourceToAi, shouldReview, type AiVerdict } from "../enrich/ai.ts";
 import { enqueueForAi, reviewFreshNow, setPostReviewHandler } from "../enrich/ai-queue.ts";
@@ -576,14 +576,14 @@ function persist(
       }
 
       const verdict = aiMap?.get(index) ?? null;
-      const effectiveObtain = obtainOf(e, verdict);
-      const effectiveKind = verdict
+      const effectiveObtainRaw = obtainOf(e, verdict);
+      const effectiveKindRaw = verdict
         ? resolveKind(verdict.kind, verdict.keep, {
             title: e.title,
             summary: e.summary ?? undefined,
             sourceId,
             category: categoryForSource(sourceId, verdict.category || e.category, srcHints),
-            obtain: effectiveObtain,
+            obtain: effectiveObtainRaw,
             isFree: e.isFree,
             price: e.price,
             freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
@@ -591,11 +591,16 @@ function persist(
             guardEnabled: srcHints.guardEnabled,
           })
         : e.kind;
+      // 白嫖证据校验：抽奖 → lottery，明确标价 → deal（只做否定，不替 AI 确认福利）
+      const evidenced = enforceFreebieEvidence(effectiveKindRaw, effectiveObtainRaw, e.title);
+      const effectiveKind = evidenced.kind;
+      const effectiveObtain = evidenced.obtain ?? effectiveObtainRaw;
+      const kindCategory = evidenced.category ?? undefined;
       // AI 给出的分类优先于关键词规则（以前这里只用规则结果，AI 判对的分类被丢掉）；
       // 再统一收口：资讯/水帖不许落进实地福利
       const effectiveCategory = demoteEditorialGoods(
         demoteOfflineCategory(
-          categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : verdict?.category && isCategory(verdict.category) ? verdict.category : e.category, srcHints),
+          categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : kindCategory ?? (verdict?.category && isCategory(verdict.category) ? verdict.category : e.category), srcHints),
           effectiveKind,
           e.title,
           e.summary ?? "",

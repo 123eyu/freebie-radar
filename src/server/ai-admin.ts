@@ -1,6 +1,6 @@
 import { all, get, run } from "./db.ts";
 import { calibrateScoreByObtain } from "./enrich/alias.ts";
-import { demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
+import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
 import { guessObtain } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { aiQueueStats } from "./enrich/ai-queue.ts";
@@ -278,19 +278,28 @@ if (!v.keep) rejected += 1;
           kindHint: hints.kindHint,
           guardEnabled: hints.guardEnabled,
         });
+        // 白嫖证据校验：抽奖 → lottery，明确标价 → deal
+        const evidenced = enforceFreebieEvidence(kind, obtain, row.title, category);
+        kind = evidenced.kind;
+        const finalObtain = evidenced.obtain ?? obtain;
+        const categoryHint = evidenced.category ?? category;
         // 资讯/水帖不许落进实地福利
-        let finalCategory = demoteOfflineCategory(
-          category,
+        let finalCategory = demoteEditorialGoods(
+          demoteOfflineCategory(
+            categoryHint,
+            kind,
+            row.title,
+            row.summary ?? "",
+            baseEnriched?.category ?? null,
+          ),
           kind,
-          row.title,
-          row.summary ?? "",
-          baseEnriched?.category ?? null,
+          { title: row.title, summary: row.summary ?? "", obtain: finalObtain, price: baseEnriched?.price ?? null },
         );
         const effectiveKeep = kind === "noise" ? false : v.keep;
         const keep = effectiveKeep ? 1 : 0;
         const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind, category: finalCategory });
         ({ kind, category: finalCategory } = applyManualClassification(row.id, finalCategory, kind));
-        const score = calibrateScoreByObtain(baseScore, obtain, effectiveKeep, quality, kind, {
+        const score = calibrateScoreByObtain(baseScore, finalObtain, effectiveKeep, quality, kind, {
           title: row.title,
           summary: row.summary ?? "",
           publishedAt: row.published_at,
@@ -298,7 +307,7 @@ if (!v.keep) rejected += 1;
           codes: baseEnriched?.codes ?? [],
           price: baseEnriched?.price ?? null,
         });
-        updateAi(row.id, ai, keep, score, finalCategory, obtain, kind, quality);
+        updateAi(row.id, ai, keep, score, finalCategory, finalObtain, kind, quality);
       }
     }
     finishAiJob(jobId, {

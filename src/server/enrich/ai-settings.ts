@@ -97,6 +97,7 @@ const DEFAULT_PROMPT = [
   "- free：点开即可直接免费拿或开源免费用，不需抽签/付费",
   "- conditional：需注册、实名、填表、签到攒积分、回复或新用户条件才可领",
   "- lottery：抽奖/拼手气/随机送",
+  "- lottery 的判定：标题含 Sweepstakes / Winners / 抽奖 / 抽选 / 摇号 / 赢取 一律 obtain=lottery 且 category=lottery，不要标 free；Steam/Epic 的 Giveaway 是免费领游戏，仍标 free。",
   "- trial：商业 SaaS 短期试用，到期不付钱即停用",
   "- promo：纯商业引流钩子",
   "- paid：需实际付费购买（如黑五特价 VPS、史低游戏、买断软件）",

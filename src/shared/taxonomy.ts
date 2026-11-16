@@ -33,6 +33,7 @@ export const CATEGORY_KEYS = [
   "tech",
   "news",
   "goods",
+  "lottery",
   "offline",
   "invite",
   "edu",
@@ -65,6 +66,7 @@ const CATEGORY_LABEL_BY_KEY = {
   tech: "科技动态",
   news: "综合资讯",
   goods: "实物/优惠",
+  lottery: "抽奖/抽选",
   offline: "实地福利",
   invite: "邀请码",
   edu: "教育/考试",
@@ -99,6 +101,7 @@ export const CATEGORY_DESC: Record<Category, string> = {
   tech: "科技前沿 / 芯片 / 互联网 / 航天新能源",
   news: "综合快讯与其它资讯",
   goods: "生活羊毛 / 优惠券 / 话费红包 / 实物",
+  lottery: "免费参与但结果不确定的抽奖 / Sweepstakes / 抽选活动（不计入确定福利）",
   offline: "线下活动 / 门店 / 快闪 / 现场领取的实物福利（必须能到店领到实物；纯资讯、抽检通报、租房组队不算）",
   invite: "邀请码 / 开放注册 / 内测资格",
   edu: "题库 / 真题 / 教材 / 电子书 / 备考",
@@ -114,7 +117,7 @@ export const CATEGORY_GROUPS: { key: CategoryGroupKey; label: string; categories
   {
     key: "freebie",
     label: "福利与交易",
-    categories: ["ai", "cloud", "vps", "domain", "software", "media", "game", "carpool", "trade", "goods", "offline", "invite"],
+    categories: ["ai", "cloud", "vps", "domain", "software", "media", "game", "carpool", "trade", "goods", "lottery", "offline", "invite"],
   },
   {
     key: "tech",
@@ -179,7 +182,7 @@ export const NEWS_CATEGORY_LABEL: Record<string, string> = {
 
 /** 真福利/白嫖频道的分类集合：网盘、网课、实地福利各有独立频道，不混进来 */
 export const FREEBIE_CATEGORY_KEYS: Category[] = [
-  "ai", "software", "game", "cloud", "vps", "domain", "media", "design", "dev", "edu", "goods", "invite", "opensource", "security", "hardware", "other",
+  "ai", "software", "game", "cloud", "vps", "domain", "media", "design", "dev", "edu", "goods", "lottery", "invite", "opensource", "security", "hardware", "other",
 ];
 
 /**
@@ -187,7 +190,7 @@ export const FREEBIE_CATEGORY_KEYS: Category[] = [
  * exclude 里的分类即使出现在 categories 里也会被该频道排除（主页查询与分类胶囊都按它算）。
  */
 export const CHANNELS: { key: string; label: string; categories: Category[]; exclude?: Category[] }[] = [
-  { key: "verified", label: "真福利", categories: FREEBIE_CATEGORY_KEYS, exclude: ["pan", "course", "offline"] },
+  { key: "verified", label: "真福利", categories: FREEBIE_CATEGORY_KEYS, exclude: ["pan", "course", "offline", "lottery"] },
   { key: "free", label: "全部白嫖", categories: FREEBIE_CATEGORY_KEYS },
   { key: "offline", label: "实地福利", categories: ["offline"] },
   { key: "pan", label: "网盘/网课", categories: ["pan", "course"] },

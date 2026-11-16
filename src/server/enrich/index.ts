@@ -322,6 +322,31 @@ export function demoteEditorialGoods(
   return "tech";
 }
 
+/** 抽奖：免费参与但不确定能拿到，obtain 记 lottery，不进「真福利」。Giveaway 不算（Steam/Epic 送游戏常用它）。 */
+const LOTTERY_TITLE_RE = /sweepstakes|\bwinners?\b|抽奖|抽选|抽签|摇号|赢取/i;
+/** 明确标价的不是白嫖：「Only $9.99」「仅售」「到手价」。 */
+const PRICED_TITLE_RE = /only\s*\$|仅售|到手价|售价\s*[$￥¥]?\s*\d|现价\s*[$￥¥]?\s*\d/i;
+
+/**
+ * 白嫖证据校验（只做否定，不做确认）：
+ * - 抽奖类：免费参与但结果不确定 → obtain=lottery，从「真福利」频道排除
+ * - 明确标价：不是白嫖 → kind 降为 deal
+ * 不判断「是不是福利」，只排除「肯定不是确定福利」的两种情形。
+ */
+export function enforceFreebieEvidence(
+  kind: ContentKind,
+  obtain: string | null,
+  title: string,
+  category?: string | null,
+): { kind: ContentKind; obtain: string | null; category?: string | null } {
+  if (kind !== "freebie") return { kind, obtain, category };
+  if (LOTTERY_TITLE_RE.test(title)) return { kind, obtain: "lottery", category: "lottery" };
+  if (PRICED_TITLE_RE.test(title)) {
+    return { kind: "deal", obtain: obtain === "free" || !obtain ? "paid" : obtain, category };
+  }
+  return { kind, obtain, category };
+}
+
 function ageDays(iso: string | null): number {
   if (!iso) return 0;
   const t = new Date(iso).getTime();

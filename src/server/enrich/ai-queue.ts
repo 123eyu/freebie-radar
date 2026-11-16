@@ -1,6 +1,6 @@
 import { getAiSettings, reviewItems, type AiVerdict } from "./ai-settings.ts";
 import { dedupeKeptItemsWithAi } from "./ai-dedup.ts";
-import { demoteOfflineCategory, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "./index.ts";
+import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "./index.ts";
 import { calibrateScoreByObtain } from "./alias.ts";
 import type { RawItem } from "../collectors/types.ts";
 import { get, run } from "../db.ts";
@@ -120,20 +120,29 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       kindHint: hints.kindHint,
       guardEnabled: hints.guardEnabled,
     });
+    // 白嫖证据校验：抽奖 → lottery，明确标价 → deal
+    const evidenced = enforceFreebieEvidence(autoKind, effectiveObtain, cur?.title ?? "", rawCategory);
+    const finalKind = evidenced.kind;
+    const finalObtain = evidenced.obtain ?? effectiveObtain;
+    const finalCategoryHint = evidenced.category ?? rawCategory;
     // 资讯/水帖不许落进实地福利：AI 标错时统一降级到兜底分类
-    const autoCategory = demoteOfflineCategory(
-      rawCategory,
-      autoKind,
-      cur?.title ?? "",
-      cur?.summary ?? "",
+    const autoCategory = demoteEditorialGoods(
+      demoteOfflineCategory(
+        finalCategoryHint,
+        autoKind,
+        cur?.title ?? "",
+        cur?.summary ?? "",
+      ),
+      finalKind,
+      { title: cur?.title ?? "", summary: cur?.summary ?? "", obtain: finalObtain, price: cur?.price ?? null },
     );
-    const { kind: effectiveKind, category: effectiveCategory } = applyManualClassification(itemId, autoCategory, autoKind);
-    const effectiveKeep = autoKind === "noise" ? false : verdict.keep;
+    const { kind: effectiveKind, category: effectiveCategory } = applyManualClassification(itemId, autoCategory, finalKind);
+    const effectiveKeep = finalKind === "noise" ? false : verdict.keep;
     const keep = effectiveKeep ? 1 : 0;
     const nextScore = cur
       ? calibrateScoreByObtain(
           cur.base_score ?? cur.score,
-          effectiveObtain,
+          finalObtain,
           effectiveKeep,
           nextQuality,
           effectiveKind,
@@ -158,11 +167,11 @@ codes: parseCodes(cur.codes),
               score = ?,
               ai_reviewed_at = ?
         WHERE id = ?`,
-      JSON.stringify({ ...verdict, keep: effectiveKeep, kind: autoKind, category: autoCategory }),
+      JSON.stringify({ ...verdict, keep: effectiveKeep, kind: finalKind, category: autoCategory }),
       keep,
       effectiveKind,
       nextQuality,
-      nextObtain,
+      finalObtain,
       effectiveCategory,
       nextScore,
       new Date().toISOString(),
@@ -172,7 +181,7 @@ codes: parseCodes(cur.codes),
       aiKeep: effectiveKeep,
       kind: effectiveKind,
       category: effectiveCategory,
-      obtain: effectiveObtain,
+      obtain: finalObtain,
       score: nextScore,
       reason: typeof verdict.reason === "string" && verdict.reason.trim() ? verdict.reason.trim() : null,
     };
