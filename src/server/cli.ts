@@ -115,7 +115,7 @@ async function main() {
           kindHint: hints.kindHint,
           guardEnabled: hints.guardEnabled,
         });
-        // 资讯/水帖不许落进实地福利（AI 或旧规则标错的在这里降级）
+        // 资讯/水帖不许落进实物福利（AI 或旧规则标错的在这里降级）
         finalCategory = demoteOfflineCategory(
           finalCategory,
           finalKind,

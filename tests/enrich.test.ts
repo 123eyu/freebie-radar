@@ -30,20 +30,20 @@ test("分类：影音会员", () => {
 test("分类：域名与主机", () => {
   assert.equal(classify("免费 .dev 域名注册一年", "").category, "domain");
 });
-test("分类：实地福利（线下门店/快闪/现场领取）", () => {
+test("分类：实物福利（线下门店/快闪/现场领取）", () => {
   assert.equal(classify("五大绝美花墙免费打卡，现场可免费领取手幅", "").category, "offline");
   assert.equal(classify("正大附近，粉丝福利，免费送，2束鲜花", "").category, "offline");
   assert.equal(classify("新店开业活动：到店免费领小样，可自提", "").category, "offline");
   // 线上羊毛仍归「实物/优惠」
   assert.equal(classify("京东优惠券满减，包邮到家", "").category, "goods");
-  // 新闻里的「现场」不算实地福利
+  // 新闻里的「现场」不算实物福利
   assert.notEqual(classify("记者现场直击：峰会发布会现场", "").category, "offline");
-  // 只有地点词、没有领取动作的资讯/闲聊不算实地福利
+  // 只有地点词、没有领取动作的资讯/闲聊不算实物福利
   assert.notEqual(classify("51批防火玻璃7批不合格，耐火时间是个问号", "现场抽检").category, "offline");
   assert.notEqual(classify("哥们们 杭州附近的兄弟有吗 我想租个房 给大家一起免费玩有人吗", "").category, "offline");
 });
 
-test("分类：实地福利里的资讯/水帖在 enrich 阶段被降级", () => {
+test("分类：实物福利里的资讯/水帖在 enrich 阶段被降级", () => {
   const e = enrichItem(
     {
       externalId: "x",
@@ -58,10 +58,10 @@ test("分类：实地福利里的资讯/水帖在 enrich 阶段被降级", () =>
   assert.equal(e.kind, "info");
 });
 
-test("分类：实地福利只收福利（freebie），好价与海外线上促销一律不进", () => {
+test("分类：实物福利只收福利（freebie），好价与海外线上促销一律不进", () => {
   // 好价（deal）不是福利
   assert.equal(isOfflineWorthy("Dairy Queen- 2 for $6 cupcakes", "到店自取", "deal"), false);
-  // 全英文的海外线上促销不是中文站的实地福利
+  // 全英文的海外线上促销不是中文站的实物福利
   assert.equal(
     isOfflineWorthy(
       "6 FREE Walgreens Photo Cards ($24 Value)",
@@ -70,7 +70,7 @@ test("分类：实地福利只收福利（freebie），好价与海外线上促�
     ),
     false,
   );
-  // 真·实地福利：中文 + 线下场景 + 领取动作
+  // 真·实物福利：中文 + 线下场景 + 领取动作
   assert.equal(isOfflineWorthy("海口博博会，河北博物院礼品免费送", "现场领取", "freebie"), true);
   assert.equal(isOfflineWorthy("新店开业活动：到店免费领小样", "", "freebie"), true);
   assert.equal(demoteOfflineCategory("offline", "deal", "Dairy Queen- 2 for $6 cupcakes", "", "goods"), "goods");

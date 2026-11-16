@@ -180,7 +180,7 @@ export const NEWS_CATEGORY_LABEL: Record<string, string> = {
  * 频道（主页大类 preset）
  * ------------------------------------------------------------------ */
 
-/** 真福利/白嫖频道的分类集合：网盘、网课、实地福利各有独立频道，不混进来 */
+/** 真福利/白嫖频道的分类集合：网盘、网课、实物福利各有独立频道，不混进来 */
 export const FREEBIE_CATEGORY_KEYS: Category[] = [
   "ai", "software", "game", "cloud", "vps", "domain", "media", "design", "dev", "edu", "goods", "lottery", "invite", "opensource", "security", "hardware", "other",
 ];

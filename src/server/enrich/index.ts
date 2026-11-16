@@ -22,7 +22,7 @@ const OFFLINE_SCENE_RE =
 /** 领取动作：必须能真的领到东西，否则只是地点词撞上了 */
 const OFFLINE_CLAIM_RE =
   /(?:免费领取|免费领|现场领|领取|免费送|免费赠|赠送|白送|白给|0元|零元|一分钱|打卡[^\s]{0,4}(?:送|领)|试吃|试饮|派样|派发|小样|礼品|手幅|周边)/;
-/** 资讯/求助/闲聊：命中就不该当实地福利 */
+/** 资讯/求助/闲聊：命中就不该当实物福利 */
 const OFFLINE_EXCLUDE_RE =
   /记者|直播|直击|发布会|峰会|论坛|通报|白皮书|签署|备忘录|抽检|不合格|检测结果|召回|处罚|罚款|我想|有吗|有没有人|求租|转租|合租/;
 /** 实物/生活福利：线上免费领也算「实物福利」，不再要求到店 */
@@ -135,7 +135,7 @@ const RULES: Rule[] = [
     keywords: ["新闻", "快讯", "要闻", "播报", "周刊", "日报", "changelog", "release notes"],
   },
   {
-    // 实地福利：线下门店/快闪/商场现场领取的实物，和线上羊毛分开，避免被「实物/优惠」吞掉
+    // 实物福利：线下门店/快闪/商场现场领取的实物，和线上羊毛分开，避免被「实物/优惠」吞掉
     category: "offline",
     weight: 1.2,
     keywords: [
@@ -144,7 +144,7 @@ const RULES: Rule[] = [
     ],
     // 光有「附近/线下/现场」这类地点词不够：必须同时出现「领取动作」，否则闲聊帖、行业资讯全被吸进来
     require: OFFLINE_CLAIM_RE,
-    // 新闻/发布会里的「现场」不是实地福利；抽检通报、租房求组队这类也不是
+    // 新闻/发布会里的「现场」不是实物福利；抽检通报、租房求组队这类也不是
     exclude: OFFLINE_EXCLUDE_RE,
   },
   {
@@ -281,7 +281,7 @@ export function classify(
   return { category: best.category, tags };
 }
 /**
- * 实地福利的完整口径：先得是福利（kind=freebie），再得是实地（线下场景 + 领取动作 + 中文文本）。
+ * 实物福利的完整口径：先得是福利（kind=freebie），再得是实地（线下场景 + 领取动作 + 中文文本）。
  * AI 会把美国的线上促销/到店好价也标成 offline，所以规则结果和 AI 输出都要过这道闸。
  */
 export function isOfflineWorthy(title: string, summary: string, kind: string | null): boolean {
@@ -533,7 +533,7 @@ export function enrichItem(
     guardEnabled: hints?.guardEnabled,
   };
   let kind = guessKind(kindInput);
-  // 实地福利必须是「能到店领到的实物福利」：好价（deal）和只撞上地点词的资讯/闲聊一律退回
+  // 实物福利必须是「能到店领到的实物福利」：好价（deal）和只撞上地点词的资讯/闲聊一律退回
   if (category === "offline" && !isOfflineWorthy(title, summary, kind)) {
     const again = classify(title, summary, { excludeCategories: ["offline"] });
     category =

@@ -125,7 +125,7 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
     const finalKind = evidenced.kind;
     const finalObtain = evidenced.obtain ?? effectiveObtain;
     const finalCategoryHint = evidenced.category ?? rawCategory;
-    // 资讯/水帖不许落进实地福利：AI 标错时统一降级到兜底分类
+    // 资讯/水帖不许落进实物福利：AI 标错时统一降级到兜底分类
     const autoCategory = demoteEditorialGoods(
       demoteOfflineCategory(
         finalCategoryHint,

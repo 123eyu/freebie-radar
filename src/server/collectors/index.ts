@@ -597,7 +597,7 @@ function persist(
       const effectiveObtain = evidenced.obtain ?? effectiveObtainRaw;
       const kindCategory = evidenced.category ?? undefined;
       // AI 给出的分类优先于关键词规则（以前这里只用规则结果，AI 判对的分类被丢掉）；
-      // 再统一收口：资讯/水帖不许落进实地福利
+      // 再统一收口：资讯/水帖不许落进实物福利
       const effectiveCategory = demoteEditorialGoods(
         demoteOfflineCategory(
           categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : kindCategory ?? (verdict?.category && isCategory(verdict.category) ? verdict.category : e.category), srcHints),

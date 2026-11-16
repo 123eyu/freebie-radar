@@ -283,7 +283,7 @@ if (!v.keep) rejected += 1;
         kind = evidenced.kind;
         const finalObtain = evidenced.obtain ?? obtain;
         const categoryHint = evidenced.category ?? category;
-        // 资讯/水帖不许落进实地福利
+        // 资讯/水帖不许落进实物福利
         let finalCategory = demoteEditorialGoods(
           demoteOfflineCategory(
             categoryHint,
@@ -430,7 +430,7 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other", options:
     }
     const fallbackObtain = guessObtain(r.title, r.summary ?? "");
     const nextObtain = r.ai_keep === null ? fallbackObtain : (r.obtain ?? fallbackObtain);
-    // 资讯/水帖不许落进实地福利
+    // 资讯/水帖不许落进实物福利
     nextCat = demoteOfflineCategory(nextCat, nextKind, r.title, r.summary ?? "", e.category) as typeof nextCat;
     ({ category: nextCat, kind: nextKind } = applyManualClassification(r.id, nextCat, nextKind as import("../shared/taxonomy.ts").ContentKind));
 

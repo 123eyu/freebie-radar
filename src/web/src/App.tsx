@@ -173,7 +173,7 @@ type Preset = { key: string; label: string; icon: typeof Sparkles };
 const PRIMARY_CHANNELS: Preset[] = [
   { key: "verified", label: "真福利", icon: Sparkles },
   { key: "pan", label: "网盘/网课", icon: FolderOpen },
-  { key: "offline", label: "实地福利", icon: MapPin },
+  { key: "offline", label: "实物福利", icon: MapPin },
   { key: "deal", label: "黑五/好价", icon: Flame },
   { key: "opensource", label: "开源项目", icon: Code },
   { key: "news", label: "重要新闻", icon: Newspaper },
@@ -469,7 +469,7 @@ export function App() {
       const excludedCats = channelExcluded("verified");
       if (categories.length === 0 && excludedCats.length) p.set("excludeCategory", excludedCats.join(","));
     } else if (preset === "offline") {
-      // 实地福利独立频道：线下/门店/现场领取，不混进真福利
+      // 实物福利独立频道：线下/门店/现场领取，不混进真福利
       p.set("unexpired", "1");
       p.set("hideRejected", "1");
       if (categories.length === 0) p.set("category", "offline");

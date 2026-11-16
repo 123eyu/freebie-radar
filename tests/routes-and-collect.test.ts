@@ -68,7 +68,7 @@ test("ingestItems：重复抓取已有条目时更新参数完整且保留原有
   assert.ok(afterRow.score <= 25, `AI 判否条目分数应 ≤ 25，实际 ${afterRow.score}`);
 });
 
-test("重分类：AI 给出的分类优先于关键词规则，实地福利里的资讯被纠正为 AI 分类", async () => {
+test("重分类：AI 给出的分类优先于关键词规则，实物福利里的资讯被纠正为 AI 分类", async () => {
   const { reclassifyStoredItems } = await import("../src/server/ai-admin.ts");
   run("DELETE FROM items");
   // 规则会把它判成 offline（门店 + 免费领），但 AI 判成 tech/info
@@ -96,7 +96,7 @@ test("重分类：AI 给出的分类优先于关键词规则，实地福利里�
   const after = get<{ category: string }>(
     "SELECT category FROM items WHERE source_id = 'rss-ithome' AND external_id = 'ai-cat-1'",
   )!;
-  assert.equal(after.category, "tech", "AI 判成 tech 的资讯不该留在实地福利");
+  assert.equal(after.category, "tech", "AI 判成 tech 的资讯不该留在实物福利");
 });
 
 test("GET /api/items：短中文名《斗阵骑士》可跨源合并，且指定单源或保鲜期时不被别源老帖遮蔽", async () => {
