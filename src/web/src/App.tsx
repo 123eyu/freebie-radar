@@ -172,12 +172,12 @@ type Preset = { key: string; label: string; icon: typeof Sparkles };
 
 const PRIMARY_CHANNELS: Preset[] = [
   { key: "verified", label: "真福利", icon: Sparkles },
-  { key: "pan", label: "网盘/网课", icon: FolderOpen },
   { key: "offline", label: "实物福利", icon: MapPin },
-  { key: "deal", label: "黑五/好价", icon: Flame },
-  { key: "opensource", label: "开源项目", icon: Code },
   { key: "news", label: "重要新闻", icon: Newspaper },
+  { key: "opensource", label: "开源项目", icon: Code },
+  { key: "deal", label: "黑五/好价", icon: Flame },
   { key: "info", label: "行业资讯", icon: TrendingUp },
+  { key: "pan", label: "网盘/网课", icon: FolderOpen },
 ];
 
 const SECONDARY_VIEWS: Preset[] = [
