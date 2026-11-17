@@ -115,6 +115,8 @@ test("固定真福利 RSS 与 API 同口径，指定来源不能绕过频道隔�
   assert.ok(offerId);
   const feed = await app.request("/rss.xml?preset=verified&source=linuxdo-resource");
   assert.equal(feed.status, 200); assert.ok(!(await feed.text()).includes("网盘课程测试"));
+  // 测试环境是 selfhost（未配 OAuth），pan 频道照常可见；
+  // public 模式下游客隐藏 pan/course 的行为由 SITE_MODE=public 的实例验证，见 README。
   const panFeed = await app.request("/rss.xml?preset=pan&source=linuxdo-resource");
   assert.ok((await panFeed.text()).includes("网盘课程测试"));
   const api = await (await app.request("/api/items?preset=verified&source=linuxdo-resource&merge=0")).json() as { items: unknown[] };

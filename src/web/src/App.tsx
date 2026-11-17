@@ -180,6 +180,19 @@ const PRIMARY_CHANNELS: Preset[] = [
   { key: "pan", label: "网盘/网课", icon: FolderOpen },
 ];
 
+/**
+ * 网盘/网课频道在公开演示站停用后，用这几行占位文案示意频道长什么样。
+ * 全部是虚构条目，不含任何真实资源标题或链接——真实数据在后端就被过滤掉了。
+ */
+const PAN_DEMO_ROWS = [
+  { title: "某编程实战课程合集 · 全 42 讲", meta: "TG · 网盘资源收藏 · 网盘资源", score: "82" },
+  { title: "某设计素材包 · 字体/笔刷/模板", meta: "LINUX DO · 资源荟萃 · 网盘资源", score: "76" },
+  { title: "某电子书套装 · PDF/EPUB 双格式", meta: "TG · 综合资源 · 网盘资源", score: "71" },
+  { title: "某办公软件工具集 · 免安装版", meta: "TG · 网盘资源收藏 · 网盘资源", score: "68" },
+  { title: "某考试真题汇总 · 含答案解析", meta: "LINUX DO · 资源荟萃 · 网课教程", score: "64" },
+  { title: "某视频剪辑教程 · 素材+工程文件", meta: "TG · 综合资源 · 网课教程", score: "59" },
+];
+
 const SECONDARY_VIEWS: Preset[] = [
   { key: "codes", label: "含兑换码", icon: Zap },
   { key: "urgent", label: "今日截止", icon: Bell },
@@ -1818,26 +1831,42 @@ export function App() {
 
               {!items.loading && !items.error && !visible.length && (
                 preset === "pan" ? (
-                  <div className="mx-auto max-w-xl px-6 py-16">
-                    <div className="rounded-lg border border-ink-200 bg-surface p-6">
-                      <div className="flex items-center gap-2 text-[15px] font-medium text-ink-900">
-                        <FolderOpen size={16} className="text-ink-400" />
-                        网盘/网课频道在公开演示站已停用
+                  <div className="relative min-h-[520px]">
+                    {/* 背景示例条目：只用来示意频道长什么样，全部是占位文案，不含任何真实资源 */}
+                    <div className="pointer-events-none select-none opacity-55 blur-[0.6px]" aria-hidden="true">
+                      {PAN_DEMO_ROWS.map((row, i) => (
+                        <div key={i} className="flex items-start gap-3 border-b border-ink-100 px-6 py-4">
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-ink-300" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] text-ink-900">{row.title}</div>
+                            <div className="mt-1 text-[11.5px] text-ink-400">{row.meta}</div>
+                          </div>
+                          <span className="shrink-0 font-mono text-[11px] text-ink-300">{row.score}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* 说明卡浮在示例列表之上 */}
+                    <div className="absolute inset-0 flex items-start justify-center bg-gradient-to-b from-surface/35 via-surface/70 to-surface px-4 pt-10 sm:pt-16">
+                      <div className="w-full max-w-xl rounded-lg border border-ink-200 bg-surface p-6 shadow-sm">
+                        <div className="flex items-center gap-2 text-[15px] font-medium text-ink-900">
+                          <FolderOpen size={16} className="text-ink-400" />
+                          网盘/网课频道在公开演示站已停用
+                        </div>
+                        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-500">
+                          该频道聚合的是第三方网盘分享链接，公开展示存在版权风险，因此演示站不采集、不展示这类内容。背景条目为占位示意，不是真实资源。
+                        </p>
+                        <div className="mt-4 border-t border-ink-100 pt-4">
+                          <div className="text-[12px] font-medium text-ink-700">能力说明（自部署可开启）</div>
+                          <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-ink-500">
+                            <li>· 多源采集：TG 频道、linux.do、RSS、GitHub Releases</li>
+                            <li>· AI 语义分流：自动识别网盘资源、网课教程、影视剧集</li>
+                            <li>· 一条消息含多个资源时自动拆分入库，标题清洗掉栏目前缀</li>
+                          </ul>
+                        </div>
+                        <a href={REPO_URL} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-[12.5px] font-medium text-brand hover:underline">
+                          查看自部署文档 →
+                        </a>
                       </div>
-                      <p className="mt-3 text-[12.5px] leading-relaxed text-ink-500">
-                        该频道聚合的是第三方网盘分享链接，公开展示存在版权风险，因此演示站不采集、不展示这类内容。
-                      </p>
-                      <div className="mt-4 border-t border-ink-100 pt-4">
-                        <div className="text-[12px] font-medium text-ink-700">能力说明（自部署可开启）</div>
-                        <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-ink-500">
-                          <li>· 多源采集：TG 频道、linux.do、RSS、GitHub Releases</li>
-                          <li>· AI 语义分流：自动识别网盘资源、网课教程、影视剧集</li>
-                          <li>· 一条消息含多个资源时自动拆分入库，标题清洗掉栏目前缀</li>
-                        </ul>
-                      </div>
-                      <a href={REPO_URL} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-[12.5px] font-medium text-brand hover:underline">
-                        查看自部署文档 →
-                      </a>
                     </div>
                   </div>
                 ) : (
