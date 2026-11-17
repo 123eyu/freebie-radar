@@ -91,8 +91,11 @@ const KIND_STYLE: Record<string, string> = {
   info: "bg-sky-50 text-sky-700",
 };
 
-function KindBadge({ kind, inline = false }: { kind: string | null | undefined; inline?: boolean }) {
+function KindBadge({ kind, category, inline = false }: { kind: string | null | undefined; category?: string | null; inline?: boolean }) {
   if (!kind || kind === "freebie" || kind === "noise") return null;
+  // 网盘/网课资源本身是「资源分享」，分类标签已经说清内容性质；
+  // kind 五类里没有资源形态，AI 只能落 info，再挂「行业资讯」就和「网盘资源」自相矛盾了
+  if ((category === "pan" || category === "course") && (kind === "info" || kind === "news")) return null;
   const label = KIND_LABEL[kind];
   if (!label) return null;
   if (inline) {
@@ -211,7 +214,7 @@ export function CompactRow({
           >
             {item.title}
           </button>
-          <KindBadge kind={item.kind} inline />
+          <KindBadge kind={item.kind} category={item.category} inline />
           {showPrice && <PriceBadge item={item} inline />}
           {showPrice && <ObtainBadge obtain={item.obtain} inline />}
           {matched.length > 0 && (
@@ -427,7 +430,7 @@ export function ItemCard({
                 <span>{categoryLabelForKind(item.category, item.kind)}</span>
               </>
             )}
-            <KindBadge kind={item.kind} />
+            <KindBadge kind={item.kind} category={item.category} />
             {item.kind !== "news" && item.kind !== "info" && <PriceBadge item={item} />}
             {item.kind !== "news" && item.kind !== "info" && <ObtainBadge obtain={item.obtain} />}
           </div>
@@ -690,7 +693,7 @@ export function ItemDetailDrawer({
           {error && <div role="alert" className="rounded-lg border border-alert-border bg-alert-subtle p-3 text-[12px] text-alert">{error} <button type="button" onClick={onRetry} className="ml-2 underline">重试</button></div>}
           <CoverImage src={item.image_url} className="aspect-[16/9] w-full rounded-lg border border-ink-100" />
           <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-            <KindBadge kind={item.kind} />
+            <KindBadge kind={item.kind} category={item.category} />
             {item.category && (
               <span className="rounded bg-brand-subtle px-2 py-0.5 font-medium text-accent">
                 {categoryLabelForKind(item.category, item.kind)}
