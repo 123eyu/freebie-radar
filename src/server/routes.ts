@@ -430,7 +430,9 @@ function buildItemsQuery(
   }
   // 公开演示站对未登录访客隐藏版权敏感分类（默认 pan/course）。
   // 这两个分类聚合的是第三方网盘分享链接，公开展示等于向公众提供侵权作品指引。
-  if (scope.userId === null && config.guestHiddenCategories.length) {
+  // 只在公开站生效：自部署（SITE_MODE=selfhost）没有游客概念，全部分类可见。
+  // 这样「一键切换」只需改 SITE_MODE，不用再单独设 GUEST_HIDDEN_CATEGORIES。
+  if (scope.publicMode && scope.userId === null && config.guestHiddenCategories.length) {
     const hidden = config.guestHiddenCategories;
     where.push(`COALESCE(category, 'other') NOT IN (${hidden.map(() => "?").join(",")})`);
     params.push(...hidden);

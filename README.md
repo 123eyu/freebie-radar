@@ -168,6 +168,25 @@ pnpm dev:web    # 前端 Vite :5173（自动代理 /api 到 8788）
 | `GITHUB_TOKEN` | 留空 | 可选，将 GitHub 采集限额从 60/h 提升到 5000/h |
 | `ENABLE_SCHEDULER` | `true` | 是否开启内置采集、攒批、每日精选与清理调度 |
 | `DAILY_CRON` / `DAILY_TOP_N` | `30 8 * * *` / `12` | 每日精选生成时间与条数 |
+| `SITE_MODE` | `auto` | **一键切换部署形态**，见下方说明 |
+| `GUEST_HIDDEN_CATEGORIES` | `pan,course` | 公开站对未登录访客隐藏的分类；自部署模式自动失效 |
+
+### 公开站 vs 自部署：只改一个变量
+
+`SITE_MODE` 决定整个站点的形态，其余配置会自动跟随：
+
+| | `SITE_MODE=selfhost`（自部署自用） | `SITE_MODE=public`（公开演示站） |
+|---|---|---|
+| 登录按钮 | 不显示，无需配 OAuth | 显示，需配 LINUX DO / GitHub OAuth |
+| 收藏/已读/屏蔽词 | 全局共享，存在本地 | 按登录用户隔离 |
+| 网盘/网课分类 | **全部可见** | 未登录访客不可见 |
+| 个人 RSS / Telegram Bot | 不需要 | 支持每个用户绑定自己的 |
+
+`auto`（默认）会看有没有配 OAuth：配了就按 `public` 跑，没配就按 `selfhost` 跑。
+
+所以自部署只要不填 OAuth 凭据，什么都不用改；想跑公开站就填 OAuth 并设 `SITE_MODE=public`。**不需要分别设置登录开关和分类可见性**——`GUEST_HIDDEN_CATEGORIES` 只在 `public` 模式下生效，`selfhost` 下自动忽略。
+
+公开站若想连网盘/网课分类也公开（自行承担版权合规责任），设 `GUEST_HIDDEN_CATEGORIES=`（空值）即可。
 
 ---
 
