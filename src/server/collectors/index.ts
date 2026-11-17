@@ -55,6 +55,9 @@ const BY_KIND = new Map(COLLECTORS.map((c) => [c.kind, c]));
 export const SEEDS: SourceSeed[] = [
   { id: "linuxdo-welfare", name: "LINUX DO · 福利羊毛", kind: "linuxdo", enabled: true, intervalSec: 90, config: { categoryId: 36, rssSlug: "welfare", categoryName: "福利羊毛" } },
   { id: "linuxdo-resource", name: "LINUX DO · 资源荟萃", kind: "linuxdo", enabled: false, intervalSec: 180, config: { categoryId: 14, rssSlug: "resource", categoryName: "资源荟萃", fixedCategory: "pan" } },
+  { id: "linuxdo-develop", name: "LINUX DO · 开发调优", kind: "linuxdo", enabled: true, intervalSec: 600, config: { categoryId: 4, rssSlug: "develop", categoryName: "开发调优" } },
+  { id: "linuxdo-news", name: "LINUX DO · 前沿快讯", kind: "linuxdo", enabled: true, intervalSec: 600, config: { categoryId: 34, rssSlug: "news", categoryName: "前沿快讯" } },
+  { id: "linuxdo-domestic", name: "LINUX DO · 国产替代", kind: "linuxdo", enabled: true, intervalSec: 1800, config: { categoryId: 98, rssSlug: "domestic", categoryName: "国产替代" } },
   { id: "v2ex-free", name: "V2EX · 免费赠送", kind: "v2ex", enabled: true, intervalSec: 120, config: { node: "free" } },
   { id: "v2ex-deals", name: "V2EX · 优惠信息", kind: "v2ex", enabled: true, intervalSec: 300, config: { node: "deals" } },
   { id: "v2ex-cloud", name: "V2EX · 云计算", kind: "v2ex", enabled: false, intervalSec: 1800, config: { node: "cloud" } },

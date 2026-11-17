@@ -515,6 +515,9 @@ function fmtDeadline(item: FreshItem): string | null {
 export const SOURCE_SHORT: Record<string, string> = {
   "linuxdo-welfare": "LINUX DO 福利",
   "linuxdo-resource": "LINUX DO 资源",
+  "linuxdo-develop": "LINUX DO 开发调优",
+  "linuxdo-news": "LINUX DO 前沿快讯",
+  "linuxdo-domestic": "LINUX DO 国产替代",
   "v2ex-free": "V2EX 免费赠送",
   "v2ex-deals": "V2EX 优惠",
   "v2ex-share": "V2EX 分享",
