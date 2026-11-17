@@ -2143,6 +2143,9 @@ export function App() {
           <span className="font-mono tabular-nums">
             {stats.data?.totals.active ?? 0} 条在库 · {stats.data?.totals.unread ?? 0} 条未读
           </span>
+          <span className="w-full text-[11px] leading-relaxed text-ink-400/80">
+            本站仅聚合公开渠道的资源标题与原始链接，不存储、不代理、不转存任何文件。如权利人认为内容侵权，请联系删除，本站将在收到通知后第一时间下架。
+          </span>
         </footer>
       </div>
 
