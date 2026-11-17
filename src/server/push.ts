@@ -518,6 +518,8 @@ export const SOURCE_SHORT: Record<string, string> = {
   "linuxdo-develop": "LINUX DO 开发调优",
   "linuxdo-news": "LINUX DO 前沿快讯",
   "linuxdo-domestic": "LINUX DO 国产替代",
+  "tg-pan-yunpan": "TG 网盘资源",
+  "tg-pan-yiove": "TG Yiove 资源",
   "v2ex-free": "V2EX 免费赠送",
   "v2ex-deals": "V2EX 优惠",
   "v2ex-share": "V2EX 分享",

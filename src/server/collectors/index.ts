@@ -111,6 +111,8 @@ export const SEEDS: SourceSeed[] = [
   { id: "rss-ggdeals", name: "GG.deals · 免费与动态", kind: "rss", enabled: true, intervalSec: 1800, config: { feeds: [{ id: "ggdeals", url: "https://gg.deals/news/feed/", limit: 25 }] } },
   { id: "rss-keylol", name: "其乐 Keylol", kind: "rss", enabled: true, intervalSec: 1800, config: { feeds: [{ id: "keylol", url: "https://keylol.com/forum.php?mod=rss", limit: 30 }] } },
   { id: "tg-freegames", name: "TG · 免费游戏情报", kind: "telegram", enabled: true, intervalSec: 300, config: { channels: ["freegamesnews", "steamfreebies"] } },
+  { id: "tg-pan-yunpan", name: "TG · 网盘资源收藏（迅雷/阿里/夸克）", kind: "telegram", enabled: true, intervalSec: 600, config: { channels: ["yunpanxunlei", "sharealiyun", "yunpans"], fixedCategory: "pan" } },
+  { id: "tg-pan-yiove", name: "TG · Yiove 综合资源（资料/图书/游戏）", kind: "telegram", enabled: true, intervalSec: 900, config: { channels: ["YioveComplex"], fixedCategory: "pan", splitNumbered: true } },
   { id: "gog-free", name: "GOG · 限时免费", kind: "gog", enabled: false, config: {} },
 
   // === 正版软件限免 / 工具 ===
