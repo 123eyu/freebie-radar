@@ -428,6 +428,13 @@ function buildItemsQuery(
       params.push(...cats);
     }
   }
+  // 公开演示站对未登录访客隐藏版权敏感分类（默认 pan/course）。
+  // 这两个分类聚合的是第三方网盘分享链接，公开展示等于向公众提供侵权作品指引。
+  if (scope.userId === null && config.guestHiddenCategories.length) {
+    const hidden = config.guestHiddenCategories;
+    where.push(`COALESCE(category, 'other') NOT IN (${hidden.map(() => "?").join(",")})`);
+    params.push(...hidden);
+  }
   // 反向排除分类：真福利频道要把「网盘资源 / 网课教程」这类长期资料型内容挡在外面
   if (q.excludeCategory) {
     const cats = q.excludeCategory.split(",").map((s) => s.trim()).filter(Boolean);

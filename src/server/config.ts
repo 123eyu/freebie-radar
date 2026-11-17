@@ -121,6 +121,12 @@ export const config = {
   adminToken: str("ADMIN_TOKEN"),
   /** 留空兼容单域名部署；设置后管理 API 只在这些 Host 上接受凭据。 */
   adminHosts: str("ADMIN_HOSTS").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  /**
+   * 未登录访客看不到的分类。公开演示站默认挡掉 pan/course：
+   * 这两个分类聚合的是第三方网盘分享链接（影视/教程/软件），公开展示有版权风险。
+   * 自部署想全开就设 GUEST_HIDDEN_CATEGORIES= 空字符串。
+   */
+  guestHiddenCategories: str("GUEST_HIDDEN_CATEGORIES", "pan,course").split(",").map((s) => s.trim()).filter(Boolean),
   /** 只有源站已封口、反代会覆盖转发头时才开启。 */
   trustProxy: bool("TRUST_PROXY", false),
   rateLimitEnabled: bool("RATE_LIMIT_ENABLED", true),

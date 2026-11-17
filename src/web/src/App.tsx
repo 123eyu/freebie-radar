@@ -1817,6 +1817,30 @@ export function App() {
               )}
 
               {!items.loading && !items.error && !visible.length && (
+                preset === "pan" ? (
+                  <div className="mx-auto max-w-xl px-6 py-16">
+                    <div className="rounded-lg border border-ink-200 bg-surface p-6">
+                      <div className="flex items-center gap-2 text-[15px] font-medium text-ink-900">
+                        <FolderOpen size={16} className="text-ink-400" />
+                        网盘/网课频道在公开演示站已停用
+                      </div>
+                      <p className="mt-3 text-[12.5px] leading-relaxed text-ink-500">
+                        该频道聚合的是第三方网盘分享链接，公开展示存在版权风险，因此演示站不采集、不展示这类内容。
+                      </p>
+                      <div className="mt-4 border-t border-ink-100 pt-4">
+                        <div className="text-[12px] font-medium text-ink-700">能力说明（自部署可开启）</div>
+                        <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-ink-500">
+                          <li>· 多源采集：TG 频道、linux.do、RSS、GitHub Releases</li>
+                          <li>· AI 语义分流：自动识别网盘资源、网课教程、影视剧集</li>
+                          <li>· 一条消息含多个资源时自动拆分入库，标题清洗掉栏目前缀</li>
+                        </ul>
+                      </div>
+                      <a href={REPO_URL} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-[12.5px] font-medium text-brand hover:underline">
+                        查看自部署文档 →
+                      </a>
+                    </div>
+                  </div>
+                ) : (
                 <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
                   <Radar size={28} className="text-ink-300" />
                   <div className="text-[15px] font-medium text-ink-900">{preset === "hidden" ? "还没有已关闭的内容" : preset === "starred" ? "还没有符合条件的收藏" : "当前条件下暂无内容"}</div>
@@ -1828,6 +1852,7 @@ export function App() {
                     <button type="button" onClick={() => { resetFilters(); setPreset("all"); }} className="rounded-md bg-brand px-4 py-2 text-[12.5px] font-medium text-white hover:bg-brand-hover">浏览全部收录</button>
                   </div>
                 </div>
+                )
               )}
             </>
           )}
