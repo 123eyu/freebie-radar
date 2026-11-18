@@ -27,7 +27,7 @@
 
 ---
 
-> 在线演示：<https://radar.zichuanlan.top>
+> 在线演示：<https://radar.zichuanlan.top> · 文档站：<https://zichuanlan.github.io/freebie-radar/>
 
 ---
 

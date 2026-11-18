@@ -18,7 +18,10 @@
     "typecheck": "tsc --noEmit",
     "benchmark": "node --no-warnings scripts/benchmark.mjs",
     "diagnose": "tsx src/server/cli.ts diagnose",
-    "obtain": "tsx src/server/cli.ts obtain"
+    "obtain": "tsx src/server/cli.ts obtain",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.4",
@@ -39,7 +42,8 @@
     "playwright": "^1.65.0",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.2",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "vitepress": "^1.6.4"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
