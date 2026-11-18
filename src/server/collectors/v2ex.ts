@@ -28,17 +28,22 @@ export const v2exCollector: Collector = {
   async collect(ctx) {
     const node = String(ctx.config.node ?? "free");
     const url = "https://www.v2ex.com/api/topics/show.json?node_name=" + encodeURIComponent(node);
-    ctx.log("GET " + url + (hasFlare() ? " via flaresolverr" : " direct"));
+    ctx.log("GET " + url);
 
+    // V2EX 是纯 JSON API，没有 Cloudflare 挑战，直连即可。
+    // 之前只要有 FlareSolverr 就无条件走它，每次采集都要启动一次 Chrome（约 10 秒 CPU 满载），
+    // 在 2 核机器上会把 API 响应挤到 10 秒，切页面卡死。只有直连失败才降级。
     let topics: V2Topic[];
-    if (hasFlare()) {
+    const direct = await ctx.http.json<V2Topic[]>(url).catch(() => null);
+    if (direct && direct.status === 200) {
+      topics = Array.isArray(direct.data) ? direct.data : fromJson(direct.response.body);
+    } else if (hasFlare()) {
+      ctx.log("直连失败，降级 FlareSolverr");
       const res = await flaresolverrGet(url);
       if (res.status !== 200) throw new Error("V2EX HTTP " + res.status);
       topics = fromJson(res.body);
     } else {
-      const res = await ctx.http.json<V2Topic[]>(url);
-      if (res.status !== 200) throw new Error("V2EX HTTP " + res.status);
-      topics = Array.isArray(res.data) ? res.data : fromJson(res.response.body);
+      throw new Error("V2EX HTTP " + (direct?.status ?? "network error"));
     }
 
     const items: RawItem[] = topics.map((t) => ({

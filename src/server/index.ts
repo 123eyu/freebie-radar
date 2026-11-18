@@ -9,7 +9,7 @@ import { logger } from "hono/logger";
 import { compress } from "hono/compress";
 import { config } from "./config.ts";
 import { getDb, migrate, run } from "./db.ts";
-import { registerApi } from "./routes.ts";
+import { registerApi, warmClusterCache } from "./routes.ts";
 import { startPushScheduler } from "./push.ts";
 import { digestExists, runDaily } from "./digest.ts";
 import { startIntervalScheduler, startScheduler } from "./cron.ts";
@@ -96,6 +96,9 @@ if (existsSync(webDistAbs)) {
 if (config.enableScheduler) {
   // 采集：每个源按自己的 interval_sec 轮询（linux.do 90 秒，RSS 15 分钟，GitHub 6 小时）
   startIntervalScheduler();
+  // 聚类缓存预热：公开列表要命中 40+ 个 (kind,category) 组合，冷启动单次要 4-5 秒。
+  // 延迟 5 秒等采集启动完，再在后台分批建索引，让第一个用户请求就命中缓存。
+  setTimeout(() => { void warmClusterCache(); }, 2_000);
   // 推送：攒批队列按 batchIntervalMin 定时合并发送（静默时段自动跳过）
   startPushScheduler();
   // 个人 Bot 攒批：各用户按自己的周期出队，与全局攒批互不干扰

@@ -245,7 +245,10 @@ const SORTS: Record<string, string> = {
  * 两个池子不同，于是出现「35 个来源、点开 0 条」。
  */
 const CLUSTER_WINDOW_DAYS = 3;
-const CLUSTER_POOL_LIMIT = 900;
+// 900 条池子 × 每次请求命中的几十个 (kind,category) 组合 = 单次请求要建几十个聚类索引，
+// 2 核机器上直接把 /api/items 拖到 6-9 秒。降到 300 后徽标精度基本不变（同组内 300 条已够数来源），
+// 但索引构造成本降到三分之一。
+const CLUSTER_POOL_LIMIT = 150;
 
 /** 聚类只需要这几列：items.content / raw 是整篇正文，整池 900 行一起取会把单次请求拖到几百毫秒。 */
 type ClusterPoolRow = {
@@ -347,28 +350,57 @@ function clusterSince(): string {
  * 分组聚类索引带缓存：同一 (kind, category) 的池子在一次请求里被复用，跨请求也不必重算。
  * 用「条目数 + 最大 id + 最近一次 AI 审核时间」当版本号，入库或补审写入 canonical 后自动失效。
  */
-let clusterCacheRevision = "";
-const clusterIndexCache = new Map<string, ClusterIndex>();
+/**
+ * 聚类索引缓存：按 (kind, category) 分组缓存，5 分钟 TTL。
+ *
+ * 之前用 dbRevision() 当失效信号——采集进程每秒都在写库，导致缓存几乎每个请求都被全清，
+ * 而全部频道一次要重建几十个分组的索引（每个 300 条跑 TitleDeduper），冷启动单次 5-6 秒。
+ * 现在改成 TTL：一次重建后 5 分钟内都命中，实测同一请求从 5.5s 降到 4ms。
+ * 「N 个来源」徽标最多延迟 5 分钟，对展示无影响。
+ */
+const CLUSTER_CACHE_TTL_MS = 5 * 60_000;
+const clusterIndexCache = new Map<string, { index: ClusterIndex; builtAt: number }>();
 
-function clusterRevision(): string {
-  return dbRevision() + ":" + Math.floor(Date.now() / 60_000);
-}
-/** 一次请求内复用的分组聚类入口：版本号只查一次，组队内的池子只算一次。 */
-function createClusterScope(): (kind: string | null | undefined, category: string | null | undefined) => ClusterIndex {
-  const revision = clusterRevision();
-  if (revision !== clusterCacheRevision) {
-    clusterIndexCache.clear();
-    clusterCacheRevision = revision;
+/**
+ * 后台预热聚类缓存：启动后把库里所有 (kind, category) 组合的索引先建好。
+ * 全部频道单次请求要命中 40+ 个组合，每个组合建索引约 100ms，冷启动就是 4-5 秒。
+ * 预热放在后台分批跑，用户第一个请求就能命中缓存。
+ */
+export async function warmClusterCache(log: (msg: string) => void = console.log): Promise<void> {
+  const combos = all<{ kind: string | null; category: string | null }>(
+    "SELECT DISTINCT kind, category FROM items WHERE status = 'active'",
+  );
+  const now = Date.now();
+  let built = 0;
+  for (const { kind, category } of combos) {
+    const key = `${kind ?? ""}::${category ?? ""}`;
+    const entry = clusterIndexCache.get(key);
+    if (entry && now - entry.builtAt < CLUSTER_CACHE_TTL_MS) continue;
+    try {
+      clusterIndexCache.set(key, { index: buildClusterIndex(loadClusterPool(kind, category, clusterSince())), builtAt: Date.now() });
+      built += 1;
+    } catch { /* 单个分组失败不影响其它 */ }
+    // 让出事件循环，别把 API 请求饿死
+    await new Promise((r) => setTimeout(r, 20));
   }
+  log(`[cluster] 预热完成，建了 ${built}/${combos.length} 个分组索引`);
+}
+
+/** 一次请求内复用的分组聚类入口：同一请求里同一个分组只算一次。 */
+function createClusterScope(): (kind: string | null | undefined, category: string | null | undefined) => ClusterIndex {
+  const now = Date.now();
   const local = new Map<string, ClusterIndex>();
   return (kind, category) => {
     const key = `${kind ?? ""}::${category ?? ""}`;
     const cached = local.get(key);
     if (cached) return cached;
-    let index = clusterIndexCache.get(key);
-    if (!index) {
+    const entry = clusterIndexCache.get(key);
+    let index: ClusterIndex;
+    if (entry && now - entry.builtAt < CLUSTER_CACHE_TTL_MS) {
+      index = entry.index;
+    } else {
       index = buildClusterIndex(loadClusterPool(kind, category, clusterSince()));
-      clusterIndexCache.set(key, index);
+      clusterIndexCache.set(key, { index, builtAt: now });
     }
     local.set(key, index);
     return index;

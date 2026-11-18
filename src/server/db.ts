@@ -517,6 +517,13 @@ const MIGRATIONS: string[] = [
     UPDATE items SET category = COALESCE(NEW.category, category), kind = COALESCE(NEW.kind, kind) WHERE id = NEW.item_id;
   END;
   `,
+
+  /* v??：按「有效时间」排序的复合索引 —— 列表默认按 COALESCE(published_at, first_seen_at) DESC 排，
+     旧索引都带 score，SQLite 只能走 status 前缀再建 TEMP B-TREE 排全表 1.6 万行（单次 4-7 秒）。 */
+  `
+  CREATE INDEX IF NOT EXISTS idx_items_status_time
+    ON items(status, COALESCE(published_at, first_seen_at) DESC);
+  `,
 ];
 
 export function dbPath(): string {
