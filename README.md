@@ -9,6 +9,7 @@
   </p>
 
   <p>
+    <a href="https://github.com/ZiChuanLan/freebie-radar/releases"><img src="https://img.shields.io/github/v/tag/ZiChuanLan/freebie-radar?label=release&color=2563eb" alt="Release" /></a>
     <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.5-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
     <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready" />
     <img src="https://img.shields.io/badge/SQLite-Built--in-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
@@ -120,7 +121,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"0.1.0",...}
+# {"ok":true,"version":"1.0.0",...}
 
 docker compose logs -f --tail 50
 ```
