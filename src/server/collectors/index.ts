@@ -597,7 +597,8 @@ function persist(
           })
         : e.kind;
       // 白嫖证据校验：抽奖 → lottery，明确标价 → deal（只做否定，不替 AI 确认福利）
-      const evidenced = enforceFreebieEvidence(effectiveKindRaw, effectiveObtainRaw, e.title);
+      // 必须把分类传进去：资讯类分类（时政/国际/财经/股票）下的 freebie 判错误要在这里降级
+      const evidenced = enforceFreebieEvidence(effectiveKindRaw, effectiveObtainRaw, e.title, verdict?.category ?? e.category);
       const effectiveKind = evidenced.kind;
       const effectiveObtain = evidenced.obtain ?? effectiveObtainRaw;
       const kindCategory = evidenced.category ?? undefined;

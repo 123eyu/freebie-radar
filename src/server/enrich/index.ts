@@ -340,6 +340,9 @@ export function demoteEditorialGoods(
   return "tech";
 }
 
+/** 资讯类分类：这些分类的内容是报道，不可能是「白拿福利」，AI 判成 freebie 一律降级为 info。 */
+const EDITORIAL_CATEGORIES = new Set(["headline", "world", "finance", "stock", "news"]);
+
 /** 抽奖：免费参与但不确定能拿到，obtain 记 lottery，不进「真福利」。Giveaway 不算（Steam/Epic 送游戏常用它）。 */
 const LOTTERY_TITLE_RE = /sweepstakes|\bwinners?\b|抽奖|抽选|抽签|摇号|赢取/i;
 /** 明确标价的不是白嫖：「Only $9.99」「仅售」「到手价」。 */
@@ -361,6 +364,12 @@ export function enforceFreebieEvidence(
   if (LOTTERY_TITLE_RE.test(title)) return { kind, obtain: "lottery", category: "lottery" };
   if (PRICED_TITLE_RE.test(title)) {
     return { kind: "deal", obtain: obtain === "free" || !obtain ? "paid" : obtain, category };
+  }
+  // 资讯类分类下不可能有「白拿福利」：AI 偶尔把民生新政、行业新闻判成 freebie
+  // （如「新能源车险条款过审，你的保费开始按车型连坐」被判 freebie + 82 分进真福利频道）。
+  // 分类已经明确是资讯，kind 就不能是 freebie。
+  if (category && EDITORIAL_CATEGORIES.has(category)) {
+    return { kind: "info", obtain: null, category };
   }
   return { kind, obtain, category };
 }
