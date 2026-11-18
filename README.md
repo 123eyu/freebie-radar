@@ -3,7 +3,10 @@
   <h1>资源雷达 · Resource Radar</h1>
   <p><strong>全网福利、黑五好价、拼车交易、开源项目与新闻资讯的多兴趣自托管聚合雷达站</strong></p>
   <p>六大内容形态分流 · 27 类分频道目录 · 统一屏蔽词省额度 · AI 语义定级 · 多路由精准推送</p>
-
+  
+  ---
+  
+<a href="https://trendshift.io/repositories/356297?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-356297" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/356297/daily?language=TypeScript" alt="ZiChuanLan%2Ffreebie-radar | Trendshift" width="250" height="55"/></a>  <a href="https://trendshift.io/repositories/356297?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-356297" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/356297/daily" alt="ZiChuanLan%2Ffreebie-radar | Trendshift" width="250" height="55"/></a>
   <p>
     <a href="README.md">简体中文</a> · <a href="README.en.md">English</a>
   </p>
