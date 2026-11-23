@@ -28,6 +28,7 @@ import {
   OBTAIN_ORDER,
   categoryLabel,
 } from "../lib/sources.ts";
+import { t } from "../lib/i18n.ts";
 import type {
   AiFallbackMode,
   PushLogItem,
@@ -126,7 +127,7 @@ function NumberField({
             onKeyDown={(e) => {
               if (e.key === "Enter") clampAndCommit(Number((e.target as HTMLInputElement).value));
             }}
-            className="w-16 rounded-md border border-ink-200 bg-surface px-1.5 py-0.5 text-right font-mono text-[12.5px] font-semibold tabular-nums text-brand outline-none focus:border-brand"
+            className="w-16 rounded-md border border-ink-200 bg-surface px-1.5 py-0.5 text-right font-mono text-[12px] font-semibold tabular-nums text-accent outline-none focus:border-brand"
           />
           {suffix && <span className="text-[12px] text-ink-500">{suffix}</span>}
         </div>
@@ -148,36 +149,36 @@ function NumberField({
 }
 
 const PRICE_CAPS: { label: string; value: number | null }[] = [
-  { label: "不限价格", value: null },
-  { label: "只推白嫖", value: 0 },
-  { label: "≤ 5 元", value: 5 },
-  { label: "≤ 10 元", value: 10 },
-  { label: "≤ 30 元", value: 30 },
-  { label: "≤ 100 元", value: 100 },
+  { label: t("不限价格"), value: null },
+  { label: t("只推白嫖"), value: 0 },
+  { label: t("≤ 5 元"), value: 5 },
+  { label: t("≤ 10 元"), value: 10 },
+  { label: t("≤ 30 元"), value: 30 },
+  { label: t("≤ 100 元"), value: 100 },
 ];
 
 const AGE_OPTIONS: { label: string; hours: number }[] = [
-  { label: "24 小时内", hours: 24 },
-  { label: "72 小时内（默认）", hours: 72 },
-  { label: "7 天内", hours: 168 },
-  { label: "30 天内", hours: 720 },
-  { label: "不限时间", hours: 0 },
+  { label: t("24 小时内"), hours: 24 },
+  { label: t("72 小时内（默认）"), hours: 72 },
+  { label: t("7 天内"), hours: 168 },
+  { label: t("30 天内"), hours: 720 },
+  { label: t("不限时间"), hours: 0 },
 ];
 
 const REJECT_LABELS: { key: string; label: string }[] = [
-  { key: "hidden", label: "个人已关闭" },
-  { key: "blocked", label: "屏蔽词" },
-  { key: "duplicate", label: "跨源去重" },
-  { key: "stale", label: "超新帖时效" },
-  { key: "source", label: "数据源限制" },
-  { key: "lang", label: "语言不符" },
-  { key: "kind", label: "内容形态" },
-  { key: "category", label: "分类不符" },
-  { key: "price", label: "超价格上限" },
-  { key: "ai", label: "AI 审核拦截" },
-  { key: "obtain", label: "获取方式" },
-  { key: "route", label: "未命中路由" },
-  { key: "lowScore", label: "低于推送分" },
+  { key: "hidden", label: t("个人已关闭") },
+  { key: "blocked", label: t("屏蔽词") },
+  { key: "duplicate", label: t("跨源去重") },
+  { key: "stale", label: t("超新帖时效") },
+  { key: "source", label: t("数据源限制") },
+  { key: "lang", label: t("语言不符") },
+  { key: "kind", label: t("内容形态") },
+  { key: "category", label: t("分类不符") },
+  { key: "price", label: t("超价格上限") },
+  { key: "ai", label: t("AI 审核拦截") },
+  { key: "obtain", label: t("获取方式") },
+  { key: "route", label: t("未命中路由") },
+  { key: "lowScore", label: t("低于推送分") },
 ];
 
 type PushSubTab = "filters" | "timing" | "logs";
@@ -233,13 +234,13 @@ export function PushPanel({
     try {
       await onSave(patch);
     } catch (error) {
-      setOperationError(error instanceof Error ? error.message : "保存失败，请重试");
+      setOperationError(error instanceof Error ? error.message : t("保存失败，请重试"));
     } finally {
       setBusy(null);
     }
   };
 
-  if (!s) return <div className="panel p-6 text-[13px] text-ink-500">正在加载推送规则…</div>;
+  if (!s) return <div className="panel p-6 text-[13px] text-ink-500">{t("正在加载推送规则…")}</div>;
 
   const toggleCategory = (cat: string) => {
     const exists = s.categories.includes(cat);
@@ -266,42 +267,42 @@ export function PushPanel({
               <BellRing size={18} />
             </div>
             <div>
-              <div className="text-[14px] font-semibold text-ink-950">{s.deliverVia === "webhook" ? "Webhook" : "Telegram"} 自动推送</div>
+              <div className="text-[14px] font-semibold text-ink-950">{s.deliverVia === "webhook" ? "Webhook" : "Telegram"} {t("自动推送")}</div>
               <div className="text-[12px] text-ink-500">
                 {s.enabled
                   ? payload?.quiet
-                    ? `开启中 · 处于免打扰时段（${s.quietAction === "drop" ? "直接跳过" : "转攒批队列"}）`
-                    : `实时监控中 · ${s.pushTiming === "wait_ai" ? "先过 AI 再推" : "极速抢码先推后审"}`
-                  : "已暂停推送，仅本地收集入库"}
+                    ? t("开启中 · 处于免打扰时段（{action}）", { action: s.quietAction === "drop" ? t("直接跳过") : t("转攒批队列") })
+                    : t("实时监控中 · {mode}", { mode: s.pushTiming === "wait_ai" ? t("先过 AI 再推") : t("极速抢码先推后审") })
+                  : t("已暂停推送，仅本地收集入库")}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-5 border-l border-ink-200 pl-6 text-[12px]">
             <div>
-              <span className="block font-mono text-[15px] font-semibold tabular-nums text-ink-950">
+              <span className="block font-mono text-[18px] font-semibold tabular-nums text-ink-950">
                 {stats?.pushedLastHour ?? 0}/{s.maxPerHour}
               </span>
-              <span className="text-ink-500">本小时额度</span>
+              <span className="text-ink-500">{t("本小时额度")}</span>
             </div>
             <div>
-              <span className="block font-mono text-[15px] font-semibold tabular-nums text-ink-950">
+              <span className="block font-mono text-[18px] font-semibold tabular-nums text-ink-950">
                 {stats?.pushedLast24h ?? 0}
               </span>
-              <span className="text-ink-500">24小时已推</span>
+              <span className="text-ink-500">{t("24小时已推")}</span>
             </div>
             <div>
-              <span className="block font-mono text-[15px] font-semibold tabular-nums text-brand">
+              <span className="block font-mono text-[18px] font-semibold tabular-nums text-accent">
                 {stats?.queued ?? 0}
               </span>
-              <span className="text-ink-500">攒批队列</span>
+              <span className="text-ink-500">{t("攒批队列")}</span>
             </div>
             {(stats?.failures ?? 0) > 0 && (
               <div>
-                <span className="block font-mono text-[15px] font-semibold tabular-nums text-alert">
+                <span className="block font-mono text-[18px] font-semibold tabular-nums text-alert">
                   {stats?.failures ?? 0}
                 </span>
-                <span className="text-ink-500">推送失败</span>
+                <span className="text-ink-500">{t("推送失败")}</span>
               </div>
             )}
           </div>
@@ -311,11 +312,11 @@ export function PushPanel({
           {payload?.defaults && (
             <button
               type="button"
-              onClick={() => { if (window.confirm("恢复默认会重置全部推送规则并关闭推送，继续吗？")) void save({ ...payload.defaults, enabled: false }); }}
+              onClick={() => { if (window.confirm(t("恢复默认会重置全部推送规则并关闭推送，继续吗？"))) void save({ ...payload.defaults, enabled: false }); }}
               className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12px] font-medium text-ink-600 hover:bg-ink-100"
-              title="恢复全部推送规则为默认值"
+              title={t("恢复全部推送规则为默认值")}
             >
-              <RotateCcw size={13} /> 恢复默认
+              <RotateCcw size={13} /> {t("恢复默认")}
             </button>
           )}
           <button
@@ -328,14 +329,14 @@ export function PushPanel({
                 : "border-ink-200 bg-ink-100 text-ink-600 hover:bg-ink-200")
             }
           >
-            <Settings2 size={14} /> {s.enabled ? "推送已开启（点击暂停）" : "推送已关闭（点击开启）"}
+            <Settings2 size={14} /> {s.enabled ? t("推送已开启（点击暂停）") : t("推送已关闭（点击开启）")}
           </button>
         </div>
       </section>
 
       {!payload?.ready && (
-        <div className="rounded-lg border border-code-border bg-code-subtle p-3.5 text-[12.5px] text-amber-900">
-          当前渠道尚未就绪。个人用户请先在「我的」保存渠道凭据；自建站请检查服务端推送配置。规则可以先保存，但不会发送消息。
+        <div className="rounded-lg border border-code-border bg-code-subtle p-3.5 text-[12px] text-amber-900">
+          {t("当前渠道尚未就绪。个人用户请先在「我的」保存渠道凭据；自建站请检查服务端推送配置。规则可以先保存，但不会发送消息。")}
         </div>
       )}
 
@@ -343,26 +344,26 @@ export function PushPanel({
       <div className="panel flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           {[
-            { key: "filters" as PushSubTab, label: "推送时机与筛选", icon: Filter },
-            { key: "timing" as PushSubTab, label: "阈值、格式与免打扰", icon: Clock },
-            { key: "logs" as PushSubTab, label: `试算预览与记录 (${logs.length})`, icon: Sparkles },
-          ].map((t) => (
+            { key: "filters" as PushSubTab, label: t("推送时机与筛选"), icon: Filter },
+            { key: "timing" as PushSubTab, label: t("阈值、格式与免打扰"), icon: Clock },
+            { key: "logs" as PushSubTab, label: t("试算预览与记录 ({n})", { n: logs.length }), icon: Sparkles },
+          ].map((tab) => (
             <button
-              key={t.key}
+              key={tab.key}
               type="button"
-              onClick={() => setSubTab(t.key)}
+              onClick={() => setSubTab(tab.key)}
               className={
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors " +
-                (subTab === t.key ? "bg-brand text-white" : "text-ink-600 hover:bg-ink-100")
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors " +
+                (subTab === tab.key ? "border border-brand-border bg-brand-subtle text-accent" : "border border-transparent text-ink-600 hover:bg-ink-100")
               }
             >
-              <t.icon size={13} />
-              {t.label}
+              <tab.icon size={13} />
+              {tab.label}
             </button>
           ))}
         </div>
-        <span className="text-[11.5px] text-ink-500">
-          {busy === "save" ? "保存中…" : "改动即时热生效（无需重启服务）"}
+        <span className="text-[12px] text-ink-500">
+          {busy === "save" ? t("保存中…") : t("改动即时热生效（无需重启服务）")}
         </span>
       </div>
 
@@ -372,52 +373,51 @@ export function PushPanel({
           <section className="panel space-y-4 p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
-                <Bot size={15} className="text-brand" /> 推送时机与 AI 协同策略
+                <Bot size={15} className="text-accent" /> {t("推送时机与 AI 协同策略")}
               </div>
-              <span className="text-[11.5px] text-ink-500">
-                模型连接、规则初筛与提示词请在「AI 引擎」页配置
+              <span className="text-[12px] text-ink-500">
+                {t("模型连接、规则初筛与提示词请在「AI 引擎」页配置")}
               </span>
             </div>
 
             {/* 当前这套设置下，一条新条目会怎么走：把「阈值 / 上限 / 时间窗 / 兜底」四件事讲清楚 */}
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
-              <div className="mb-2 text-[12px] font-medium text-ink-900">按当前设置，一条新条目会这样走</div>
-              <ol className="space-y-1.5 text-[11.5px] leading-relaxed text-ink-600">
+              <div className="mb-2 text-[12px] font-medium text-ink-900">{t("按当前设置，一条新条目会这样走")}</div>
+              <ol className="space-y-1.5 text-[12px] leading-relaxed text-ink-600">
                 <li>
-                  <span className="font-mono text-ink-400">1</span> 采集入库后先过规则初筛（求助/更新公告/自定义噪音词直接丢掉，不送 AI）。
+                  <span className="font-mono text-ink-400">1</span> {t("采集入库后先过规则初筛（求助/更新公告/自定义噪音词直接丢掉，不送 AI）。")}
                 </li>
                 <li>
                   <span className="font-mono text-ink-400">2</span>{" "}
                   {s.pushTiming === "wait_ai"
-                    ? `每轮最多 ${s.syncPrePushLimit} 条当场等 AI 结论，其余进后台队列${s.pushAfterBackfill ? "，审完通过再补推" : "，审完不补推"}。`
-                    : "先按规则立刻判定推送，需要审的进后台队列，AI 结论稍后补齐。"}
+                    ? t("每轮最多 {n} 条当场等 AI 结论，其余进后台队列{suffix}。", { n: s.syncPrePushLimit, suffix: s.pushAfterBackfill ? t("，审完通过再补推") : t("，审完不补推") })
+                    : t("先按规则立刻判定推送，需要审的进后台队列，AI 结论稍后补齐。")}
                 </li>
                 <li>
                   <span className="font-mono text-ink-400">3</span>{" "}
-                  <span className="font-medium text-ink-900">质量门槛</span>：分数 ≥ {s.instantScore} 走即时；≥ {s.batchScore} 走攒批。
-                  {s.instantOnCodes ? "含兑换码、" : ""}
-                  {s.instantOnUrgent ? "标题带限量/限时、" : ""}
-                  {s.prioritizeSubscribed ? "命中订阅词" : "无额外直推条件"}可直接即时。
+                  <span className="font-medium text-ink-900">{t("质量门槛")}</span>{t("：分数 ≥ {instant} 走即时；≥ {batch} 走攒批。", { instant: s.instantScore, batch: s.batchScore })}
+                  {s.instantOnCodes ? t("含兑换码、") : ""}
+                  {s.instantOnUrgent ? t("标题带限量/限时、") : ""}
+                  {s.prioritizeSubscribed ? t("命中订阅词") : t("无额外直推条件")}{t("可直接即时。")}
                 </li>
                 <li>
                   <span className="font-mono text-ink-400">4</span>{" "}
-                  <span className="font-medium text-ink-900">数量上限</span>：每小时最多 {s.maxPerHour} 条（即时+攒批共用），
-                  每轮即时最多 {s.maxPerInstant} 条；超出的自动转进攒批队列，不会丢。
+                  <span className="font-medium text-ink-900">{t("数量上限")}</span>{t("：每小时最多 {hour} 条（即时+攒批共用）， 每轮即时最多 {n} 条；超出的自动转进攒批队列，不会丢。", { hour: s.maxPerHour, n: s.maxPerInstant })}
                 </li>
                 <li>
                   <span className="font-mono text-ink-400">5</span>{" "}
-                  <span className="font-medium text-ink-900">时间窗</span>：
-                  {s.batchIntervalMin === 0 ? "攒批已关闭，队列只在手动「立即发攒批」时发出。" : `攒批每 ${s.batchIntervalMin} 分钟发一次，每批最多 ${s.maxPerBatch} 条。`}
-                  {s.quietEnabled ? ` ${s.quietHours} 免打扰，${s.quietAction === "drop" ? "期间不推也不攒" : "期间只攒不发"}。` : " 未开启免打扰。"}
+                  <span className="font-medium text-ink-900">{t("时间窗")}</span>：
+                  {s.batchIntervalMin === 0 ? t("攒批已关闭，队列只在手动「立即发攒批」时发出。") : t("攒批每 {min} 分钟发一次，每批最多 {max} 条。", { min: s.batchIntervalMin, max: s.maxPerBatch })}
+                  {s.quietEnabled ? t(" {hours} 免打扰，{action}。", { hours: s.quietHours, action: s.quietAction === "drop" ? t("期间不推也不攒") : t("期间只攒不发") }) : t(" 未开启免打扰。")}
                 </li>
                 <li>
                   <span className="font-mono text-ink-400">6</span>{" "}
-                  <span className="font-medium text-ink-900">兜底</span>：
+                  <span className="font-medium text-ink-900">{t("兜底")}</span>：
                   {s.aiFallbackMode === "strict"
-                    ? "必须 AI 明确判真福利才推，AI 没结论就不推。"
+                    ? t("必须 AI 明确判真福利才推，AI 没结论就不推。")
                     : s.aiFallbackMode === "rule_fallback"
-                      ? "AI 明确拒绝的拦掉；AI 还没结论时，含兑换码或高分信号才放行。"
-                      : "完全忽略 AI 结论，只按屏蔽词/分数/价格/获取方式过滤。"}
+                      ? t("AI 明确拒绝的拦掉；AI 还没结论时，含兑换码或高分信号才放行。")
+                      : t("完全忽略 AI 结论，只按屏蔽词/分数/价格/获取方式过滤。")}
                 </li>
               </ol>
             </div>
@@ -429,13 +429,13 @@ export function PushPanel({
                 className={
                   "rounded-lg border px-3.5 py-2.5 text-left transition-colors " +
                   (s.pushTiming === "wait_ai"
-                    ? "border-brand bg-brand-subtle text-brand"
+                    ? "border-brand-border bg-brand-subtle text-accent"
                     : "border-ink-200 bg-surface-hover text-ink-700 hover:bg-ink-100")
                 }
               >
-                <div className="text-[13px] font-semibold">推送前先过 AI（推荐）</div>
-                <div className="mt-0.5 text-[11.5px] font-normal text-ink-500">
-                  新条目先同步等待 AI 验真再发 Telegram，多等 1~3 秒，精准拦掉新闻/更新公告
+                <div className="text-[13px] font-semibold">{t("推送前先过 AI（推荐）")}</div>
+                <div className="mt-0.5 text-[12px] font-normal text-ink-500">
+                  {t("新条目先同步等待 AI 验真再发 Telegram，多等 1~3 秒，精准拦掉新闻/更新公告")}
                 </div>
               </button>
               <button
@@ -444,48 +444,48 @@ export function PushPanel({
                 className={
                   "rounded-lg border px-3.5 py-2.5 text-left transition-colors " +
                   (s.pushTiming === "instant_first"
-                    ? "border-brand bg-brand-subtle text-brand"
+                    ? "border-brand-border bg-brand-subtle text-accent"
                     : "border-ink-200 bg-surface-hover text-ink-700 hover:bg-ink-100")
                 }
               >
-                <div className="text-[13px] font-semibold">极速抢码先推后审</div>
-                <div className="mt-0.5 text-[11.5px] font-normal text-ink-500">
-                  高分/兑换码 0 延迟立刻发出，AI 随后在后台异步补齐结论与分类
+                <div className="text-[13px] font-semibold">{t("极速抢码先推后审")}</div>
+                <div className="mt-0.5 text-[12px] font-normal text-ink-500">
+                  {t("高分/兑换码 0 延迟立刻发出，AI 随后在后台异步补齐结论与分类")}
                 </div>
               </button>
             </div>
 
             {s.pushTiming === "wait_ai" && (
               <NumberField
-                label="推送前同步等待审核条数上限"
-                hint="单轮采集最多同步等多少条过 AI 后立刻判定推送；超出条数转入后台队列，审完后按下方开关决定是否补推"
+                label={t("推送前同步等待审核条数上限")}
+                hint={t("单轮采集最多同步等多少条过 AI 后立刻判定推送；超出条数转入后台队列，审完后按下方开关决定是否补推")}
                 value={s.syncPrePushLimit}
                 min={5}
                 max={60}
                 step={1}
-                suffix=" 条/轮"
+                suffix={t(" 条/轮")}
                 onCommit={(v) => void save({ syncPrePushLimit: v })}
               />
             )}
 
             <div>
-              <div className="mb-1.5 text-[12px] font-medium text-ink-700">AI 兜底与过滤模式（当某条尚无 AI 结论或被 AI 拒绝时）</div>
+              <div className="mb-1.5 text-[12px] font-medium text-ink-700">{t("AI 兜底与过滤模式（当某条尚无 AI 结论或被 AI 拒绝时）")}</div>
               <div className="grid gap-2 sm:grid-cols-3">
                 {[
                   {
                     key: "strict" as AiFallbackMode,
-                    title: "严进模式（宁缺毋滥）",
-                    desc: "启用 AI 时必须明确判为真福利才推；超时/未审到不推（AI 未启用时按规则放行）",
+                    title: t("严进模式（宁缺毋滥）"),
+                    desc: t("启用 AI 时必须明确判为真福利才推；超时/未审到不推（AI 未启用时按规则放行）"),
                   },
                   {
                     key: "rule_fallback" as AiFallbackMode,
-                    title: "均衡兜底（推荐）",
-                    desc: "AI 明确拒绝的拦掉；未出结果时，含兑换码或高分福利信号才放行",
+                    title: t("均衡兜底（推荐）"),
+                    desc: t("AI 明确拒绝的拦掉；未出结果时，含兑换码或高分福利信号才放行"),
                   },
                   {
                     key: "ignore_ai" as AiFallbackMode,
-                    title: "仅用规则（忽略 AI）",
-                    desc: "不以 AI 结论拦推送，只按屏蔽词、评分、价格与获取方式过滤",
+                    title: t("仅用规则（忽略 AI）"),
+                    desc: t("不以 AI 结论拦推送，只按屏蔽词、评分、价格与获取方式过滤"),
                   },
                 ].map((opt) => (
                   <button
@@ -495,11 +495,11 @@ export function PushPanel({
                     className={
                       "rounded-lg border px-3 py-2 text-left transition-colors " +
                       (s.aiFallbackMode === opt.key
-                        ? "border-brand bg-brand-subtle text-brand"
+                        ? "border-brand-border bg-brand-subtle text-accent"
                         : "border-ink-200 bg-surface-hover text-ink-700 hover:bg-ink-100")
                     }
                   >
-                    <div className="text-[12.5px] font-semibold">{opt.title}</div>
+                    <div className="text-[12px] font-semibold">{opt.title}</div>
                     <div className="mt-0.5 text-[11px] leading-snug text-ink-500">{opt.desc}</div>
                   </button>
                 ))}
@@ -508,20 +508,20 @@ export function PushPanel({
 
             <div className="grid gap-2.5 sm:grid-cols-3">
               <Toggle
-                label="后台补审通过后自动补推"
-                hint="超出同步上限或极速模式补审确认真福利时，自动补入推送管道（不会重复推已发条目）"
+                label={t("后台补审通过后自动补推")}
+                hint={t("超出同步上限或极速模式补审确认真福利时，自动补入推送管道（不会重复推已发条目）")}
                 value={s.pushAfterBackfill}
                 onChange={(v) => save({ pushAfterBackfill: v })}
               />
               <Toggle
-                label="订阅命中优先直推"
-                hint="命中「我的订阅」关键词立刻单条直发"
+                label={t("订阅命中优先直推")}
+                hint={t("命中「我的订阅」关键词立刻单条直发")}
                 value={s.prioritizeSubscribed}
                 onChange={(v) => save({ prioritizeSubscribed: v })}
               />
               <Toggle
-                label="同步应用到每日精选"
-                hint="每日早报也遵守价格、分类、源与 AI 条件"
+                label={t("同步应用到每日精选")}
+                hint={t("每日早报也遵守价格、分类、源与 AI 条件")}
                 value={s.applyToDigest}
                 onChange={(v) => save({ applyToDigest: v })}
               />
@@ -531,16 +531,16 @@ export function PushPanel({
           {/* 2. 多维推送筛选条件 */}
           <section className="panel space-y-4 p-5">
             <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
-              <SlidersHorizontal size={15} className="text-brand" /> 推送内容筛选条件
+              <SlidersHorizontal size={15} className="text-accent" /> {t("推送内容筛选条件")}
             </div>
 
             <div className="grid gap-4 lg:grid-cols-3">
               {/* 最高价格上限 */}
               <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-ink-900">最高推送价格</span>
-                  <span className="font-mono text-[12px] text-brand">
-                    {s.maxPrice === null ? "不限" : s.maxPrice === 0 ? "完全白嫖" : `≤ ${s.maxPrice} 元`}
+                  <span className="text-[13px] font-medium text-ink-900">{t("最高推送价格")}</span>
+                  <span className="font-mono text-[12px] text-accent">
+                    {s.maxPrice === null ? t("不限") : s.maxPrice === 0 ? t("完全白嫖") : t("≤ {n} 元", { n: s.maxPrice })}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -552,9 +552,9 @@ export function PushPanel({
                         type="button"
                         onClick={() => save({ maxPrice: p.value })}
                         className={
-                          "rounded-lg border px-2 py-1.5 text-[11.5px] font-medium transition-colors " +
+                          "rounded-lg border px-2 py-1.5 text-[12px] font-medium transition-colors " +
                           (active
-                            ? "border-brand bg-brand text-white"
+                            ? "border-brand-border bg-brand-subtle text-accent"
                             : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                         }
                       >
@@ -571,8 +571,8 @@ export function PushPanel({
                     step={1}
                     value={customPriceDraft}
                     onChange={(e) => setCustomPriceDraft(e.target.value)}
-                    placeholder="自定义金额(元)"
-                    className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 font-mono text-[11.5px] text-ink-900 outline-none focus:border-brand"
+                    placeholder={t("自定义金额(元)")}
+                    className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
                   />
                   <button
                     type="button"
@@ -582,9 +582,9 @@ export function PushPanel({
                         void save({ maxPrice: n });
                       }
                     }}
-                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-ink-700 hover:bg-ink-100"
+                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                   >
-                    应用
+                    {t("应用")}
                   </button>
                 </div>
               </div>
@@ -592,13 +592,13 @@ export function PushPanel({
               {/* 语言过滤 */}
               <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
                 <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-ink-900">
-                  <Languages size={14} className="text-ink-500" /> 语言过滤
+                  <Languages size={14} className="text-ink-500" /> {t("语言过滤")}
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    { key: "all" as const, label: "中英都推" },
-                    { key: "zh" as const, label: "仅中文源" },
-                    { key: "en" as const, label: "仅英文源" },
+                    { key: "all" as const, label: t("中英都推") },
+                    { key: "zh" as const, label: t("仅中文源") },
+                    { key: "en" as const, label: t("仅英文源") },
                   ].map((o) => (
                     <button
                       key={o.key}
@@ -607,7 +607,7 @@ export function PushPanel({
                       className={
                         "rounded-lg border px-2 py-1.5 text-[12px] font-medium transition-colors " +
                         (s.langMode === o.key
-                          ? "border-brand bg-brand text-white"
+                          ? "border-brand-border bg-brand-subtle text-accent"
                           : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                       }
                     >
@@ -616,16 +616,16 @@ export function PushPanel({
                   ))}
                 </div>
                 <p className="mt-2 text-[11px] leading-snug text-ink-500">
-                  自动按标题中文占比识别；英文条目可附带 EN 标签并折算人民币价格。
+                  {t("自动按标题中文占比识别；英文条目可附带 EN 标签并折算人民币价格。")}
                 </p>
               </div>
 
               {/* 新帖时效上限 */}
               <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-ink-900">新帖时效闸门</span>
-                  <span className="font-mono text-[12px] text-brand">
-                    {s.maxAgeHours <= 0 ? "不限" : `${s.maxAgeHours}h`}
+                  <span className="text-[13px] font-medium text-ink-900">{t("新帖时效闸门")}</span>
+                  <span className="font-mono text-[12px] text-accent">
+                    {s.maxAgeHours <= 0 ? t("不限") : `${s.maxAgeHours}h`}
                   </span>
                 </div>
                 <select
@@ -634,7 +634,7 @@ export function PushPanel({
                     const v = Number(e.target.value);
                     if (Number.isFinite(v)) void save({ maxAgeHours: v });
                   }}
-                  className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12.5px] text-ink-900 outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-900 outline-none focus:border-brand"
                 >
                   {AGE_OPTIONS.map((o) => (
                     <option key={o.hours} value={o.hours}>
@@ -642,11 +642,11 @@ export function PushPanel({
                     </option>
                   ))}
                   {!AGE_OPTIONS.some((o) => o.hours === s.maxAgeHours) && (
-                    <option value="custom">自定义：{s.maxAgeHours} 小时内</option>
+                    <option value="custom">{t("自定义：{h} 小时内", { h: s.maxAgeHours })}</option>
                   )}
                 </select>
                 <p className="mt-2 text-[11px] leading-snug text-ink-500">
-                  拦截发布时间过久的老帖重复当新羊毛推，避免老论坛顶帖刷屏。
+                  {t("拦截发布时间过久的老帖重复当新羊毛推，避免老论坛顶帖刷屏。")}
                 </p>
               </div>
             </div>
@@ -654,14 +654,14 @@ export function PushPanel({
             {/* 内容形态白名单 */}
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-ink-900">只推哪些内容形态（不勾选表示全部有效形态）</span>
+                <span className="text-[13px] font-medium text-ink-900">{t("只推哪些内容形态（不勾选表示全部有效形态）")}</span>
                 {(s.kinds?.length ?? 0) > 0 && (
                   <button
                     type="button"
                     onClick={() => save({ kinds: [] })}
-                    className="text-[12px] font-medium text-brand hover:underline"
+                    className="text-[12px] font-medium text-accent hover:underline"
                   >
-                    恢复全部形态
+                    {t("恢复全部形态")}
                   </button>
                 )}
               </div>
@@ -680,12 +680,12 @@ export function PushPanel({
                       className={
                         "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] transition-colors " +
                         (checked
-                          ? "border-brand bg-brand-subtle font-medium text-brand"
+                          ? "border-brand-border bg-brand-subtle font-medium text-accent"
                           : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                       }
                     >
                       {checked && <Check size={12} />}
-                      {KIND_LABEL[key]}
+                      {t(KIND_LABEL[key] ?? key)}
                     </button>
                   );
                 })}
@@ -695,9 +695,9 @@ export function PushPanel({
             {/* 分类白名单：分组与主页频道一致，可直接套用频道默认集合 */}
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-ink-900">只推哪些分类（不勾选表示全部分类都推）</span>
+                <span className="text-[13px] font-medium text-ink-900">{t("只推哪些分类（不勾选表示全部分类都推）")}</span>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11.5px] text-ink-500">套用主页频道：</span>
+                  <span className="text-[12px] text-ink-500">{t("套用主页频道：")}</span>
                   {CHANNELS.map((ch) => {
                     const same =
                       s.categories.length === ch.categories.length &&
@@ -708,13 +708,13 @@ export function PushPanel({
                         type="button"
                         onClick={() => save({ categories: [...ch.categories] })}
                         className={
-                          "rounded border px-2 py-0.5 text-[11.5px] transition-colors " +
+                          "rounded border px-2 py-0.5 text-[12px] transition-colors " +
                           (same
-                            ? "border-brand bg-brand text-white"
-                            : "border-ink-200 bg-surface text-ink-600 hover:border-brand-border hover:text-brand")
+                            ? "border-brand-border bg-brand-subtle font-medium text-accent"
+                            : "border-ink-200 bg-surface text-ink-600 hover:border-brand-border hover:text-accent")
                         }
                       >
-                        {ch.label}
+                        {t(ch.label)}
                       </button>
                     );
                   })}
@@ -722,9 +722,9 @@ export function PushPanel({
                     <button
                       type="button"
                       onClick={() => save({ categories: [] })}
-                      className="text-[12px] font-medium text-brand hover:underline"
+                      className="text-[12px] font-medium text-accent hover:underline"
                     >
-                      恢复全部分类
+                      {t("恢复全部分类")}
                     </button>
                   )}
                 </div>
@@ -732,7 +732,7 @@ export function PushPanel({
               <div className="space-y-1.5">
                 {CATEGORY_GROUPS.map((group) => (
                   <div key={group.key} className="flex flex-wrap items-center gap-1.5">
-                    <span className="w-[62px] shrink-0 text-[11px] text-ink-400">{group.label}</span>
+                    <span className="w-[62px] shrink-0 text-[11px] text-ink-400">{t(group.label)}</span>
                     {group.categories.map((key) => {
                       const checked = s.categories.includes(key);
                       return (
@@ -744,12 +744,12 @@ export function PushPanel({
                           className={
                             "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] transition-colors " +
                             (checked
-                              ? "border-brand bg-brand-subtle font-medium text-brand"
+                              ? "border-brand-border bg-brand-subtle font-medium text-accent"
                               : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                           }
                         >
                           {checked && <Check size={12} />}
-                          {CATEGORY_LABEL[key]}
+                          {t(CATEGORY_LABEL[key] ?? key)}
                         </button>
                       );
                     })}
@@ -761,14 +761,14 @@ export function PushPanel({
             {/* 获取方式白名单 */}
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-ink-900">只推这些获取方式（都不选表示不限制）</span>
+                <span className="text-[13px] font-medium text-ink-900">{t("只推这些获取方式（都不选表示不限制）")}</span>
                 {s.obtainModes.length > 0 && (
                   <button
                     type="button"
                     onClick={() => save({ obtainModes: [] })}
-                    className="text-[12px] font-medium text-brand hover:underline"
+                    className="text-[12px] font-medium text-accent hover:underline"
                   >
-                    不限获取方式
+                    {t("不限获取方式")}
                   </button>
                 )}
               </div>
@@ -787,18 +787,18 @@ export function PushPanel({
                       className={
                         "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] transition-colors " +
                         (checked
-                          ? "border-brand bg-brand-subtle font-medium text-brand"
+                          ? "border-brand-border bg-brand-subtle font-medium text-accent"
                           : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                       }
                     >
                       {checked && <Check size={12} />}
-                      {OBTAIN_LABEL[key]}
+                      {t(OBTAIN_LABEL[key] ?? key)}
                     </button>
                   );
                 })}
               </div>
               <p className="mt-1.5 text-[11px] text-ink-500">
-                抽奖、试用、推广容易混入营销内容，默认只推「直接白嫖」。
+                {t("抽奖、试用、推广容易混入营销内容，默认只推「直接白嫖」。")}
               </p>
             </div>
 
@@ -806,9 +806,9 @@ export function PushPanel({
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <span className="text-[13px] font-medium text-ink-900">多频道专题路由（可选）</span>
+                  <span className="text-[13px] font-medium text-ink-900">{t("多频道专题路由（可选）")}</span>
                   <p className="mt-0.5 text-[11px] text-ink-500">
-                    启用任意路由后，将按路由条件分流匹配（可同时推「黑五 VPS」与「开源项目」，未启用路由时走全局筛选）
+                    {t("启用任意路由后，将按路由条件分流匹配（可同时推「黑五 VPS」与「开源项目」，未启用路由时走全局筛选）")}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -817,7 +817,7 @@ export function PushPanel({
                     onClick={() => {
                       const next: PushRoute = {
                         id: `free-${Date.now()}`,
-                        name: "真福利直推",
+                        name: t("真福利直推"),
                         enabled: true,
                         kinds: ["freebie"],
                         categories: [],
@@ -826,13 +826,13 @@ export function PushPanel({
                         maxPrice: 0,
                         minScore: 65,
                         instant: true,
-                        header: "🎁 真福利精选",
+                        header: t("🎁 真福利精选"),
                       };
                       void save({ routes: [...(s.routes ?? []), next] });
                     }}
-                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-ink-700 hover:bg-ink-100"
+                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                   >
-                    + 真福利路由
+                    {t("+ 真福利路由")}
                   </button>
                   <button
                     type="button"
@@ -842,7 +842,7 @@ export function PushPanel({
                           ...(s.routes ?? []),
                           {
                             id: `vps-${Date.now()}`,
-                            name: "黑五/VPS 好价",
+                            name: t("黑五/VPS 好价"),
                             enabled: true,
                             kinds: ["deal", "freebie"],
                             categories: ["vps", "cloud", "domain"],
@@ -851,14 +851,14 @@ export function PushPanel({
                             maxPrice: null,
                             minScore: 55,
                             instant: true,
-                            header: "🖥 VPS 好价",
+                            header: t("🖥 VPS 好价"),
                           },
                         ],
                       })
                     }
-                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-ink-700 hover:bg-ink-100"
+                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                   >
-                    + 黑五/VPS 路由
+                    {t("+ 黑五/VPS 路由")}
                   </button>
                   <button
                     type="button"
@@ -868,7 +868,7 @@ export function PushPanel({
                           ...(s.routes ?? []),
                           {
                             id: `os-${Date.now()}`,
-                            name: "开源项目精选",
+                            name: t("开源项目精选"),
                             enabled: true,
                             kinds: ["opensource"],
                             categories: [],
@@ -877,14 +877,14 @@ export function PushPanel({
                             maxPrice: null,
                             minScore: 60,
                             instant: false,
-                            header: "📦 开源雷达",
+                            header: t("📦 开源雷达"),
                           },
                         ],
                       })
                     }
-                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-ink-700 hover:bg-ink-100"
+                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                   >
-                    + 开源项目路由
+                    {t("+ 开源项目路由")}
                   </button>
                   <button
                     type="button"
@@ -894,7 +894,7 @@ export function PushPanel({
                           ...(s.routes ?? []),
                           {
                             id: `news-${Date.now()}`,
-                            name: "新闻资讯早报",
+                            name: t("新闻资讯早报"),
                             enabled: true,
                             kinds: ["info"],
                             categories: ["headline", "finance", "ai", "dev", "opensource", "security", "hardware", "news"],
@@ -903,21 +903,21 @@ export function PushPanel({
                             maxPrice: null,
                             minScore: 55,
                             instant: false,
-                            header: "📰 新闻资讯",
+                            header: t("📰 新闻资讯"),
                           },
                         ],
                       })
                     }
-                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-ink-700 hover:bg-ink-100"
+                    className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                   >
-                    + 新闻资讯路由
+                    {t("+ 新闻资讯路由")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       const next: PushRoute = {
                         id: `custom-${Date.now()}`,
-                        name: "自定义专题路由",
+                        name: t("自定义专题路由"),
                         enabled: true,
                         kinds: [],
                         categories: [],
@@ -935,9 +935,9 @@ export function PushPanel({
                         setRoutePriceInput("");
                       });
                     }}
-                    className="rounded-lg border border-brand bg-brand-subtle px-2.5 py-1 text-[11.5px] font-medium text-brand hover:bg-brand/10"
+                    className="rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-accent hover:bg-brand-border/30"
                   >
-                    + 新建自定义路由
+                    {t("+ 新建自定义路由")}
                   </button>
                 </div>
               </div>
@@ -954,25 +954,25 @@ export function PushPanel({
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-1.5 font-medium text-ink-900">
                               <span>{rt.name}</span>
-                              <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10.5px] text-ink-600">
-                                {rt.instant ? "可即时" : "仅攒批"}
+                              <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] text-ink-600">
+                                {rt.instant ? t("可即时") : t("仅攒批")}
                               </span>
-                              <span className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-600">
-                                ≥{rt.minScore}分
+                              <span className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[11px] text-ink-600">
+                                {t("≥{n}分", { n: rt.minScore })}
                               </span>
                               {rt.kinds.length > 0 && (
                                 <span className="text-[11px] font-normal text-ink-500">
-                                  形态：{rt.kinds.map((k) => KIND_LABEL[k] ?? k).join("/")}
+                                  {t("形态：{list}", { list: rt.kinds.map((k) => t(KIND_LABEL[k] ?? k)).join("/") })}
                                 </span>
                               )}
                               {rt.categories.length > 0 && (
                                 <span className="text-[11px] font-normal text-ink-500">
-                                  分类：{rt.categories.map((c) => categoryLabel(c)).join("/")}
+                                  {t("分类：{list}", { list: rt.categories.map((c) => t(categoryLabel(c))).join("/") })}
                                 </span>
                               )}
                               {rt.keywords.length > 0 && (
                                 <span className="text-[11px] font-normal text-ink-500">
-                                  词：{rt.keywords.join("/")}
+                                  {t("词：{list}", { list: rt.keywords.join("/") })}
                                 </span>
                               )}
                             </div>
@@ -993,7 +993,7 @@ export function PushPanel({
                               }}
                               className="rounded border border-ink-200 px-2 py-0.5 text-[11px] text-ink-700 hover:bg-ink-100"
                             >
-                              {isEditing ? "收起" : "编辑"}
+                              {isEditing ? t("收起") : t("编辑")}
                             </button>
                             <button
                               type="button"
@@ -1009,7 +1009,7 @@ export function PushPanel({
                                   : "border-ink-200 bg-ink-100 text-ink-500")
                               }
                             >
-                              {rt.enabled ? "已启用" : "已停用"}
+                              {rt.enabled ? t("已启用") : t("已停用")}
                             </button>
                             <button
                               type="button"
@@ -1024,7 +1024,7 @@ export function PushPanel({
                               }}
                               className="rounded border border-ink-200 px-2 py-0.5 text-[11px] text-ink-500 hover:text-alert"
                             >
-                              删除
+                              {t("删除")}
                             </button>
                           </div>
                         </div>
@@ -1033,7 +1033,7 @@ export function PushPanel({
                           <div className="mt-3 space-y-2.5 border-t border-ink-100 pt-3">
                             <div className="grid gap-2.5 sm:grid-cols-4">
                               <label className="block">
-                                <span className="text-[11px] text-ink-500">路由名称</span>
+                                <span className="text-[11px] text-ink-500">{t("路由名称")}</span>
                                 <input
                                   value={routeDraft.name}
                                   onChange={(e) => setRouteDraft({ ...routeDraft, name: e.target.value })}
@@ -1041,16 +1041,16 @@ export function PushPanel({
                                 />
                               </label>
                               <label className="block">
-                                <span className="text-[11px] text-ink-500">消息前缀头（可选）</span>
+                                <span className="text-[11px] text-ink-500">{t("消息前缀头（可选）")}</span>
                                 <input
                                   value={routeDraft.header ?? ""}
                                   onChange={(e) => setRouteDraft({ ...routeDraft, header: e.target.value })}
-                                  placeholder="如：🖥 VPS 好价"
+                                  placeholder={t("如：🖥 VPS 好价")}
                                   className="mt-1 w-full rounded border border-ink-200 bg-surface px-2 py-1 text-[12px] outline-none focus:border-brand"
                                 />
                               </label>
                               <label className="block">
-                                <span className="text-[11px] text-ink-500">最低评分 (0-100)</span>
+                                <span className="text-[11px] text-ink-500">{t("最低评分 (0-100)")}</span>
                                 <input
                                   type="number"
                                   min={0}
@@ -1063,11 +1063,11 @@ export function PushPanel({
                                 />
                               </label>
                               <label className="block">
-                                <span className="text-[11px] text-ink-500">最高价（元，空=不限，0=仅免费）</span>
+                                <span className="text-[11px] text-ink-500">{t("最高价（元，空=不限，0=仅免费）")}</span>
                                 <input
                                   value={routePriceInput}
                                   onChange={(e) => setRoutePriceInput(e.target.value)}
-                                  placeholder="留空不限"
+                                  placeholder={t("留空不限")}
                                   className="mt-1 w-full rounded border border-ink-200 bg-surface px-2 py-1 font-mono text-[12px] outline-none focus:border-brand"
                                 />
                               </label>
@@ -1075,11 +1075,11 @@ export function PushPanel({
 
                             <div className="grid gap-2.5 sm:grid-cols-2">
                               <label className="block">
-                                <span className="text-[11px] text-ink-500">主题关键词（逗号分隔，空=不限，命中任意一个即匹配）</span>
+                                <span className="text-[11px] text-ink-500">{t("主题关键词（逗号分隔，空=不限，命中任意一个即匹配）")}</span>
                                 <input
                                   value={routeKeywordsInput}
                                   onChange={(e) => setRouteKeywordsInput(e.target.value)}
-                                  placeholder="例如：黑五, vps, kvm, claude"
+                                  placeholder={t("例如：黑五, vps, kvm, claude")}
                                   className="mt-1 w-full rounded border border-ink-200 bg-surface px-2 py-1 text-[12px] outline-none focus:border-brand"
                                 />
                               </label>
@@ -1088,19 +1088,19 @@ export function PushPanel({
                                   type="button"
                                   onClick={() => setRouteDraft({ ...routeDraft, instant: !routeDraft.instant })}
                                   className={
-                                    "rounded border px-2.5 py-1 text-[11.5px] font-medium " +
+                                    "rounded border px-2.5 py-1 text-[12px] font-medium " +
                                     (routeDraft.instant
-                                      ? "border-brand bg-brand-subtle text-brand"
+                                      ? "border-brand-border bg-brand-subtle text-accent"
                                       : "border-ink-200 bg-surface text-ink-700")
                                   }
                                 >
-                                  {routeDraft.instant ? "方式：满足条件可即时推送" : "方式：仅进入定时攒批汇总"}
+                                  {routeDraft.instant ? t("方式：满足条件可即时推送") : t("方式：仅进入定时攒批汇总")}
                                 </button>
                               </div>
                             </div>
 
                             <div>
-                              <span className="text-[11px] text-ink-500">允许形态（不选表示全部有效形态）</span>
+                              <span className="text-[11px] text-ink-500">{t("允许形态（不选表示全部有效形态）")}</span>
                               <div className="mt-1 flex flex-wrap gap-1">
                                 {KIND_ORDER.map((k) => {
                                   const on = routeDraft.kinds.includes(k);
@@ -1119,11 +1119,11 @@ export function PushPanel({
                                       className={
                                         "rounded border px-2 py-0.5 text-[11px] " +
                                         (on
-                                          ? "border-brand bg-brand-subtle font-medium text-brand"
+                                          ? "border-brand-border bg-brand-subtle font-medium text-accent"
                                           : "border-ink-200 bg-surface text-ink-600")
                                       }
                                     >
-                                      {KIND_LABEL[k]}
+                                      {t(KIND_LABEL[k] ?? k)}
                                     </button>
                                   );
                                 })}
@@ -1131,7 +1131,7 @@ export function PushPanel({
                             </div>
 
                             <div>
-                              <span className="text-[11px] text-ink-500">允许获取方式（不选表示不限）</span>
+                              <span className="text-[11px] text-ink-500">{t("允许获取方式（不选表示不限）")}</span>
                               <div className="mt-1 flex flex-wrap gap-1">
                                 {OBTAIN_ORDER.map((o) => {
                                   const on = routeDraft.obtainModes.includes(o);
@@ -1150,11 +1150,11 @@ export function PushPanel({
                                       className={
                                         "rounded border px-2 py-0.5 text-[11px] " +
                                         (on
-                                          ? "border-brand bg-brand-subtle font-medium text-brand"
+                                          ? "border-brand-border bg-brand-subtle font-medium text-accent"
                                           : "border-ink-200 bg-surface text-ink-600")
                                       }
                                     >
-                                      {OBTAIN_LABEL[o]}
+                                      {t(OBTAIN_LABEL[o] ?? o)}
                                     </button>
                                   );
                                 })}
@@ -1163,26 +1163,26 @@ export function PushPanel({
 
                             <div>
                               <div className="flex flex-wrap items-center justify-between gap-1">
-                                <span className="text-[11px] text-ink-500">允许分类（不选表示全部分类）</span>
+                                <span className="text-[11px] text-ink-500">{t("允许分类（不选表示全部分类）")}</span>
                                 <div className="flex flex-wrap items-center gap-1">
-                                  <span className="text-[10.5px] text-ink-400">套用频道：</span>
+                                  <span className="text-[11px] text-ink-400">{t("套用频道：")}</span>
                                   {CHANNELS.map((ch) => (
                                     <button
                                       key={ch.key}
                                       type="button"
                                       onClick={() => setRouteDraft({ ...routeDraft, categories: [...ch.categories] })}
-                                      className="rounded border border-ink-200 bg-surface px-1.5 py-0.5 text-[10.5px] text-ink-600 hover:border-brand-border hover:text-brand"
+                                      className="rounded border border-ink-200 bg-surface px-1.5 py-0.5 text-[11px] text-ink-600 hover:border-brand-border hover:text-accent"
                                     >
-                                      {ch.label}
+                                      {t(ch.label)}
                                     </button>
                                   ))}
                                   {routeDraft.categories.length > 0 && (
                                     <button
                                       type="button"
                                       onClick={() => setRouteDraft({ ...routeDraft, categories: [] })}
-                                      className="text-[10.5px] font-medium text-brand hover:underline"
+                                      className="text-[11px] font-medium text-accent hover:underline"
                                     >
-                                      清空
+                                      {t("清空")}
                                     </button>
                                   )}
                                 </div>
@@ -1190,7 +1190,7 @@ export function PushPanel({
                               <div className="mt-1 space-y-1">
                                 {CATEGORY_GROUPS.map((group) => (
                                   <div key={group.key} className="flex flex-wrap items-center gap-1">
-                                    <span className="w-[52px] shrink-0 text-[10.5px] text-ink-400">{group.label}</span>
+                                    <span className="w-[52px] shrink-0 text-[11px] text-ink-400">{t(group.label)}</span>
                                     {group.categories.map((ck) => {
                                       const on = routeDraft.categories.includes(ck);
                                       return (
@@ -1209,11 +1209,11 @@ export function PushPanel({
                                           className={
                                             "rounded border px-2 py-0.5 text-[11px] " +
                                             (on
-                                              ? "border-brand bg-brand-subtle font-medium text-brand"
+                                              ? "border-brand-border bg-brand-subtle font-medium text-accent"
                                               : "border-ink-200 bg-surface text-ink-600")
                                           }
                                         >
-                                          {CATEGORY_LABEL[ck]}
+                                          {t(CATEGORY_LABEL[ck] ?? ck)}
                                         </button>
                                       );
                                     })}
@@ -1229,9 +1229,9 @@ export function PushPanel({
                                   setEditingRouteId(null);
                                   setRouteDraft(null);
                                 }}
-                                className="rounded border border-ink-200 px-3 py-1 text-[11.5px] text-ink-600 hover:bg-ink-100"
+                                className="rounded border border-ink-200 px-3 py-1 text-[12px] text-ink-600 hover:bg-ink-100"
                               >
-                                取消
+                                {t("取消")}
                               </button>
                               <button
                                 type="button"
@@ -1243,7 +1243,7 @@ export function PushPanel({
                                   const pNum = routePriceInput.trim() === "" ? null : Number(routePriceInput.trim());
                                   const updated: PushRoute = {
                                     ...routeDraft,
-                                    name: routeDraft.name.trim() || "未命名路由",
+                                    name: routeDraft.name.trim() || t("未命名路由"),
                                     keywords: kws,
                                     maxPrice: pNum !== null && Number.isFinite(pNum) && pNum >= 0 ? pNum : null,
                                   };
@@ -1254,9 +1254,9 @@ export function PushPanel({
                                     setRouteDraft(null);
                                   });
                                 }}
-                                className="rounded bg-brand px-3 py-1 text-[11.5px] font-medium text-white hover:bg-brand-hover"
+                                className="rounded bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover"
                               >
-                                保存路由
+                                {t("保存路由")}
                               </button>
                             </div>
                           </div>
@@ -1271,21 +1271,21 @@ export function PushPanel({
             {/* 数据源范围控制 */}
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-ink-900">数据源推送范围</span>
+                <span className="text-[13px] font-medium text-ink-900">{t("数据源推送范围")}</span>
                 <div className="flex items-center gap-1.5">
                   {[
-                    { key: "all" as PushSourceMode, label: "全部启用源" },
-                    { key: "include" as PushSourceMode, label: "仅推指定源" },
-                    { key: "exclude" as PushSourceMode, label: "排除指定源" },
+                    { key: "all" as PushSourceMode, label: t("全部启用源") },
+                    { key: "include" as PushSourceMode, label: t("仅推指定源") },
+                    { key: "exclude" as PushSourceMode, label: t("排除指定源") },
                   ].map((m) => (
                     <button
                       key={m.key}
                       type="button"
                       onClick={() => save({ sourceMode: m.key })}
                       className={
-                        "rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition-colors " +
+                        "rounded-lg border px-2.5 py-1 text-[12px] font-medium transition-colors " +
                         (s.sourceMode === m.key
-                          ? "border-brand bg-brand text-white"
+                          ? "border-brand-border bg-brand-subtle text-accent"
                           : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                       }
                     >
@@ -1296,19 +1296,19 @@ export function PushPanel({
               </div>
               {s.sourceMode !== "all" && (
                 <div className="mt-2.5 space-y-2">
-                  <div className="flex items-center justify-between text-[11.5px] text-ink-500">
+                  <div className="flex items-center justify-between text-[12px] text-ink-500">
                     <span>
                       {s.sourceMode === "include"
-                        ? `仅推送已选的 ${s.sourceIds.length} 个数据源`
-                        : `跳过已选的 ${s.sourceIds.length} 个数据源（仍在网页收录）`}
+                        ? t("仅推送已选的 {n} 个数据源", { n: s.sourceIds.length })
+                        : t("跳过已选的 {n} 个数据源（仍在网页收录）", { n: s.sourceIds.length })}
                     </span>
                     {s.sourceIds.length > 0 && (
                       <button
                         type="button"
                         onClick={() => save({ sourceIds: [] })}
-                        className="font-medium text-brand hover:underline"
+                        className="font-medium text-accent hover:underline"
                       >
-                        清空选择
+                        {t("清空选择")}
                       </button>
                     )}
                   </div>
@@ -1321,9 +1321,9 @@ export function PushPanel({
                           type="button"
                           onClick={() => toggleSourceId(src.id)}
                           className={
-                            "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] transition-colors " +
+                            "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[12px] transition-colors " +
                             (active
-                              ? "border-brand bg-brand-subtle font-medium text-brand"
+                              ? "border-brand-border bg-brand-subtle font-medium text-accent"
                               : "border-ink-200 bg-surface-hover text-ink-700 hover:bg-ink-100")
                           }
                         >
@@ -1345,55 +1345,55 @@ export function PushPanel({
           {/* 评分阈值与消息内容自定义 */}
           <section className="panel space-y-3 p-5">
             <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
-              <Zap size={15} className="text-brand" /> 触发阈值与消息格式
+              <Zap size={15} className="text-accent" /> {t("触发阈值与消息格式")}
             </div>
             <NumberField
-              label="立即单发阈值 ≥"
-              hint="达到此分数马上单条发出，不等攒批（松手或回车生效）"
+              label={t("立即单发阈值 ≥")}
+              hint={t("达到此分数马上单条发出，不等攒批（松手或回车生效）")}
               value={s.instantScore}
               min={0}
               max={100}
               step={5}
-              suffix=" 分"
+              suffix={t(" 分")}
               onCommit={(v) => save({ instantScore: v })}
             />
             <NumberField
-              label="攒批合发阈值 ≥"
-              hint={`低于立即阈值的先入攒批队列定时合并发（自动 ≤ 立即阈值 ${s.instantScore} 分）`}
+              label={t("攒批合发阈值 ≥")}
+              hint={t("低于立即阈值的先入攒批队列定时合并发（自动 ≤ 立即阈值 {n} 分）", { n: s.instantScore })}
               value={s.batchScore}
               min={0}
               max={s.instantScore}
               step={5}
-              suffix=" 分"
+              suffix={t(" 分")}
               onCommit={(v) => save({ batchScore: v })}
             />
             <div className="grid grid-cols-2 gap-2">
               <Toggle
-                label="含兑换码直推"
+                label={t("含兑换码直推")}
                 value={s.instantOnCodes}
                 onChange={(v) => save({ instantOnCodes: v })}
               />
               <Toggle
-                label="限量/名额直推"
+                label={t("限量/名额直推")}
                 value={s.instantOnUrgent}
                 onChange={(v) => save({ instantOnUrgent: v })}
               />
             </div>
 
             <div className="pt-1">
-              <div className="mb-1.5 text-[12px] font-medium text-ink-700">消息元素与去重开关</div>
+              <div className="mb-1.5 text-[12px] font-medium text-ink-700">{t("消息元素与去重开关")}</div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <Toggle label="带价格" value={s.includePrice} onChange={(v) => save({ includePrice: v })} />
-                <Toggle label="带截止日" value={s.includeDeadline} onChange={(v) => save({ includeDeadline: v })} />
-                <Toggle label="带评分" value={s.includeScore} onChange={(v) => save({ includeScore: v })} />
-                <Toggle label="带获取方式" value={s.includeObtain} onChange={(v) => save({ includeObtain: v })} />
-                <Toggle label="带 AI 理由" value={s.includeAiReason} onChange={(v) => save({ includeAiReason: v })} />
-                <Toggle label="跨源去重" value={s.dedupeByTitle} onChange={(v) => save({ dedupeByTitle: v })} />
+                <Toggle label={t("带价格")} value={s.includePrice} onChange={(v) => save({ includePrice: v })} />
+                <Toggle label={t("带截止日")} value={s.includeDeadline} onChange={(v) => save({ includeDeadline: v })} />
+                <Toggle label={t("带评分")} value={s.includeScore} onChange={(v) => save({ includeScore: v })} />
+                <Toggle label={t("带获取方式")} value={s.includeObtain} onChange={(v) => save({ includeObtain: v })} />
+                <Toggle label={t("带 AI 理由")} value={s.includeAiReason} onChange={(v) => save({ includeAiReason: v })} />
+                <Toggle label={t("跨源去重")} value={s.dedupeByTitle} onChange={(v) => save({ dedupeByTitle: v })} />
               </div>
             </div>
 
             <label className="block rounded-lg border border-ink-200 bg-surface-hover px-3.5 py-2.5">
-              <span className="text-[12.5px] font-medium text-ink-900">自定义消息头前缀（失焦保存，留空用默认）</span>
+              <span className="text-[12px] font-medium text-ink-900">{t("自定义消息头前缀（失焦保存，留空用默认）")}</span>
               <input
                 value={customHeaderDraft}
                 onChange={(e) => setCustomHeaderDraft(e.target.value)}
@@ -1402,9 +1402,9 @@ export function PushPanel({
                     void save({ customHeader: customHeaderDraft.trim() });
                   }
                 }}
-                placeholder="例如：🛰 资源雷达 · 精选"
+                placeholder={t("例如：🛰 资源雷达 · 精选")}
                 maxLength={60}
-                className="mt-1.5 w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12.5px] text-ink-900 outline-none focus:border-brand"
+                className="mt-1.5 w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-900 outline-none focus:border-brand"
               />
             </label>
           </section>
@@ -1412,66 +1412,66 @@ export function PushPanel({
           {/* 频率限制与夜间免打扰 */}
           <section className="panel space-y-3 p-5">
             <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
-              <Clock size={15} className="text-brand" /> 频率控制与夜间免打扰
+              <Clock size={15} className="text-accent" /> {t("频率控制与夜间免打扰")}
             </div>
             <NumberField
-              label="每小时推送上限"
-              hint="含单发与攒批条数总和（1~200）"
+              label={t("每小时推送上限")}
+              hint={t("含单发与攒批条数总和（1~200）")}
               value={s.maxPerHour}
               min={1}
               max={200}
-              suffix=" 条"
+              suffix={t(" 条")}
               onCommit={(v) => save({ maxPerHour: v })}
             />
             <div className="grid grid-cols-2 gap-2">
               <NumberField
-                label="单轮最多即时发"
+                label={t("单轮最多即时发")}
                 value={s.maxPerInstant}
                 min={1}
                 max={10}
-                suffix=" 条"
+                suffix={t(" 条")}
                 onCommit={(v) => save({ maxPerInstant: v })}
               />
               <NumberField
-                label="单批最多合并发"
+                label={t("单批最多合并发")}
                 value={s.maxPerBatch}
                 min={1}
                 max={20}
-                suffix=" 条"
+                suffix={t(" 条")}
                 onCommit={(v) => save({ maxPerBatch: v })}
               />
             </div>
 
             <label className="block rounded-lg border border-ink-200 bg-surface-hover px-3.5 py-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[13px] font-medium text-ink-900">攒批周期（修改后立即重建定时器）</span>
-                <span className="font-mono text-[12px] text-brand">
-                  {s.batchIntervalMin === 0 ? "已关闭" : `每 ${s.batchIntervalMin} 分钟`}
+                <span className="text-[13px] font-medium text-ink-900">{t("攒批周期（修改后立即重建定时器）")}</span>
+                <span className="font-mono text-[12px] text-accent">
+                  {s.batchIntervalMin === 0 ? t("已关闭") : t("每 {n} 分钟", { n: s.batchIntervalMin })}
                 </span>
               </div>
               <select
                 value={s.batchIntervalMin}
                 onChange={(e) => save({ batchIntervalMin: Number(e.target.value) })}
-                className="mt-2 w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12.5px] text-ink-900 outline-none focus:border-brand"
+                className="mt-2 w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-900 outline-none focus:border-brand"
               >
-                <option value={0}>关闭攒批</option>
-                <option value={5}>每 5 分钟</option>
-                <option value={10}>每 10 分钟</option>
-                <option value={15}>每 15 分钟</option>
-                <option value={30}>每 30 分钟</option>
-                <option value={60}>每 1 小时</option>
-                <option value={120}>每 2 小时</option>
+                <option value={0}>{t("关闭攒批")}</option>
+                <option value={5}>{t("每 5 分钟")}</option>
+                <option value={10}>{t("每 10 分钟")}</option>
+                <option value={15}>{t("每 15 分钟")}</option>
+                <option value={30}>{t("每 30 分钟")}</option>
+                <option value={60}>{t("每 1 小时")}</option>
+                <option value={120}>{t("每 2 小时")}</option>
               </select>
             </label>
 
             <div className="space-y-2.5 rounded-lg border border-ink-200 bg-surface-hover p-3.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-900">
-                  <Moon size={13} className="text-ink-500" /> 夜间免打扰时段
+                  <Moon size={13} className="text-ink-500" /> {t("夜间免打扰时段")}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className={`text-[11.5px] font-medium ${payload?.quiet ? "text-amber-700" : "text-ink-500"}`}>
-                    {!s.quietEnabled ? "未启用" : payload?.quiet ? "免打扰中" : "正常推送时段"}
+                  <span className={`text-[12px] font-medium ${payload?.quiet ? "text-amber-700" : "text-ink-500"}`}>
+                    {!s.quietEnabled ? t("未启用") : payload?.quiet ? t("免打扰中") : t("正常推送时段")}
                   </span>
                   <button
                     type="button"
@@ -1480,7 +1480,7 @@ export function PushPanel({
                       "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors " +
                       (s.quietEnabled ? "bg-brand" : "bg-ink-300")
                     }
-                    title={s.quietEnabled ? "点击关闭夜间免打扰" : "点击开启夜间免打扰"}
+                    title={s.quietEnabled ? t("点击关闭夜间免打扰") : t("点击开启夜间免打扰")}
                   >
                     <span
                       className={
@@ -1503,9 +1503,9 @@ export function PushPanel({
                         const next = `${quietFrom}-${quietTo}`;
                         if (next !== s.quietHours) void save({ quietHours: next });
                       }}
-                      className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-ink-900 outline-none focus:border-brand"
+                      className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
                     />
-                    <span className="text-ink-400">至</span>
+                    <span className="text-ink-400">{t("至")}</span>
                     <input
                       type="time"
                       value={quietTo}
@@ -1514,25 +1514,25 @@ export function PushPanel({
                         const next = `${quietFrom}-${quietTo}`;
                         if (next !== s.quietHours) void save({ quietHours: next });
                       }}
-                      className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-ink-900 outline-none focus:border-brand"
+                      className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
                     />
                     <select
                       value={s.timezone}
                       onChange={(e) => save({ timezone: e.target.value })}
                       className="ml-auto rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-800 outline-none focus:border-brand"
                     >
-                      <option value="Asia/Shanghai">北京时间 (UTC+8)</option>
-                      <option value="Asia/Tokyo">东京时间 (UTC+9)</option>
+                      <option value="Asia/Shanghai">{t("北京时间 (UTC+8)")}</option>
+                      <option value="Asia/Tokyo">{t("东京时间 (UTC+9)")}</option>
                       <option value="UTC">UTC</option>
-                      <option value="America/New_York">美东时间</option>
-                      <option value="Europe/London">伦敦时间</option>
+                      <option value="America/New_York">{t("美东时间")}</option>
+                      <option value="Europe/London">{t("伦敦时间")}</option>
                     </select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { key: "batch" as const, label: "转入攒批早上发" },
-                      { key: "drop" as const, label: "静默期直接跳过" },
+                      { key: "batch" as const, label: t("转入攒批早上发") },
+                      { key: "drop" as const, label: t("静默期直接跳过") },
                     ].map((opt) => (
                       <button
                         key={opt.key}
@@ -1541,7 +1541,7 @@ export function PushPanel({
                         className={
                           "rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors " +
                           (s.quietAction === opt.key
-                            ? "border-brand bg-brand-subtle text-brand"
+                            ? "border-brand-border bg-brand-subtle text-accent"
                             : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
                         }
                       >
@@ -1563,10 +1563,10 @@ export function PushPanel({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
-                  <Sparkles size={15} className="text-brand" /> 实时效果预览（不会真正发出）
+                  <Sparkles size={15} className="text-accent" /> {t("实时效果预览（不会真正发出）")}
                 </div>
                 <p className="mt-0.5 text-[12px] text-ink-500">
-                  用数据库里未推送的最新 180 条按上述全部筛选条件试算，立刻检查命中和被拦截原因分布。
+                  {t("用数据库里未推送的最新 180 条按上述全部筛选条件试算，立刻检查命中和被拦截原因分布。")}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1577,31 +1577,31 @@ export function PushPanel({
                     try {
                       await onPreview();
                     } catch {
-                      setOperationError("网络异常，试算失败，请重试");
+                      setOperationError(t("网络异常，试算失败，请重试"));
                     } finally {
                       setBusy(null);
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[12px] font-medium text-white transition-colors hover:bg-brand-hover"
                 >
-                  {busy === "preview" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} 试算推送预览
+                  {busy === "preview" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} {t("试算推送预览")}
                 </button>
                 <button
                   type="button"
                   onClick={async () => {
                     setBusy("flush");
                     try {
-                      if (payload?.quiet && !window.confirm("当前处于免打扰时段，仍要手动发送攒批吗？")) return;
+                      if (payload?.quiet && !window.confirm(t("当前处于免打扰时段，仍要手动发送攒批吗？"))) return;
                       await onFlush();
                     } catch {
-                      setOperationError("网络异常，无法确认发送结果，请查看记录");
+                      setOperationError(t("网络异常，无法确认发送结果，请查看记录"));
                     } finally {
                       setBusy(null);
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] font-medium text-ink-700 hover:bg-ink-100"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                 >
-                  {busy === "flush" ? <Loader2 size={13} className="animate-spin" /> : <ListOrdered size={13} />} 立即发攒批
+                  {busy === "flush" ? <Loader2 size={13} className="animate-spin" /> : <ListOrdered size={13} />} {t("立即发攒批")}
                 </button>
                 <button
                   type="button"
@@ -1610,14 +1610,14 @@ export function PushPanel({
                     try {
                       await onTest();
                     } catch {
-                      setOperationError("网络异常，无法确认测试结果，请查看记录");
+                      setOperationError(t("网络异常，无法确认测试结果，请查看记录"));
                     } finally {
                       setBusy(null);
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] font-medium text-ink-700 hover:bg-ink-100"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
                 >
-                  {busy === "test" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} 发测试消息
+                  {busy === "test" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {t("发测试消息")}
                 </button>
               </div>
             </div>
@@ -1625,9 +1625,9 @@ export function PushPanel({
             {preview && (
               <div className="space-y-3 pt-1">
                 {preview.rejectedBy && (
-                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-200 bg-surface-hover px-3 py-2 text-[11.5px]">
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-200 bg-surface-hover px-3 py-2 text-[12px]">
                     <span className="font-medium text-ink-700">
-                      扫描 {preview.scanned} 条 · 通过筛选 {preview.matched} 条 · 拦截分布：
+                      {t("扫描 {scanned} 条 · 通过筛选 {matched} 条 · 拦截分布：", { scanned: preview.scanned, matched: preview.matched })}
                     </span>
                     {REJECT_LABELS.filter((r) => (preview.rejectedBy?.[r.key] ?? 0) > 0).map((r) => (
                       <span key={r.key} className="rounded bg-ink-100 px-2 py-0.5 text-ink-600">
@@ -1640,21 +1640,21 @@ export function PushPanel({
                 <div className="grid gap-3 lg:grid-cols-2">
                   <div className="rounded-lg border border-ink-200 bg-surface-hover p-3">
                     <div className="mb-1.5 flex items-center justify-between text-[12px] font-medium text-deal">
-                      <span>⚡ 立即推送（够格 {preview.instantTotal ?? preview.instant.length}）</span>
+                      <span>{t("⚡ 立即推送（够格 {n}）", { n: preview.instantTotal ?? preview.instant.length })}</span>
                       <span className="font-mono text-[11px] text-ink-500">
-                        本轮实发 {preview.sendableInstant ?? preview.instant.length} 条
+                        {t("本轮实发 {n} 条", { n: preview.sendableInstant ?? preview.instant.length })}
                       </span>
                     </div>
                     <pre className="max-h-[220px] overflow-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink-700">
-                      {preview.instant.length ? preview.instant.join("\n\n") : "（当前条件下没有触发立即推送的条目）"}
+                      {preview.instant.length ? preview.instant.join("\n\n") : t("（当前条件下没有触发立即推送的条目）")}
                     </pre>
                   </div>
                   <div className="rounded-lg border border-ink-200 bg-surface-hover p-3">
-                    <div className="mb-1.5 text-[12px] font-medium text-brand">
-                      📦 攒批队列（够格 {preview.batchTotal ?? preview.batch.length}，内存中已排队 {preview.queued}）
+                    <div className="mb-1.5 text-[12px] font-medium text-accent">
+                      {t("📦 攒批队列（够格 {qualified}，内存中已排队 {queued}）", { qualified: preview.batchTotal ?? preview.batch.length, queued: preview.queued })}
                     </div>
                     <pre className="max-h-[220px] overflow-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink-700">
-                      {preview.batch.length ? preview.batch.join("\n\n") : "（当前条件下没有达到攒批阈值的条目）"}
+                      {preview.batch.length ? preview.batch.join("\n\n") : t("（当前条件下没有达到攒批阈值的条目）")}
                     </pre>
                   </div>
                 </div>
@@ -1664,12 +1664,12 @@ export function PushPanel({
 
           {/* 历史推送记录 */}
           <section className="panel overflow-hidden">
-            <div className="border-b border-ink-100 px-5 py-3.5 text-[13.5px] font-semibold text-ink-950">
-              最近推送记录（{logs.length}）
+            <div className="border-b border-ink-100 px-5 py-3.5 text-[14px] font-semibold text-ink-950">
+              {t("最近推送记录（{n}）", { n: logs.length })}
             </div>
             <div className="max-h-[420px] divide-y divide-ink-100 overflow-auto">
               {logs.length === 0 && (
-                <div className="px-5 py-10 text-center text-[12.5px] text-ink-500">还没有历史推送记录</div>
+                <div className="px-5 py-10 text-center text-[12px] text-ink-500">{t("还没有历史推送记录")}</div>
               )}
               {logs.map((l) => (
                 <div key={l.id} className="px-5 py-3">
@@ -1680,16 +1680,16 @@ export function PushPanel({
                         (l.kind === "instant"
                           ? "bg-code-subtle text-amber-800"
                           : l.kind === "batch"
-                            ? "bg-brand-subtle text-brand"
+                            ? "bg-brand-subtle text-accent"
                             : "bg-ink-100 text-ink-700")
                       }
                     >
-                      {l.kind === "instant" ? "即时推送" : l.kind === "batch" ? "攒批推送" : l.kind}
+                      {l.kind === "instant" ? t("即时推送") : l.kind === "batch" ? t("攒批推送") : l.kind}
                     </span>
                     <span className="font-mono text-ink-500">{l.created_at.replace("T", " ").slice(5, 19)}</span>
-                    <span className="text-ink-600">{l.count} 条</span>
-                    {l.ok === 0 && <span className="rounded bg-alert-subtle px-1.5 py-0.5 text-alert">发送失败</span>}
-                    {l.reason && <span className="truncate text-ink-500">· 因为 {l.reason}</span>}
+                    <span className="text-ink-600">{t("{n} 条", { n: l.count })}</span>
+                    {l.ok === 0 && <span className="rounded bg-alert-subtle px-1.5 py-0.5 text-alert">{t("发送失败")}</span>}
+                    {l.reason && <span className="truncate text-ink-500">{t("· 因为 {reason}", { reason: l.reason })}</span>}
                   </div>
                   <pre className="max-h-[72px] overflow-hidden font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink-600">
                     {(l.text ?? "").slice(0, 240)}

@@ -17,6 +17,7 @@ import {
 import { KIND_LABEL, OBTAIN_HINT, OBTAIN_LABEL, categoryLabelForKind, expiresLabel, extractBlockCandidates, timeAgo } from "../lib/sources.ts";
 import type { Item } from "../types.ts";
 import { ItemClassificationEditor, type ClassificationPatch } from "./ItemClassificationEditor.tsx";
+import { t } from "../lib/i18n.ts";
 
 export function CodeChip({ code, onCopy }: { code: string; onCopy: (code: string) => void }) {
   const [copied, setCopied] = useState(false);
@@ -36,7 +37,7 @@ export function CodeChip({ code, onCopy }: { code: string; onCopy: (code: string
           ? "bg-deal-subtle text-deal"
           : "bg-code-subtle text-code hover:bg-amber-200/70")
       }
-      title="点击复制兑换码"
+      title={t("点击复制兑换码")}
     >
       {copied ? <Check size={11} /> : <Copy size={11} />}
       {code}
@@ -47,17 +48,17 @@ export function CodeChip({ code, onCopy }: { code: string; onCopy: (code: string
 function PriceBadge({ item, inline = false }: { item: Item; inline?: boolean }) {
   if (item.is_free === 1 || item.price === 0) {
     return inline ? (
-      <span className="shrink-0 text-[11.5px] font-semibold text-deal">免费</span>
+      <span className="shrink-0 text-[12px] font-semibold text-deal">{t("免费")}</span>
     ) : (
       <span className="inline-flex items-center rounded bg-deal-subtle px-1.5 py-0.5 text-[11px] font-semibold text-deal">
-        免费
+        {t("免费")}
       </span>
     );
   }
   if (typeof item.price === "number" && item.price > 0) {
-    const label = item.price < 1 ? "<1 元" : Math.round(item.price) + " 元内";
+    const label = item.price < 1 ? t("<1 元") : t("{n} 元内", { n: Math.round(item.price) });
     return inline ? (
-      <span className="shrink-0 text-[11.5px] font-semibold text-accent">{label}</span>
+      <span className="shrink-0 text-[12px] font-semibold text-accent">{label}</span>
     ) : (
       <span className="inline-flex items-center rounded bg-brand-subtle px-1.5 py-0.5 text-[11px] font-semibold text-accent">
         {label}
@@ -100,14 +101,14 @@ function KindBadge({ kind, category, inline = false }: { kind: string | null | u
   if (!label) return null;
   if (inline) {
     return (
-      <span className={"shrink-0 rounded px-1.5 py-0.5 text-[10.5px] font-medium " + (KIND_STYLE[kind] ?? "bg-ink-100 text-ink-600")}>
-        {label}
+      <span className={"shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium " + (KIND_STYLE[kind] ?? "bg-ink-100 text-ink-600")}>
+        {t(label)}
       </span>
     );
   }
   return (
     <span className={"inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium " + (KIND_STYLE[kind] ?? "bg-ink-100 text-ink-600")}>
-      {label}
+      {t(label)}
     </span>
   );
 }
@@ -118,21 +119,41 @@ function ObtainBadge({ obtain, inline = false }: { obtain: string | null | undef
   if (inline) {
     return (
       <span
-        className={"shrink-0 text-[11.5px] font-semibold " + (OBTAIN_TEXT[mode] ?? OBTAIN_TEXT.promo)}
-        title={OBTAIN_HINT[mode] ?? ""}
+        className={"shrink-0 text-[12px] font-semibold " + (OBTAIN_TEXT[mode] ?? OBTAIN_TEXT.promo)}
+        title={t(OBTAIN_HINT[mode] ?? "")}
       >
-        {OBTAIN_LABEL[mode] ?? mode}
+        {t(OBTAIN_LABEL[mode] ?? mode)}
       </span>
     );
   }
   return (
     <span
       className={"inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium " + (OBTAIN_STYLE[mode] ?? OBTAIN_STYLE.promo)}
-      title={OBTAIN_HINT[mode] ?? ""}
+      title={t(OBTAIN_HINT[mode] ?? "")}
     >
-      {OBTAIN_LABEL[mode] ?? mode}
+      {t(OBTAIN_LABEL[mode] ?? mode)}
     </span>
   );
+}
+
+/** 默认的精致紧凑列表行：在纯白面板里用 1px 细线分隔，扫货效率最高。 */
+const SOURCE_TONES = [
+  "bg-[#4338ca]",
+  "bg-[#047857]",
+  "bg-[#b45309]",
+  "bg-[#be123c]",
+  "bg-[#64748b]",
+] as const;
+
+/** 同一来源恒定同色，431 条列表靠色块做视觉锚点。 */
+function sourceTone(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return SOURCE_TONES[hash % SOURCE_TONES.length]!;
+}
+
+function MetaSep({ className = "" }: { className?: string }) {
+  return <span aria-hidden="true" className={"text-ink-300 " + className}>·</span>;
 }
 
 /** 默认的精致紧凑列表行：在纯白面板里用 1px 细线分隔，扫货效率最高。 */
@@ -166,15 +187,20 @@ export function CompactRow({
   const aiRejected = item.ai?.keep === false;
   const showPrice = item.kind !== "news" && item.kind !== "info";
   const topPick = !item.read && !aiRejected && ((item.ai?.quality ?? item.ai_quality ?? 0) >= 5 || item.score >= 88);
+  const name = sourceName(item.source_id);
+  const rawCategoryLabel = categoryLabelForKind(item.category, item.kind);
+  const categoryLabel = t(rawCategoryLabel);
+  // 「其它 / 其它资讯」是兜底分类，挂在每一行上只会制造噪音
+  const showCategory = rawCategoryLabel !== "其它" && rawCategoryLabel !== "其它资讯";
 
   return (
     <div
       onClick={() => onOpen(item)}
       data-read={item.read}
       className={
-        "resource-row group grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1.5 border-b border-ink-100 px-3.5 py-3 transition-colors last:border-b-0 sm:flex sm:items-center sm:gap-x-3 sm:gap-y-0 sm:px-6 sm:py-3 " +
+        "resource-row group grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 border-b border-ink-100 py-3 pr-3 pl-3 transition-colors last:border-b-0 sm:flex sm:items-center sm:gap-x-3 sm:gap-y-0 sm:py-3 sm:pr-5 sm:pl-5 " +
         (selected ? "bg-surface-hover " : "hover:bg-surface-hover ") +
-        (topPick ? "border-l-2 border-l-deal " : "")
+        (topPick ? "shadow-[inset_2px_0_0_0_var(--color-deal)] " : "")
       }
     >
       {/* 未读圆点 + 纯数字评分 */}
@@ -184,18 +210,18 @@ export function CompactRow({
             "h-[7px] w-[7px] rounded-full " +
             (item.read ? "border border-ink-300 bg-transparent" : "bg-accent")
           }
-          title={item.read ? "已读" : "未读"}
+          title={item.read ? t("已读") : t("未读")}
         />
         <span
           className={
-            "w-7 text-right font-mono text-[12.5px] font-semibold tabular-nums " +
+            "w-6 text-right font-mono text-[12px] font-semibold tabular-nums " +
             (item.score >= 70
               ? "text-deal"
               : item.score >= 45
                 ? "text-ink-700"
                 : "text-ink-400")
           }
-          title="综合评分"
+          title={t("综合评分")}
         >
           {Math.round(item.score)}
         </span>
@@ -203,7 +229,7 @@ export function CompactRow({
 
       {/* 主信息 */}
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <button
             type="button"
             onClick={(event) => { event.stopPropagation(); onOpen(item); }}
@@ -214,12 +240,14 @@ export function CompactRow({
           >
             {item.title}
           </button>
-          <KindBadge kind={item.kind} category={item.category} inline />
-          {showPrice && <PriceBadge item={item} inline />}
-          {showPrice && <ObtainBadge obtain={item.obtain} inline />}
+          <span className="flex flex-wrap items-center gap-1 sm:contents">
+            <KindBadge kind={item.kind} category={item.category} inline />
+            {showPrice && <PriceBadge item={item} inline />}
+            {showPrice && <ObtainBadge obtain={item.obtain} inline />}
+          </span>
           {matched.length > 0 && (
             <span className="rounded bg-code-subtle px-1.5 py-0.5 text-[11px] font-medium text-code">
-              命中：{matched.join("/")}
+              {t("命中：")}{matched.join("/")}
             </span>
           )}
           {(item.dupCount ?? 1) > 1 && (
@@ -230,33 +258,37 @@ export function CompactRow({
                 e.stopPropagation();
                 onToggleRelated?.(item.id);
               }}
-              title="同一福利被多个源报道，点击看全部来源"
+              title={t("同一福利被多个源报道，点击看全部来源")}
               className="rounded bg-brand-subtle px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-ink-200/70"
             >
-              {expanded ? "收起" : `${item.dupCount} 个来源`}
+              {expanded ? t("收起") : t("{n} 个来源", { n: item.dupCount ?? 1 })}
             </button>
           )}
           {item.blockedBy && (
             <span className="rounded bg-alert-subtle px-1.5 py-0.5 text-[11px] text-alert">
-              屏蔽：{item.blockedBy}
+              {t("屏蔽：")}{item.blockedBy}
             </span>
           )}
         </div>
 
-        <div className="row-meta mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-ink-500">
-          <span className="font-medium text-ink-700">{sourceName(item.source_id)}</span>
-          <span aria-hidden="true">·</span>
-          <span>{categoryLabelForKind(item.category, item.kind)}</span>
+        <div className="row-meta mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-ink-500">
+          <span className="max-w-[45%] truncate font-medium text-ink-700">{name}</span>
+          {showCategory && (
+            <>
+              <MetaSep />
+              <span className="max-w-[40%] truncate">{categoryLabel}</span>
+            </>
+          )}
           {exp && (
             <>
-              <span aria-hidden="true">·</span>
-              <span className={exp.urgent ? "font-medium text-code" : "text-ink-500"}>
+              <MetaSep />
+              <span className={"shrink-0 " + (exp.urgent ? "font-medium text-code" : "text-ink-500")}>
                 {exp.text}
               </span>
             </>
           )}
-          <span aria-hidden="true" className="sm:hidden">·</span>
-          <span className="tabular-nums text-ink-400 sm:hidden">
+          <MetaSep className="sm:hidden" />
+          <span className="shrink-0 tabular-nums text-ink-400 sm:hidden">
             {timeAgo(item.published_at ?? item.first_seen_at)}
           </span>
         </div>
@@ -265,15 +297,15 @@ export function CompactRow({
 
       {/* 右端：兑换码 & 快捷操作 & 相对时间 */}
       <div
-        className="col-span-2 flex w-full items-center justify-between gap-2 sm:col-span-1 sm:w-auto sm:shrink-0 sm:justify-end"
+        className="col-span-2 flex min-w-0 items-center gap-2 sm:col-span-1 sm:w-auto sm:shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
           {codes.slice(0, 2).map((code) => (
             <CodeChip key={code} code={code} onCopy={onCopyCode} />
           ))}
         </div>
-        <div className="row-actions flex items-center gap-0.5 transition-opacity sm:opacity-70 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+        <div className="row-actions ml-auto flex shrink-0 items-center gap-0.5 sm:ml-1">
           <a
             href={item.url}
             target="_blank"
@@ -282,7 +314,7 @@ export function CompactRow({
               if (!item.read) onPatch(item.id, { read: true });
             }}
             className="rounded-md p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-950 sm:p-1.5"
-            title="新标签打开原帖"
+            title={t("新标签打开原帖")}
           >
             <ArrowUpRight size={15} />
           </a>
@@ -293,15 +325,16 @@ export function CompactRow({
               "rounded-md p-2 transition-colors hover:bg-ink-100 sm:p-1.5 " +
               (item.starred ? "text-code" : "text-ink-400 hover:text-ink-800")
             }
-            title={item.starred ? "取消收藏" : "收藏"}
+            title={item.starred ? t("取消收藏") : t("收藏")}
           >
             <Star size={14} fill={item.starred ? "currentColor" : "none"} />
           </button>
+          <span className="flex items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100">
           <button
             type="button"
             onClick={() => onQuickBlock(item)}
             className="rounded-md p-2 text-ink-400 transition-colors hover:bg-alert-subtle hover:text-alert sm:p-1.5"
-            title="加入屏蔽词 / 屏蔽"
+            title={t("加入屏蔽词 / 屏蔽")}
           >
             <Ban size={14} />
           </button>
@@ -309,12 +342,13 @@ export function CompactRow({
             type="button"
             onClick={() => onPatch(item.id, { status: item.status === "ignored" ? "active" : "ignored" })}
             className="rounded-md p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-800 sm:p-1.5"
-            title={item.status === "ignored" ? "恢复到列表" : "不想看，从列表移除（可在「已关闭」找回）"}
+            title={item.status === "ignored" ? t("恢复到列表") : t("不想看，从列表移除（可在「已关闭」找回）")}
           >
             {item.status === "ignored" ? <Eye size={14} /> : <EyeOff size={14} />}
           </button>
+          </span>
         </div>
-        <span className="hidden w-14 text-right font-mono text-[11.5px] tabular-nums text-ink-400 sm:inline-block">
+        <span className="hidden w-14 shrink-0 text-right font-mono text-[12px] tabular-nums text-ink-400 sm:inline-block">
           {timeAgo(item.published_at ?? item.first_seen_at)}
         </span>
       </div>
@@ -404,7 +438,7 @@ export function ItemCard({
           />
           <span
             className={
-              "absolute top-2.5 right-2.5 rounded-md px-2 py-0.5 font-mono text-[11.5px] font-semibold tabular-nums backdrop-blur-sm " +
+              "absolute top-2.5 right-2.5 rounded-md px-2 py-0.5 font-mono text-[12px] font-semibold tabular-nums backdrop-blur-sm " +
               (item.score >= 70 ? "bg-deal/90 text-white" : "bg-ink-950/75 text-white")
             }
           >
@@ -415,19 +449,19 @@ export function ItemCard({
 
       <div className="flex flex-1 flex-col p-3.5 sm:p-4">
         <div className="mb-1.5 flex items-start justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[11.5px] text-ink-500">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-ink-500">
             <span
               className={
                 "h-[6px] w-[6px] shrink-0 rounded-full " +
                 (item.read ? "border border-ink-300 bg-transparent" : "bg-accent")
               }
-              title={item.read ? "已读" : "未读"}
+              title={item.read ? t("已读") : t("未读")}
             />
             <span className="truncate font-medium text-ink-700">{sourceName(item.source_id)}</span>
             {item.category && (
               <>
                 <span aria-hidden="true">·</span>
-                <span>{categoryLabelForKind(item.category, item.kind)}</span>
+                <span>{t(categoryLabelForKind(item.category, item.kind))}</span>
               </>
             )}
             <KindBadge kind={item.kind} category={item.category} />
@@ -448,7 +482,7 @@ export function ItemCard({
 
         <h3
           className={
-            "line-clamp-2 text-[14.5px] leading-snug font-semibold text-ink-950 transition-colors group-hover:text-accent " +
+            "line-clamp-2 text-[14px] leading-snug font-semibold text-ink-950 transition-colors group-hover:text-accent " +
             (aiRejected ? "line-through decoration-ink-300 text-ink-500" : "")
           }
         >
@@ -456,14 +490,14 @@ export function ItemCard({
         </h3>
 
         {item.summary && (
-          <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink-600">{item.summary}</p>
+          <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-ink-600">{item.summary}</p>
         )}
 
         {(matched.length > 0 || codes.length > 0 || item.ai?.reason || (item.dupCount ?? 1) > 1) && (
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]" onClick={(e) => e.stopPropagation()}>
             {matched.length > 0 && (
               <span className="rounded bg-code-subtle px-1.5 py-0.5 font-medium text-code">
-                命中：{matched.join("/")}
+                {t("命中：")}{matched.join("/")}
               </span>
             )}
             {codes.slice(0, 2).map((code) => (
@@ -477,10 +511,10 @@ export function ItemCard({
                   e.stopPropagation();
                   onToggleRelated?.(item.id);
                 }}
-                title="同一福利被多个源报道，点击看全部来源"
+                title={t("同一福利被多个源报道，点击看全部来源")}
                 className="rounded bg-brand-subtle px-1.5 py-0.5 font-medium text-accent hover:bg-ink-200/70"
               >
-                {expanded ? "收起" : `${item.dupCount} 个来源`}
+                {expanded ? t("收起") : t("{n} 个来源", { n: item.dupCount ?? 1 })}
               </button>
             )}
             {item.ai?.reason && (
@@ -492,7 +526,7 @@ export function ItemCard({
         )}
 
         <div
-          className="mt-auto flex items-center justify-between gap-2 border-t border-ink-100 pt-2.5 text-[11.5px] text-ink-400"
+          className="mt-auto flex items-center justify-between gap-2 border-t border-ink-100 pt-2.5 text-[12px] text-ink-400"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -512,7 +546,7 @@ export function ItemCard({
                 if (!item.read) onPatch(item.id, { read: true });
               }}
               className="rounded-md p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-950"
-              title="打开原文"
+              title={t("打开原文")}
             >
               <ArrowUpRight size={14} />
             </a>
@@ -523,7 +557,7 @@ export function ItemCard({
                 "rounded-md p-1.5 hover:bg-ink-100 " +
                 (item.starred ? "text-amber-500" : "text-ink-400 hover:text-ink-800")
               }
-              title={item.starred ? "取消收藏" : "收藏"}
+              title={item.starred ? t("取消收藏") : t("收藏")}
             >
               <Star size={14} fill={item.starred ? "currentColor" : "none"} />
             </button>
@@ -531,7 +565,7 @@ export function ItemCard({
               type="button"
               onClick={() => onQuickBlock(item)}
               className="rounded-md p-1.5 text-ink-400 hover:bg-alert-subtle hover:text-alert"
-              title="屏蔽"
+              title={t("屏蔽")}
             >
               <Ban size={14} />
             </button>
@@ -539,7 +573,7 @@ export function ItemCard({
               type="button"
               onClick={() => onPatch(item.id, { status: item.status === "ignored" ? "active" : "ignored" })}
               className="rounded-md p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-800"
-              title={item.status === "ignored" ? "恢复到列表" : "不想看，从列表移除（可在「已关闭」找回）"}
+              title={item.status === "ignored" ? t("恢复到列表") : t("不想看，从列表移除（可在「已关闭」找回）")}
             >
               <EyeOff size={14} />
             </button>
@@ -552,11 +586,11 @@ export function ItemCard({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-1 text-[11px] font-medium text-ink-500">
-              其他 {relatedItems.length} 条来源报道
+              {t("其他 {n} 条来源报道", { n: relatedItems.length })}
             </div>
             <ul className="space-y-1">
               {relatedItems.map((r) => (
-                <li key={r.id} className="flex items-center gap-2 text-[11.5px]">
+                <li key={r.id} className="flex items-center gap-2 text-[12px]">
                   <span className="w-20 shrink-0 truncate text-ink-500">{r.sourceName ?? r.source_id}</span>
                   <a
                     href={r.url}
@@ -649,39 +683,43 @@ export function ItemDetailDrawer({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="资源详情"
+        aria-label={t("资源详情")}
         tabIndex={-1}
-        className="drawer-enter drawer-shadow flex h-full w-full flex-col border-ink-200 bg-surface sm:max-w-[500px] sm:border-l"
+        className="drawer-enter drawer-shadow outline-none flex h-full w-full flex-col border-ink-200 bg-surface sm:max-w-[500px] sm:border-l"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶栏 */}
         <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 sm:px-5 sm:py-3.5">
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={!hasPrev}
-              onClick={onPrev}
-              className="rounded-lg border border-ink-200 p-1.5 text-ink-600 hover:bg-ink-100 disabled:opacity-30"
-              title="上一条 (↑)"
-            >
-              <ChevronUp size={14} />
-            </button>
-            <button
-              type="button"
-              disabled={!hasNext}
-              onClick={onNext}
-              className="rounded-lg border border-ink-200 p-1.5 text-ink-600 hover:bg-ink-100 disabled:opacity-30"
-              title="下一条 (↓)"
-            >
-              <ChevronDown size={14} />
-            </button>
+            <div className="flex items-center rounded-lg border border-ink-200 bg-surface">
+              <button
+                type="button"
+                disabled={!hasPrev}
+                onClick={onPrev}
+                className="-mr-px rounded-l-lg p-1.5 text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-900 disabled:text-ink-300 disabled:hover:bg-transparent"
+                title={t("上一条 (↑)")}
+                aria-label={t("上一条")}
+              >
+                <ChevronUp size={16} />
+              </button>
+              <button
+                type="button"
+                disabled={!hasNext}
+                onClick={onNext}
+                className="rounded-r-lg border-l border-ink-200 p-1.5 text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-900 disabled:text-ink-300 disabled:hover:bg-transparent"
+                title={t("下一条 (↓)")}
+                aria-label={t("下一条")}
+              >
+                <ChevronDown size={16} />
+              </button>
+            </div>
             <span className="ml-2 text-[12px] text-ink-500">{sourceName(item.source_id)}</span>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900"
-            title="关闭 (Esc)"
+            title={t("关闭 (Esc)")}
           >
             <X size={16} />
           </button>
@@ -689,20 +727,20 @@ export function ItemDetailDrawer({
 
         {/* 内容区 */}
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
-          {loading && <p role="status" className="text-[12px] text-ink-500">正在加载完整正文…</p>}
-          {error && <div role="alert" className="rounded-lg border border-alert-border bg-alert-subtle p-3 text-[12px] text-alert">{error} <button type="button" onClick={onRetry} className="ml-2 underline">重试</button></div>}
+          {loading && <p role="status" className="text-[12px] text-ink-500">{t("正在加载完整正文…")}</p>}
+          {error && <div role="alert" className="rounded-lg border border-alert-border bg-alert-subtle p-3 text-[12px] text-alert">{error} <button type="button" onClick={onRetry} className="ml-2 underline">{t("重试")}</button></div>}
           <CoverImage src={item.image_url} className="aspect-[16/9] w-full rounded-lg border border-ink-100" />
           <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
             <KindBadge kind={item.kind} category={item.category} />
             {item.category && (
               <span className="rounded bg-brand-subtle px-2 py-0.5 font-medium text-accent">
-                {categoryLabelForKind(item.category, item.kind)}
+                {t(categoryLabelForKind(item.category, item.kind))}
               </span>
             )}
             {item.kind !== "news" && item.kind !== "info" && <PriceBadge item={item} />}
             {item.kind !== "news" && item.kind !== "info" && <ObtainBadge obtain={item.obtain} />}
             <span className="rounded bg-ink-100 px-2 py-0.5 font-mono text-ink-700">
-              评分 {Math.round(item.score)}
+              {t("评分")} {Math.round(item.score)}
             </span>
             {exp && (
               <span className={"inline-flex items-center gap-1 " + (exp.urgent ? "font-medium text-amber-700" : "text-ink-500")}>
@@ -717,7 +755,7 @@ export function ItemDetailDrawer({
           {item.ai?.reason && (
             <div
               className={
-                "flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-[12.5px] " +
+                "flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-[12px] " +
                 (item.ai.keep === false
                   ? "border-ink-200 bg-ink-100/70 text-ink-600"
                   : "border-deal-border bg-deal-subtle/70 text-emerald-900")
@@ -725,18 +763,18 @@ export function ItemDetailDrawer({
             >
               <Sparkles size={14} className={item.ai.keep === false ? "text-ink-500" : "text-deal"} />
               <span>
-                <strong>{item.manualClassification ? "原 AI 说明：" : "AI 判定："}</strong>
+                <strong>{item.manualClassification ? t("原 AI 说明：") : t("AI 判定：")}</strong>
                 {!item.manualClassification && (item.ai.keep === false
-                  ? "低价值/水帖 · "
+                  ? t("低价值/水帖 · ")
                   : item.kind === "news"
-                    ? "重要新闻 · "
+                    ? t("重要新闻 · ")
                     : item.kind === "info"
-                      ? "行业资讯 · "
+                      ? t("行业资讯 · ")
                       : item.kind === "opensource"
-                        ? "开源项目 · "
+                        ? t("开源项目 · ")
                         : item.kind === "deal"
-                          ? "特价好价 · "
-                          : "可领取福利 · ")}
+                          ? t("特价好价 · ")
+                          : t("可领取福利 · "))}
                 {item.ai.reason}
               </span>
             </div>
@@ -744,7 +782,7 @@ export function ItemDetailDrawer({
 
           {codes.length > 0 && (
             <div className="rounded-lg border border-code-border bg-code-subtle/70 p-3.5">
-              <div className="mb-2 text-[12px] font-medium text-amber-900">提取到的兑换码（点击复制）</div>
+              <div className="mb-2 text-[12px] font-medium text-amber-900">{t("提取到的兑换码（点击复制）")}</div>
               <div className="flex flex-wrap gap-2">
                 {codes.map((code) => (
                   <CodeChip key={code} code={code} onCopy={onCopyCode} />
@@ -755,15 +793,15 @@ export function ItemDetailDrawer({
 
           {item.summary && (
             <div>
-              <div className="mb-1 text-[12px] font-medium text-ink-500">摘要</div>
-              <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink-700">{item.summary}</p>
+              <div className="mb-1 text-[12px] font-medium text-ink-500">{t("摘要")}</div>
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink-700">{item.summary}</p>
             </div>
           )}
 
           {item.content && item.content !== item.summary && (
             <div className="rounded-lg border border-ink-200 bg-surface-hover p-3.5">
-              <div className="mb-1.5 text-[12px] font-medium text-ink-500">正文快照（原帖被删也能留档）</div>
-              <p className="max-h-[260px] overflow-auto text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-700">
+              <div className="mb-1.5 text-[12px] font-medium text-ink-500">{t("正文快照（原帖被删也能留档）")}</div>
+              <p className="max-h-[260px] overflow-auto text-[13px] leading-relaxed whitespace-pre-wrap text-ink-700">
                 {item.content}
               </p>
             </div>
@@ -771,32 +809,32 @@ export function ItemDetailDrawer({
 
           <dl className="grid grid-cols-2 gap-3 rounded-lg border border-ink-200 bg-surface-hover p-3.5 text-[12px]">
             <div>
-              <dt className="text-ink-500">发布时间</dt>
+              <dt className="text-ink-500">{t("发布时间")}</dt>
               <dd className="mt-0.5 font-mono text-ink-900">
                 {item.published_at ? item.published_at.replace("T", " ").slice(0, 19) : "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-500">截止时间</dt>
+              <dt className="text-ink-500">{t("截止时间")}</dt>
               <dd className="mt-0.5 font-mono text-ink-900">
                 {item.expires_at ? item.expires_at.replace("T", " ").slice(0, 19) : "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-500">收录时间</dt>
+              <dt className="text-ink-500">{t("收录时间")}</dt>
               <dd className="mt-0.5 font-mono text-ink-900">{item.first_seen_at.replace("T", " ").slice(0, 19)}</dd>
             </div>
             <div>
-              <dt className="text-ink-500">来源 ID</dt>
+              <dt className="text-ink-500">{t("来源 ID")}</dt>
               <dd className="mt-0.5 truncate font-mono text-ink-700">{item.source_id}</dd>
             </div>
           </dl>
 
           {item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {item.tags.map((t) => (
-                <span key={t} className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] text-ink-600">
-                  #{t}
+              {item.tags.map((tag) => (
+                <span key={tag} className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] text-ink-600">
+                  #{tag}
                 </span>
               ))}
             </div>
@@ -814,7 +852,7 @@ export function ItemDetailDrawer({
             }}
             className="inline-flex min-w-full flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-hover sm:min-w-0 sm:py-2"
           >
-            {item.kind === "news" || item.kind === "info" ? "查看原文详情" : "打开原帖领取"} <ArrowUpRight size={14} />
+            {item.kind === "news" || item.kind === "info" ? t("查看原文详情") : t("打开原帖领取")} <ArrowUpRight size={14} />
           </a>
           <button
             type="button"
@@ -826,14 +864,14 @@ export function ItemDetailDrawer({
                 : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
             }
           >
-            <Star size={14} fill={item.starred ? "currentColor" : "none"} /> {item.starred ? "已收藏" : "收藏"}
+            <Star size={14} fill={item.starred ? "currentColor" : "none"} /> {item.starred ? t("已收藏") : t("收藏")}
           </button>
           <button
             type="button"
             onClick={() => onPatch(item.id, { read: !item.read })}
             className="inline-flex grow basis-[calc(50%-0.25rem)] items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-2.5 text-[13px] text-ink-700 hover:bg-ink-100 sm:grow-0 sm:basis-auto sm:py-2"
           >
-            <Eye size={14} /> {item.read ? "标未读" : "标已读"}
+            <Eye size={14} /> {item.read ? t("标未读") : t("标已读")}
           </button>
           <button
             type="button"
@@ -843,7 +881,7 @@ export function ItemDetailDrawer({
             }}
             className="inline-flex grow basis-[calc(50%-0.25rem)] items-center justify-center gap-1 rounded-lg border border-alert-border bg-alert-subtle px-3 py-2.5 text-[13px] text-alert hover:bg-red-100/80 sm:grow-0 sm:basis-auto sm:py-2"
           >
-            <ShieldAlert size={14} /> 屏蔽
+            <ShieldAlert size={14} /> {t("屏蔽")}
           </button>
           <button
             type="button"
@@ -852,9 +890,9 @@ export function ItemDetailDrawer({
               onClose();
             }}
             className="inline-flex grow basis-[calc(50%-0.25rem)] items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-2.5 text-[13px] text-ink-700 hover:bg-ink-100 sm:grow-0 sm:basis-auto sm:py-2"
-            title="单纯不想看，不进屏蔽词"
+            title={t("单纯不想看，不进屏蔽词")}
           >
-            <EyeOff size={14} /> 关闭
+            <EyeOff size={14} /> {t("关闭")}
           </button>
         </div>
       </aside>
@@ -891,21 +929,21 @@ export function QuickBlockModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[14.5px] font-semibold text-ink-950">
-            <ShieldAlert size={16} className="text-alert" /> 屏蔽处理
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
+            <ShieldAlert size={16} className="text-alert" /> {t("屏蔽处理")}
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-ink-500 hover:bg-ink-100">
             <X size={15} />
           </button>
         </div>
 
-        <p className="mb-3 line-clamp-2 rounded-lg border border-ink-200 bg-surface-hover p-2.5 text-[12.5px] text-ink-700">
+        <p className="mb-3 line-clamp-2 rounded-lg border border-ink-200 bg-surface-hover p-2.5 text-[13px] text-ink-700">
           {item.title}
         </p>
 
         <div className="space-y-3">
           <div>
-            <div className="mb-1.5 text-[12px] text-ink-500">点选标题关键词快速加入屏蔽：</div>
+            <div className="mb-1.5 text-[12px] text-ink-500">{t("点选标题关键词快速加入屏蔽：")}</div>
             <div className="flex flex-wrap gap-1.5">
               {candidates.map((c) => (
                 <button
@@ -927,20 +965,20 @@ export function QuickBlockModal({
 
           <div>
             <label className="mb-1 block text-[12px] text-ink-500">
-              屏蔽关键词（命中该词的新老条目都会隐藏，且不推 Telegram）
+              {t("屏蔽关键词（命中该词的新老条目都会隐藏，且不推 Telegram）")}
             </label>
             <input
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
-              placeholder="输入要屏蔽的关键词…"
+              placeholder={t("输入要屏蔽的关键词…")}
               className="w-full rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[13px] text-ink-950 outline-none focus:border-brand"
             />
           </div>
 
           <div className="flex flex-col gap-2 text-[12px] sm:flex-row">
             {[
-              { key: "all", label: "全部来源屏蔽" },
-              { key: item.source_id, label: "仅对「" + sourceName(item.source_id) + "」生效" },
+              { key: "all", label: t("全部来源屏蔽") },
+              { key: item.source_id, label: t("仅对「{name}」生效", { name: sourceName(item.source_id) }) },
             ].map((o) => (
               <button
                 key={o.key}
@@ -965,9 +1003,9 @@ export function QuickBlockModal({
                 onIgnoreOne(item.id);
                 onClose();
               }}
-              className="rounded-lg border border-ink-200 px-3 py-2 text-[12.5px] text-ink-600 hover:bg-ink-100"
+              className="rounded-lg border border-ink-200 px-3 py-2 text-[12px] text-ink-600 hover:bg-ink-100"
             >
-              仅隐藏这一条
+              {t("仅隐藏这一条")}
             </button>
             <button
               type="button"
@@ -981,9 +1019,9 @@ export function QuickBlockModal({
                   setBusy(false);
                 }
               }}
-              className="rounded-lg bg-alert px-4 py-2 text-[12.5px] font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+              className="rounded-lg bg-alert px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-40"
             >
-              加入屏蔽规则
+              {t("加入屏蔽规则")}
             </button>
           </div>
         </div>

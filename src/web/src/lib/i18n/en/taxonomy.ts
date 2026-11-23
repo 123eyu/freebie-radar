@@ -1,0 +1,121 @@
+/**
+ * 英文词条：shared/taxonomy.ts 的分类/形态/获取方式/频道文案。
+ * key 必须与源码里的中文原文逐字一致（含标点、空格）；带变量时用 {name} 占位。
+ *
+ * taxonomy 是服务端与前端共用的同一份定义，中文是唯一真源，这里只补英文映射；
+ * 新增分类时同时补一条即可，漏补只会回落中文，不会报错。
+ */
+export const EN_TAXONOMY: Record<string, string> = {
+  /* ---------------- 分类（小类） ---------------- */
+  "AI 额度": "AI credits",
+  云服务: "Cloud services",
+  "VPS/主机": "VPS / servers",
+  "域名/建站": "Domains & hosting",
+  开源软件: "Open source",
+  软件授权: "Software licenses",
+  "开发/工程": "Dev & engineering",
+  "设计/素材": "Design assets",
+  "安全/网络": "Security & network",
+  "硬件/数码": "Hardware & gadgets",
+  影音会员: "Media memberships",
+  游戏: "Games",
+  "拼车/合租": "Group buys",
+  "二手/交易": "Buy & sell",
+  时政要闻: "China headlines",
+  国际要闻: "World headlines",
+  "经济/商业": "Business & economy",
+  "股票/市场": "Markets",
+  科技动态: "Tech news",
+  综合资讯: "General news",
+  "实物/优惠": "Physical deals",
+  "抽奖/抽选": "Lotteries",
+  实物福利: "Physical freebies",
+  邀请码: "Invite codes",
+  "教育/考试": "Education & exams",
+  网盘资源: "Cloud drive files",
+  "网课/教程": "Courses & tutorials",
+  其它: "Other",
+
+  /* ---------------- 分类说明 ---------------- */
+  "大模型额度 / Token / 算力 / API 试用": "LLM credits, tokens, compute and API trials",
+  "云主机外的云服务：对象存储 / CDN / 数据库 / 代理流量": "Cloud services beyond VMs: object storage, CDN, databases, proxy traffic",
+  "独立服务器 / VPS 小鸡 / 现车 / 家宽": "Dedicated servers, VPS boxes, in-stock restocks, home broadband",
+  "域名 / SSL / DNS / 虚拟主机 / 建站": "Domains, SSL, DNS, shared hosting, site building",
+  "GitHub、GitLab 仓库与可自托管项目": "GitHub / GitLab repos and self-hostable projects",
+  "正版授权 / 激活码 / 限免与买断软件": "Genuine licenses, activation keys, giveaways and lifetime deals",
+  "开发框架 / CLI / SDK / 插件 / 部署教程": "Frameworks, CLIs, SDKs, plugins and deployment guides",
+  "字体 / 图标 / UI 模板 / 素材 / 预设": "Fonts, icons, UI kits, assets and presets",
+  "漏洞 / VPN / 隐私与安全工具": "Vulnerabilities, VPNs, privacy and security tooling",
+  "硬件 / 路由器 / NAS / 数码外设": "Hardware, routers, NAS and peripherals",
+  "影音会员 / 剧集 / 音乐 / 动漫": "Streaming memberships, shows, music and anime",
+  "喜加一 / 史低 / 游戏本体与礼包": "Free game giveaways, historical lows, base games and bundles",
+  "合规拼车 / 合租 / 家庭组车位": "Compliant group buys, shared subscriptions and family plan slots",
+  "明盘出鸡 / 账号与设备转让": "Listed server sales, account and device transfers",
+  "国内时政 / 政策法规 / 民生要闻": "Domestic politics, policy and livelihood news",
+  "国际局势 / 外交 / 海外要闻": "Geopolitics, diplomacy and overseas headlines",
+  "宏观经济 / 财报 / 融资并购 / 货币": "Macro economy, earnings, M&A and currencies",
+  "A股 / 港股 / 美股 / ETF / IPO": "A-shares, HK and US equities, ETFs, IPOs",
+  "科技前沿 / 芯片 / 互联网 / 航天新能源": "Frontier tech, chips, internet, space and new energy",
+  "综合快讯与其它资讯": "General briefs and other news",
+  "生活羊毛 / 优惠券 / 话费红包 / 实物": "Everyday freebies, coupons, top-up bonuses and physical goods",
+  "免费参与但结果不确定的抽奖 / Sweepstakes / 抽选活动（不计入确定福利）":
+    "Free-to-enter but uncertain draws, sweepstakes and lotteries (not counted as guaranteed freebies)",
+  "实物福利：线下到店领取（门店/快闪/展会）或线上免费领实物与生活福利（食品/日用品/书/话费/红包/会员）；纯资讯、抽检通报、租房组队不算":
+    "Physical freebies: in-store pickup (shops, pop-ups, expos) or free physical/everyday items online (food, daily goods, books, top-ups, red packets, memberships); pure news, recall notices and room-mate hunts excluded",
+  "邀请码 / 开放注册 / 内测资格": "Invite codes, open registration and beta access",
+  "题库 / 真题 / 教材 / 电子书 / 备考": "Question banks, past papers, textbooks, ebooks and exam prep",
+  "夸克 / 阿里云盘 / 百度网盘等分享与转存": "Quark, Aliyun Drive, Baidu Pan shares and transfers",
+  "公开课 / 训练营 / 视频课程 / 课件讲义": "Open classes, bootcamps, video courses and slides",
+  兜底分类: "Fallback category",
+
+  /* ---------------- 分类分组 ---------------- */
+  福利与交易: "Freebies & trading",
+  技术与工具: "Tech & tooling",
+  内容与学习: "Content & learning",
+  新闻与资讯: "News & briefs",
+
+  /* ---------------- 资讯栏目名 ---------------- */
+  科技前沿: "Frontier tech",
+  "AI 前沿": "AI frontier",
+  开发工程: "Engineering",
+  开源生态: "Open source",
+  "安全/漏洞": "Security & CVEs",
+  云与架构: "Cloud & architecture",
+  "主机/网络": "Servers & network",
+  硬件数码: "Hardware",
+  "软件/应用": "Software & apps",
+  游戏动态: "Game news",
+  设计体验: "Design & UX",
+  其它资讯: "Other news",
+
+  /* ---------------- 频道 ---------------- */
+  真福利: "True freebies",
+  全部白嫖: "All free stuff",
+  重要新闻: "Headlines",
+  开源: "Open source",
+  好价: "Deals",
+  行业资讯: "Industry news",
+  "网盘/网课": "Drive & courses",
+
+  /* ---------------- 内容形态 ---------------- */
+  白嫖福利: "Freebie",
+  特价好价: "Deal",
+  开源项目: "Open source",
+  噪音水帖: "Noise",
+
+  /* ---------------- 获取方式 ---------------- */
+  直接白嫖: "Instant free",
+  有条件: "Conditional",
+  抽奖: "Lottery",
+  "试用/限时": "Trial",
+  "推广/广告": "Promo",
+  需付费: "Paid",
+
+  /* ---------------- 获取方式说明 ---------------- */
+  "点开就能领，不需要发帖、邀请、抽签": "Claim directly — no posting, invites or draws required",
+  "要回帖、盖楼、转发、关注、邀请或实名绑卡才能拿": "Requires replying, bumping, sharing, following, inviting or KYC/linking a card",
+  "抽名额/开奖，不一定轮到你": "Draw or raffle based — you may not win",
+  "免费试用 N 天或首月免费，到期要付费": "Free trial of N days or first month free, paid afterwards",
+  "本质是商家推广自家付费服务，福利是引流钩子": "Essentially an ad for a paid service; the freebie is the hook",
+  "要实付钱才拿得到": "Requires actual payment",
+};

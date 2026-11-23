@@ -33,11 +33,21 @@ import {
   Globe2,
   Github,
   BookOpen,
+  MoreHorizontal,
   LogOut,
 } from "lucide-react";
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { AdminGate } from "./components/AdminGate.tsx";
+import { LangSwitch } from "./components/LangSwitch.tsx";
+import { WorkspaceScopeBar } from "./components/WorkspaceScope.tsx";
+import { FeedViewSwitch } from "./components/FeedViewSwitch.tsx";
+import { FeedToolbar } from "./components/FeedToolbar.tsx";
+import { ActiveFilters, type FilterKey } from "./components/ActiveFilters.tsx";
+import { SourcePanel } from "./components/SourcePanel.tsx";
 import { ADMIN_AUTH_EVENT } from "./lib/auth.ts";
+import { t } from "./lib/i18n.ts";
+import { DEFAULT_FEED_STATE, buildFeedQuery, buildStatsQuery, countAdditionalFilters, feedPolicyLabels, readFeedState, writeFeedSearch, type FeedState } from "./lib/feedQuery.ts";
+import { configurationBase, configurationScope, readTab, readWorkspaceScope, tabUrl, type Tab, type WorkspaceScope } from "./lib/navigation.ts";
 import {
   guestAddBlock,
   guestBatch,
@@ -81,36 +91,35 @@ import type {
 } from "./types.ts";
 
 const SOURCE_LABEL: Record<string, string> = {
-  "linuxdo-welfare": "LINUX DO · 福利羊毛",
-  "linuxdo-resource": "LINUX DO · 资源荟萃",
-  "v2ex-free": "V2EX · 免费赠送",
+  "linuxdo-welfare": t("LINUX DO · 福利羊毛"),
+  "linuxdo-resource": t("LINUX DO · 资源荟萃"),
+  "v2ex-free": t("V2EX · 免费赠送"),
   "github-free-for-dev": "GitHub · free-for-dev",
-  "rss-fuliba": "福利吧",
-  "rss-52pojie": "吾爱破解",
-  "rss-smzdm": "什么值得买",
-  "zhihu-search": "知乎 · 福利搜索",
-  "xhs-search": "小红书 · 福利搜索",
-  "xiaoheihe-search": "小黑盒 · 福利搜索",
-  "tg-channels": "Telegram 频道",
-  gamerpower: "GamerPower · 免费游戏",
-  "epic-free": "Epic Games · 喜加一",
+  "rss-fuliba": t("福利吧"),
+  "rss-52pojie": t("吾爱破解"),
+  "rss-smzdm": t("什么值得买"),
+  "zhihu-search": t("知乎 · 福利搜索"),
+  "xhs-search": t("小红书 · 福利搜索"),
+  "xiaoheihe-search": t("小黑盒 · 福利搜索"),
+  "tg-channels": t("Telegram 频道"),
+  gamerpower: t("GamerPower · 免费游戏"),
+  "epic-free": t("Epic Games · 喜加一"),
   "rss-reddit-freegames": "Reddit · FreeGameFindings",
   "rss-reddit-efreebies": "Reddit · eFreebies",
   "rss-reddit-gamedeals": "Reddit · GameDeals",
   "rss-slickdeals": "Slickdeals",
   "rss-heyitsfree": "HeyItsFree",
-  "rss-keylol": "其乐 Keylol",
-  "openrouter-free": "OpenRouter · 新免费大模型",
-  "gamerpower-loot": "GamerPower · 免费礼包与 Key",
-  "rss-itch-free": "itch.io · 100% 限免游戏",
-  "rss-freesteamkeys": "FreeSteamKeys · Steam 限免",
-  "rss-ghxi": "果核剥壳 · 免费软件",
+  "rss-keylol": t("其乐 Keylol"),
+  "openrouter-free": t("OpenRouter · 新免费大模型"),
+  "gamerpower-loot": t("GamerPower · 免费礼包与 Key"),
+  "rss-itch-free": t("itch.io · 100% 限免游戏"),
+  "rss-freesteamkeys": t("FreeSteamKeys · Steam 限免"),
+  "rss-ghxi": t("果核剥壳 · 免费软件"),
 };
 
 let SOURCE_NAMES: Record<string, string> = { ...SOURCE_LABEL };
 const sourceName = (id: string) => SOURCE_NAMES[id] ?? SOURCE_LABEL[id] ?? id;
 
-type Tab = "feed" | "hot" | "digest" | "me" | "rules" | "push" | "ai" | "ops";
 
 function useApi<T>(url: string | null, scope = ""): { data: T | null; loading: boolean; error: string | null; reload: () => void; update: (updater: (current: T | null) => T | null) => void } {
   const [data, setData] = useState<T | null>(null);
@@ -155,13 +164,13 @@ function useApi<T>(url: string | null, scope = ""): { data: T | null; loading: b
     return () => ac.abort();
   }, [url, nonce, key]);
 
-  return { data: url && loadedKey === key ? data : null, loading: Boolean(url) && (loading || loadedKey !== key), error, reload, update };
+  return { data: url && loadedKey === key ? data : null, loading: Boolean(url) && (loading || loadedKey !== key), error: url && loadedKey === key ? error : null, reload, update };
 }
 
 function Toast({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12.5px] font-medium text-white shadow-lg">
+    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-white shadow-lg">
       <Bell size={14} className="text-ink-300" />
       {message}
     </div>
@@ -171,34 +180,22 @@ function Toast({ message }: { message: string | null }) {
 type Preset = { key: string; label: string; icon: typeof Sparkles };
 
 const PRIMARY_CHANNELS: Preset[] = [
-  { key: "verified", label: "真福利", icon: Sparkles },
-  { key: "offline", label: "实物福利", icon: MapPin },
-  { key: "news", label: "重要新闻", icon: Newspaper },
-  { key: "opensource", label: "开源项目", icon: Code },
-  { key: "deal", label: "黑五/好价", icon: Flame },
-  { key: "info", label: "行业资讯", icon: TrendingUp },
-  { key: "pan", label: "网盘/网课", icon: FolderOpen },
+  { key: "verified", label: t("真福利"), icon: Sparkles },
+  { key: "offline", label: t("实物福利"), icon: MapPin },
+  { key: "news", label: t("重要新闻"), icon: Newspaper },
+  { key: "opensource", label: t("开源项目"), icon: Code },
+  { key: "deal", label: t("黑五/好价"), icon: Flame },
+  { key: "info", label: t("行业资讯"), icon: TrendingUp },
+  { key: "pan", label: t("网盘/网课"), icon: FolderOpen },
 ];
 
-/**
- * 网盘/网课频道在公开演示站停用后，用这几行占位文案示意频道长什么样。
- * 全部是虚构条目，不含任何真实资源标题或链接——真实数据在后端就被过滤掉了。
- */
-const PAN_DEMO_ROWS = [
-  { title: "某编程实战课程合集 · 全 42 讲", meta: "TG · 网盘资源收藏 · 网盘资源", score: "82" },
-  { title: "某设计素材包 · 字体/笔刷/模板", meta: "LINUX DO · 资源荟萃 · 网盘资源", score: "76" },
-  { title: "某电子书套装 · PDF/EPUB 双格式", meta: "TG · 综合资源 · 网盘资源", score: "71" },
-  { title: "某办公软件工具集 · 免安装版", meta: "TG · 网盘资源收藏 · 网盘资源", score: "68" },
-  { title: "某考试真题汇总 · 含答案解析", meta: "LINUX DO · 资源荟萃 · 网课教程", score: "64" },
-  { title: "某视频剪辑教程 · 素材+工程文件", meta: "TG · 综合资源 · 网课教程", score: "59" },
-];
 
 const SECONDARY_VIEWS: Preset[] = [
-  { key: "codes", label: "含兑换码", icon: Zap },
-  { key: "urgent", label: "今日截止", icon: Bell },
-  { key: "starred", label: "我的收藏", icon: Check },
-  { key: "all", label: "全部收录", icon: AlignJustify },
-  { key: "hidden", label: "已关闭", icon: EyeOff },
+  { key: "codes", label: t("含兑换码"), icon: Zap },
+  { key: "urgent", label: t("今日截止"), icon: Bell },
+  { key: "starred", label: t("我的收藏"), icon: Check },
+  { key: "all", label: t("全部收录"), icon: AlignJustify },
+  { key: "hidden", label: t("已关闭"), icon: EyeOff },
 ];
 
 const PRESETS: Preset[] = [...PRIMARY_CHANNELS, ...SECONDARY_VIEWS];
@@ -209,20 +206,19 @@ const REPO_URL = "https://github.com/ZiChuanLan/freebie-radar";
 // 移动端顶栏图标按钮统一尺寸，5 个并排也不挤
 const ICON_BTN =
   "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-200 bg-surface text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950";
-// 公开区：任何人不登录就能看。其余全部归管理区。
-const PUBLIC_TABS = new Set<Tab>(["feed", "digest"]);
-const ADMIN_TABS = new Set<Tab>(["rules", "push", "ai", "ops"]);
+const ADMIN_TABS = new Set<Tab>(["rules", "push", "ai", "ops", "site"]);
+const ADMIN_ENTRIES = [
+  { key: "rules" as const, label: t("订阅与屏蔽"), desc: t("关键词订阅、屏蔽词防火墙"), icon: ShieldBan },
+  { key: "push" as const, label: t("推送规则"), desc: t("推送时机、阈值、格式与免打扰"), icon: Zap },
+  { key: "ai" as const, label: t("AI 引擎"), desc: t("规则初筛、审核模型、提示词与补审"), icon: Bot },
+  { key: "ops" as const, label: t("数据源运维"), desc: t("采集开关、间隔、数据清理"), icon: Wrench },
+  { key: "site" as const, label: t("站点设置"), desc: t("访问权限、用户、公告与版本"), icon: Globe2 },
+];
 
 export function App() {
-  const initialTab = (): Tab => {
-    if (typeof location === "undefined") return "feed";
-    const h = location.hash.replace("#", "");
-    return h === "hot" || h === "digest" || h === "me" || h === "rules" || h === "push" || h === "ai" || h === "ops"
-      ? (h as Tab)
-      : "feed";
-  };
-
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(() => readTab(typeof location === "undefined" ? "" : location.hash));
+  const [initialFeed] = useState(() => readFeedState(typeof location === "undefined" ? "" : location.search));
+  const [workspaceScope, setWorkspaceScope] = useState<WorkspaceScope>(() => readWorkspaceScope(typeof location === "undefined" ? "" : location.search));
   const [detail, setDetail] = useState<Item | null>(null);
   const [quickBlock, setQuickBlock] = useState<Item | null>(null);
   // 合并组展开：记录展开的条目 id 与其同福利的其他来源
@@ -231,23 +227,28 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
+  const channelRef = useRef<HTMLDivElement | null>(null);
+  const [channelScroll, setChannelScroll] = useState({ left: false, right: false });
+  const syncChannelScroll = useCallback(() => {
+    const element = channelRef.current;
+    if (!element) return;
+    const left = element.scrollLeft > 2, right = element.scrollLeft + element.clientWidth < element.scrollWidth - 2;
+    setChannelScroll((current) => current.left === left && current.right === right ? current : { left, right });
+  }, []);
   // 展开合并组时按需拉取其他来源报道（同一 title_key 的兄弟条目）
   useEffect(() => {
     const id = relatedOpen;
     if (!id || relatedMap[id]) return;
     let alive = true;
     fetch(`/api/items/${id}/related`, { headers: { accept: "application/json" } })
-      .then((r) => { if (!r.ok) throw new Error("关联来源加载失败"); return r.json(); })
+      .then((r) => { if (!r.ok) throw new Error(t("关联来源加载失败")); return r.json(); })
       .then((d: { items?: (Item & { sourceName?: string })[] }) => {
         if (alive && Array.isArray(d.items)) setRelatedMap((m) => ({ ...m, [id]: d.items! }));
       })
       .catch(() => {
-        if (alive) { setRelatedOpen(null); setToast("关联来源加载失败，请稍后重试"); }
+        if (alive) { setRelatedOpen(null); setToast(t("关联来源加载失败，请稍后重试")); }
       });
     return () => { alive = false; };
-    return () => {
-      alive = false;
-    };
   }, [relatedOpen, relatedMap]);
   // 服务端是否启用管理密码（决定是否拦截管理区）
   const [authChecked, setAuthChecked] = useState(false);
@@ -290,6 +291,7 @@ export function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authHash, setAuthHash] = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [firstVisitNotice, setFirstVisitNotice] = useState(false);
   const [rssOpen, setRssOpen] = useState(false);
   const [guest, setGuest] = useState<GuestState>(() => readGuest());
 
@@ -297,14 +299,14 @@ export function App() {
   const guestMode = isPublicSite && !me;
   const syncGuest = useCallback(() => setGuest(readGuest()), []);
 
-  // 入站公告：按 version 记一次，站长改内容后自增版本号即可重新弹出
+  // 入站公告按版本提示，不阻断首次浏览；完整说明由用户主动打开。
   useEffect(() => {
     if (!bootData?.onboarding?.enabled) return;
     const key = "radar_onboarding_seen_v" + bootData.onboarding.version;
     try {
-      if (!localStorage.getItem(key)) setWelcomeOpen(true);
+      if (!localStorage.getItem(key)) setFirstVisitNotice(true);
     } catch {
-      /* 隐私模式下每次都会弹，可以接受 */
+      setFirstVisitNotice(true);
     }
   }, [bootData?.onboarding?.enabled, bootData?.onboarding?.version]);
 
@@ -320,6 +322,7 @@ export function App() {
 
   const closeWelcome = useCallback(() => {
     setWelcomeOpen(false);
+    setFirstVisitNotice(false);
     if (bootData?.onboarding) {
       try {
         localStorage.setItem("radar_onboarding_seen_v" + bootData.onboarding.version, "1");
@@ -332,27 +335,27 @@ export function App() {
   const logout = useCallback(async () => {
     try {
       const response = await fetch("/api/auth/logout", { method: "POST" });
-      if (!response.ok) { setToast("退出失败，请重试"); return; }
+      if (!response.ok) { setToast(t("退出失败，请重试")); return; }
       setTab("feed");
       setDetail(null);
       boot.reload();
-    } catch { setToast("网络异常，退出未完成，请重试"); }
+    } catch { setToast(t("网络异常，退出未完成，请重试")); }
   }, [boot]);
 
-  const [search, setSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [source, setSource] = useState("");
-  const [categories, setCategories] = useState<string[]>([]);
+  const [search, setSearch] = useState(initialFeed.search);
+  const [debounced, setDebounced] = useState(initialFeed.search.trim());
+  const [source, setSource] = useState(initialFeed.source);
+  const [categories, setCategories] = useState<string[]>(initialFeed.categories);
   const [catOpen, setCatOpen] = useState(false);
   const catRef = useRef<HTMLDivElement | null>(null);
-  const [lang, setLang] = useState<"all" | "zh" | "en">("all");
-  const [sort, setSort] = useState("newest");
-  const [range, setRange] = useState("auto");
-  const [priceCap, setPriceCap] = useState("auto");
-  const [minScore, setMinScore] = useState("all");
-  const [obtain, setObtain] = useState("auto");
-  const [kindFilter, setKindFilter] = useState("auto");
-  const [preset, setPreset] = useState("verified");
+  const [lang, setLang] = useState<"all" | "zh" | "en">(initialFeed.lang);
+  const [sort, setSort] = useState(initialFeed.sort);
+  const [range, setRange] = useState(initialFeed.range);
+  const [priceCap, setPriceCap] = useState(initialFeed.priceCap);
+  const [minScore, setMinScore] = useState(initialFeed.minScore);
+  const [obtain, setObtain] = useState(initialFeed.obtain);
+  const [kindFilter, setKindFilter] = useState(initialFeed.kindFilter);
+  const [preset, setPreset] = useState(initialFeed.preset);
   const [viewMode, setViewMode] = useState<"compact" | "grid2" | "grid3">(() => {
     if (typeof localStorage === "undefined") return "compact";
     const saved = localStorage.getItem("radar_view_mode");
@@ -378,7 +381,7 @@ export function App() {
   }, []);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [showAllSources, setShowAllSources] = useState(false);
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(initialFeed.unreadOnly);
   /** 移动端：顶部筛选面板（含快捷视图、数据源与筛选条）展开态 */
   const [mobileFilterBar, setMobileFilterBar] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState(false);
@@ -402,27 +405,16 @@ export function App() {
   }, []);
 
   const copyCode = useCallback(
-    (code: string) => {
-      void navigator.clipboard?.writeText(code);
-      notify("已复制兑换码 " + code);
+    async (code: string) => {
+      try {
+        if (!navigator.clipboard) throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(code);
+        notify(t("已复制兑换码 {code}", { code }));
+      } catch { notify(t("复制失败，请手动选择兑换码复制")); }
     },
     [notify],
   );
 
-  useEffect(() => {
-    if (typeof location === "undefined") return;
-    if (tab === "feed") history.replaceState(null, "", location.pathname + location.search);
-    else history.replaceState(null, "", "#" + tab);
-  }, [tab]);
-
-  useEffect(() => {
-    const onHash = () => {
-      const h = location.hash.replace("#", "");
-      setTab(h === "hot" || h === "digest" || h === "me" || h === "rules" || h === "push" || h === "ai" || h === "ops" ? (h as Tab) : "feed");
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
 
   useEffect(() => {
     if (typeof location === "undefined") return;
@@ -433,7 +425,7 @@ export function App() {
     const nextSearch = sp.toString();
     history.replaceState(null, "", location.pathname + (nextSearch ? "?" + nextSearch : "") + "#ops");
     setTab("ops");
-    notify(`已完成 ${site} 登录并回传公开福利（Cookie 仅留本机）`);
+    notify(t("已完成 {site} 登录并回传公开福利（Cookie 仅留本机）", { site }));
   }, [notify]);
 
   const [, bumpNames] = useState(0);
@@ -450,8 +442,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(search.trim()), 300);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setDebounced(search.trim()), 300);
+    return () => window.clearTimeout(timer);
   }, [search]);
 
   useEffect(() => {
@@ -459,88 +451,25 @@ export function App() {
     const onDoc = (e: MouseEvent) => {
       if (catRef.current && !catRef.current.contains(e.target as Node)) setCatOpen(false);
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setCatOpen(false); catRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    };
+    document.addEventListener("mousedown", onDoc); document.addEventListener("keydown", onEscape);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEscape); };
   }, [catOpen]);
 
-  const query = useMemo(() => {
-    const p = new URLSearchParams();
-    p.set("preset", preset);
-    if (debounced) p.set("search", debounced);
-    if (source) p.set("source", source);
-    if (categories.length) p.set("category", categories.join(","));
-    if (lang !== "all") p.set("lang", lang);
-    if (sort) p.set("sort", sort);
-
-    if (preset === "verified") {
-      p.set("unexpired", "1");
-      p.set("aiOnly", "1");
-      if (kindFilter === "auto") p.set("kind", "freebie");
-      if (obtain === "auto") p.set("obtain", "free,conditional");
-      if (range === "auto") p.set("maxAgeDays", "7");
-      // 网盘资源与网课教程属于长期资料型内容，单独成频道，不混进「真福利」
-      const excludedCats = channelExcluded("verified");
-      if (categories.length === 0 && excludedCats.length) p.set("excludeCategory", excludedCats.join(","));
-    } else if (preset === "offline") {
-      // 实物福利独立频道：线下/门店/现场领取，不混进真福利
-      p.set("unexpired", "1");
-      p.set("hideRejected", "1");
-      if (categories.length === 0) p.set("category", "offline");
-    } else if (preset === "pan") {
-      p.set("unexpired", "1");
-      if (kindFilter === "auto") p.set("kind", "freebie,deal,info,opensource,news");
-      if (categories.length === 0) p.set("category", "pan,course");
-      p.set("hideRejected", "1");
-    } else if (preset === "deal") {
-      p.set("unexpired", "1");
-      if (kindFilter === "auto") p.set("kind", "deal");
-      p.set("hideRejected", "1");
-    } else if (preset === "opensource") {
-      if (kindFilter === "auto") p.set("kind", "opensource");
-      p.set("hideRejected", "1");
-    } else if (preset === "news") {
-      if (kindFilter === "auto") p.set("kind", "news");
-      p.set("hideRejected", "1");
-    } else if (preset === "info") {
-      if (kindFilter === "auto") p.set("kind", "info");
-      p.set("hideRejected", "1");
-    } else if (preset === "codes") {
-      p.set("unexpired", "1");
-      p.set("hasCodes", "1");
-    } else if (preset === "urgent") {
-      p.set("expiring", "1");
-    } else if (preset === "starred") {
-      p.set("starred", "1");
-    } else if (preset === "hidden") {
-      p.set("status", "ignored");
-    }
-    if (preset === "all") p.set("hideRejected", "1");
-
-    if (kindFilter === "all") p.set("kind", "");
-    else if (kindFilter !== "auto") p.set("kind", kindFilter);
-
-    if (priceCap === "free") p.set("freeOnly", "1");
-    else if (priceCap !== "auto" && priceCap !== "all") p.set("maxPrice", priceCap);
-
-    if (obtain === "all") p.set("obtain", "");
-    else if (obtain !== "auto" && obtain) p.set("obtain", obtain);
-    if (minScore !== "all") p.set("minScore", minScore);
-    if (unreadOnly) p.set("unread", "1");
-
-    const DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30 };
-    const days = DAYS[range];
-    if (days) p.set("since", new Date(Date.now() - days * 86_400_000).toISOString());
-    p.set("limit", "100");
-    return p.toString();
-  }, [debounced, source, categories, lang, sort, range, priceCap, preset, kindFilter, obtain, minScore, unreadOnly]);
-
-  const statsQuery = useMemo(() => {
-    const p = new URLSearchParams(query);
-    p.delete("category");
-    p.delete("sort");
-    p.delete("limit");
-    return p.toString();
-  }, [query]);
+  const feedState = useMemo<FeedState>(() => ({
+    preset, search: debounced, source, categories, lang, sort, range, priceCap, minScore, obtain, kindFilter, unreadOnly,
+  }), [preset, debounced, source, categories, lang, sort, range, priceCap, minScore, obtain, kindFilter, unreadOnly]);
+  const query = useMemo(() => buildFeedQuery(feedState), [feedState]);
+  const statsQuery = useMemo(() => buildStatsQuery(query), [query]);
+  const policyLabels = useMemo(() => feedPolicyLabels(query), [query]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(syncChannelScroll);
+    window.addEventListener("resize", syncChannelScroll);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", syncChannelScroll); };
+  }, [tab, preset, syncChannelScroll]);
 
   const switchPreset = useCallback((nextKey: string) => {
     setPreset(nextKey);
@@ -553,20 +482,7 @@ export function App() {
     });
   }, []);
 
-  const activeFilterCount =
-    [
-      source,
-      categories.length > 0,
-      lang !== "all",
-      debounced,
-      minScore !== "all",
-      unreadOnly,
-      kindFilter !== "auto",
-      priceCap !== "auto",
-      obtain !== "auto",
-      range !== "auto",
-      sort !== "newest",
-    ].filter(Boolean).length;
+  const activeFilterCount = countAdditionalFilters(feedState);
 
   const resetFilters = useCallback(() => {
     setSource("");
@@ -582,21 +498,35 @@ export function App() {
     setRange("auto");
     setSort("newest");
   }, []);
+  const removeFilter = useCallback((key: FilterKey, value?: string) => {
+    if (key === "search") { setSearch(""); setDebounced(""); }
+    else if (key === "category") { if (value) setCategories((cur) => cur.filter((c) => c !== value)); }
+    else if (key === "source") setSource("");
+    else if (key === "lang") setLang("all");
+    else if (key === "price") setPriceCap("auto");
+    else if (key === "obtain") setObtain("auto");
+    else if (key === "range") setRange("auto");
+    else if (key === "score") setMinScore("all");
+    else if (key === "kind") setKindFilter("auto");
+    else if (key === "unread") setUnreadOnly(false);
+  }, []);
   const identityScope = `${me?.id ?? "guest"}:${adminReady}`;
   const stats = useApi<Stats>(statsQuery ? `/api/stats?${statsQuery}` : "/api/stats", identityScope);
   const guestIds = guestMode && (preset === "starred" || preset === "hidden")
     ? `&ids=${(preset === "starred" ? guest.starred : guest.hidden).slice(0, 100).join(",") || "0"}` : "";
   const items = useApi<{ total: number; items: Item[] }>(`/api/items?${query}${guestIds}`, identityScope);
-  // 公开站登录用户读写的是自己的订阅与屏蔽词；自建站与管理区沿用全局接口
-  const rulesBase = adminReady ? "/api" : isPublicSite && me ? "/api/me" : null;
-  // 推送规则同样分两套：站长改全局，登录用户改自己的（同一套面板，只是接口不同）
-  const pushBase = adminReady ? "/api/push" : isPublicSite && me ? "/api/me/push" : null;
-  const subs = useApi<{ subscriptions: Subscription[] }>(rulesBase ? rulesBase + "/subscriptions" : null, identityScope);
+  // A workspace is explicit; administrator authentication never replaces personal settings.
+  const effectiveScope = configurationScope(workspaceScope, isPublicSite, Boolean(me));
+  const rulesBase = bootData ? configurationBase(workspaceScope, isPublicSite, Boolean(me), adminReady) : null;
+  const pushBase = rulesBase ? rulesBase + "/push" : null;
+  const canConfigure = Boolean(rulesBase);
+  const configScopeKey = identityScope + ":" + effectiveScope;
+  const subs = useApi<{ subscriptions: Subscription[] }>(rulesBase ? rulesBase + "/subscriptions" : null, configScopeKey);
   const sources = useApi<{ sources: Source[] }>("/api/sources", identityScope);
   const runs = useApi<{ runs: Run[] }>(adminReady ? "/api/runs?limit=40" : null);
   const blockRules = useApi<{ rules: BlockRule[]; totalBlocked: number; presets: BlockPreset[] }>(
     rulesBase ? rulesBase + "/block-rules" : null,
-    identityScope,
+    configScopeKey,
   );
   const digests = useApi<{ digests: { date: string; created_at: string; pushed_at: string | null; kind: string; count: number }[] }>(
     "/api/digests",
@@ -605,9 +535,11 @@ export function App() {
   const [hotScope, setHotScope] = useState<HotScope>("all");
   const hot = useApi<HotReport>(tab === "hot" ? `/api/hot?hours=${hotHours}&scope=${hotScope}` : null);
   // 管理接口只在就绪后请求，避免公开区刷出一堆 401，也避免无密码模式卡住加载
-  const push = useApi<PushPayload>(pushBase, identityScope);
+  const push = useApi<PushPayload>(pushBase, configScopeKey);
   const ai = useApi<AiPayload>(adminReady && tab === "ai" ? "/api/ai" : null);
-  const pushLogs = useApi<{ logs: PushLogItem[] }>(pushBase && tab === "push" ? pushBase + "/log?limit=40" : null, identityScope);
+  const pushLogs = useApi<{ logs: PushLogItem[] }>(pushBase && tab === "push" ? pushBase + "/log?limit=40" : null, configScopeKey);
+  const configurationError = tab === "rules" ? subs.error ?? blockRules.error : tab === "push" ? push.error : null;
+  const configurationLoading = tab === "rules" ? subs.loading || blockRules.loading : tab === "push" ? push.loading : false;
   const [pushPreview, setPushPreview] = useState<PushPreview | null>(null);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const activeDate = pickedDate ?? digests.data?.digests?.[0]?.date ?? null;
@@ -624,16 +556,52 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailNonce, setDetailNonce] = useState(0);
+  const applyFeedState = useCallback((next: FeedState) => {
+    setPreset(next.preset);
+    setSearch(next.search); setDebounced(next.search.trim()); setSource(next.source);
+    setCategories((current) => current.join(",") === next.categories.join(",") ? current : next.categories);
+    setLang(next.lang); setSort(next.sort); setRange(next.range); setPriceCap(next.priceCap);
+    setMinScore(next.minScore); setObtain(next.obtain); setKindFilter(next.kindFilter); setUnreadOnly(next.unreadOnly);
+  }, []);
+  const overlayEpoch = useRef(0);
+  const closeOverlays = useCallback(() => {
+    overlayEpoch.current += 1;
+    setDetail(null); setQuickBlock(null); setRelatedOpen(null); setRelatedMap({});
+    setPushPreview(null); setBlockedPreview(null); setCatOpen(false); setMobileFilterBar(false);
+    setAuthOpen(false); setRssOpen(false); setWelcomeOpen(false); setDetailError(null); setDetailLoading(false);
+  }, []);
+  const contextKey = identityScope + ":" + effectiveScope + ":" + tab;
+  const previousContext = useRef(contextKey);
   useEffect(() => {
-    setDetail(null); setRelatedOpen(null); setRelatedMap({}); setPushPreview(null); setBlockedPreview(null);
-  }, [identityScope]);
+    if (previousContext.current !== contextKey) closeOverlays();
+    previousContext.current = contextKey;
+  }, [contextKey, closeOverlays]);
+
+  useEffect(() => {
+    const restore = () => {
+      const next = readFeedState(location.search);
+      setTab(readTab(location.hash)); setWorkspaceScope(readWorkspaceScope(location.search));
+      applyFeedState(next);
+      closeOverlays();
+    };
+    window.addEventListener("popstate", restore); window.addEventListener("hashchange", restore);
+    return () => { window.removeEventListener("popstate", restore); window.removeEventListener("hashchange", restore); };
+  }, [closeOverlays, applyFeedState]);
+
+  useEffect(() => {
+    const p = new URLSearchParams(writeFeedSearch(location.search, feedState));
+    if (workspaceScope === "site") p.set("workspace", "site"); else p.delete("workspace");
+    const search = p.toString();
+    const url = tabUrl(location.pathname, search ? "?" + search : "", tab);
+    if (url !== location.pathname + location.search + location.hash) history.replaceState(history.state, "", url);
+  }, [feedState, tab, workspaceScope]);
   const detailId = detail?.id;
   useEffect(() => {
     if (!detailId) return;
     const ac = new AbortController();
     setDetailLoading(true); setDetailError(null);
     fetch(`/api/items/${detailId}`, { signal: ac.signal }).then(async (res) => {
-      if (!res.ok) throw new Error("详情加载失败，请重试");
+      if (!res.ok) throw new Error(t("详情加载失败，请重试"));
       return await res.json() as Item;
     }).then((full) => {
       if (!ac.signal.aborted) setDetail((current) => current?.id === detailId ? { ...current, ...full } : current);
@@ -644,7 +612,7 @@ export function App() {
 
   const patch = useCallback(
     async (id: number, body: Record<string, unknown>) => {
-      if (!bootData) { notify("站点配置加载中，请稍后重试"); return; }
+      if (!bootData) { notify(t("站点配置加载中，请稍后重试")); return; }
       // 公开站未登录：只改本机 localStorage，不发请求，谁也不影响
       if (guestMode) {
         guestPatch(id, body as { starred?: boolean; read?: boolean; status?: string });
@@ -667,7 +635,7 @@ export function App() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        notify(err.error ?? "操作失败");
+        notify(err.error ?? t("操作失败"));
         return;
       }
       items.reload();
@@ -686,7 +654,7 @@ export function App() {
       if (guestMode) {
         guestAddBlock(pattern);
         syncGuest();
-        notify("已在本机屏蔽「" + pattern + "」");
+        notify(t("已在本机屏蔽「{pattern}」", { pattern }));
         items.reload();
         return;
       }
@@ -698,10 +666,10 @@ export function App() {
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        notify(err.error ?? "添加失败");
-        throw new Error(err.error ?? "添加失败");
+        notify(err.error ?? t("添加失败"));
+        throw new Error(err.error ?? t("添加失败"));
       }
-      notify("已屏蔽「" + pattern + "」");
+      notify(t("已屏蔽「{pattern}」", { pattern }));
       blockRules.reload();
       items.reload();
       stats.reload();
@@ -721,7 +689,7 @@ export function App() {
   const addSubscription = useCallback(
     async (kw: string) => {
       if (guestMode) {
-        notify("登录后才能订阅关键词（访客偏好只存在本机）");
+        notify(t("登录后才能订阅关键词（访客偏好只存在本机）"));
         return;
       }
       const res = await fetch(rulesBase + "/subscriptions", {
@@ -729,10 +697,10 @@ export function App() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ keyword: kw }),
       });
-      if (!res.ok) { notify(((await res.json()) as { error?: string }).error ?? "订阅失败"); throw new Error("订阅失败"); }
+      if (!res.ok) { notify(((await res.json()) as { error?: string }).error ?? t("订阅失败")); throw new Error(t("订阅失败")); }
       subs.reload();
       items.reload();
-      notify("已订阅「" + kw + "」");
+      notify(t("已订阅「{kw}」", { kw }));
     },
     [subs, items, notify, guestMode, rulesBase],
   );
@@ -740,7 +708,7 @@ export function App() {
   const removeSubscription = useCallback(
     async (id: number) => {
       const res = await fetch(rulesBase + "/subscriptions/" + id, { method: "DELETE" });
-      if (!res.ok) { notify("删除关注词失败"); return; }
+      if (!res.ok) { notify(t("删除关注词失败")); return; }
       subs.reload();
       items.reload();
     },
@@ -763,7 +731,7 @@ export function App() {
     if (guestMode) {
       guestBatch(unreadIds, "read");
       syncGuest();
-      notify(`已在本机把 ${unreadIds.length} 条标为已读`);
+      notify(t("已在本机把 {n} 条标为已读", { n: unreadIds.length }));
       return;
     }
     const res = await fetch(isPublicSite ? "/api/me/items/batch" : "/api/items/batch", {
@@ -771,8 +739,8 @@ export function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: unreadIds, action: "read" }),
     });
-    if (!res.ok) { notify("标记已读失败，请重试"); return; }
-    notify(`已将本页 ${unreadIds.length} 条标为已读`);
+    if (!res.ok) { notify(t("标记已读失败，请重试")); return; }
+    notify(t("已将本页 {n} 条标为已读", { n: unreadIds.length }));
     items.reload();
     stats.reload();
   }, [items, stats, notify, guestMode, isPublicSite, syncGuest, guest, preset, unreadOnly]);
@@ -788,33 +756,42 @@ export function App() {
   })).filter((g) => g.sources.length > 0);
 
   // 公开区显示「资源流 / 今日热点 / 每日精选」，其余 Tab 只有进管理区后才出现
-  const tabs: { key: Tab | "admin"; label: string; icon: typeof Activity; badge?: number }[] = [
-    { key: "feed", label: "资源流", icon: Activity },
-    { key: "hot", label: "今日热点", icon: Flame },
-    { key: "digest", label: "每日精选", icon: Radar },
-    ...(me ? [{ key: "me" as Tab, label: "我的", icon: User }] : []),
-    ...(!adminReady && me
-      ? [
-          { key: "rules" as Tab, label: "我的订阅与屏蔽", icon: ShieldBan, badge: stats.data?.totals.blockRules },
-          { key: "push" as Tab, label: "我的推送规则", icon: Zap, badge: push.data?.stats.queued },
-        ]
-      : []),
-    ...(adminReady
-      ? [
-          { key: "rules" as Tab, label: "订阅与屏蔽", icon: ShieldBan, badge: stats.data?.totals.blockRules },
-          { key: "push" as Tab, label: "推送规则", icon: Zap, badge: push.data?.stats.queued },
-          { key: "ai" as Tab, label: "AI 引擎", icon: Bot },
-          { key: "ops" as Tab, label: "数据源运维", icon: Wrench },
-        ]
-      : [{ key: "admin" as const, label: "管理区", icon: Lock }]),
+  const tabs: { key: Tab; label: string; icon: typeof Activity; badge?: number }[] = [
+    { key: "feed", label: t("资源流"), icon: Activity },
+    { key: "hot", label: t("今日热点"), icon: Flame },
+    { key: "digest", label: t("每日精选"), icon: Radar },
+    ...(me ? [{ key: "me" as Tab, label: t("账号与通知"), icon: User }] : []),
+    ...(!adminReady && me ? [
+      { key: "rules" as Tab, label: t("我的订阅与屏蔽"), icon: ShieldBan, badge: blockRules.data?.rules.length },
+      { key: "push" as Tab, label: t("我的推送规则"), icon: Zap, badge: push.data?.stats.queued },
+    ] : []),
+    ...(adminReady ? ADMIN_ENTRIES.map((entry) => ({
+      ...entry,
+      label: entry.key === "rules" ? effectiveScope === "personal" ? t("我的订阅与屏蔽") : t("全站订阅与屏蔽")
+        : entry.key === "push" ? effectiveScope === "personal" ? t("我的推送规则") : t("全站推送规则") : entry.label,
+      badge: entry.key === "rules" ? blockRules.data?.rules.length : entry.key === "push" ? push.data?.stats.queued : undefined,
+    })) : [{ key: "admin" as const, label: t("管理区"), icon: Lock }]),
   ];
+  const navigationGroup = (key: Tab) => key === "me" || ((key === "rules" || key === "push") && effectiveScope === "personal") ? t("个人空间") : t("站点管理");
 
-  const handleTab = (key: Tab | "admin") => {
-    if (key === "admin") {
-      setTab("admin" as Tab);
-      return;
-    }
-    setTab(key);
+  const handleTab = (key: Tab, feedPatch: Partial<FeedState> = {}) => {
+    const nextFeed = { ...feedState, search: search.trim(), ...feedPatch };
+    const p = new URLSearchParams(writeFeedSearch(location.search, nextFeed));
+    const targetScope = key === "admin" ? "site" : workspaceScope;
+    if (targetScope === "site") p.set("workspace", "site"); else p.delete("workspace");
+    const queryString = p.toString();
+    const url = tabUrl(location.pathname, queryString ? "?" + queryString : "", key);
+    if (url !== location.pathname + location.search + location.hash) history.pushState(history.state, "", url);
+    if (key === "admin") setWorkspaceScope("site");
+    applyFeedState(nextFeed); closeOverlays(); setTab(key);
+  };
+  const changeWorkspace = (next: WorkspaceScope) => {
+    const p = new URLSearchParams(writeFeedSearch(location.search, feedState));
+    if (next === "site") p.set("workspace", "site"); else p.delete("workspace");
+    const value = p.toString();
+    const url = tabUrl(location.pathname, value ? "?" + value : "", tab);
+    if (url !== location.pathname + location.search + location.hash) history.pushState(history.state, "", url);
+    closeOverlays(); setWorkspaceScope(next);
   };
 
 
@@ -828,7 +805,7 @@ export function App() {
         type="button"
         onClick={() => setWelcomeOpen(true)}
         className={ICON_BTN}
-        title="站点说明与使用提示"
+        title={t("站点说明与使用提示")}
       >
         <BookOpen size={14} />
       </button>
@@ -836,7 +813,7 @@ export function App() {
         type="button"
         onClick={() => setRssOpen(true)}
         className={ICON_BTN}
-        title="RSS 订阅地址"
+        title={t("RSS 订阅地址")}
       >
         <Globe2 size={14} />
       </button>
@@ -849,28 +826,31 @@ export function App() {
       href={REPO_URL}
       target="_blank"
       rel="noreferrer"
-      className={ICON_BTN}
-      title="主仓库 · GitHub"
-      aria-label="GitHub 主仓库"
+      className={ICON_BTN + " repo-link"}
+      title={t("主仓库 · GitHub")}
+      aria-label={t("GitHub 主仓库")}
     >
       <Github size={14} />
     </a>
   );
 
+  // 界面语言切换：桌面侧栏第二行与移动端品牌行各放一个
+  const langNode = <LangSwitch className={ICON_BTN} />;
+
   // 账号态：移动端放进导航行右侧，桌面端留在侧栏第二行
   const accountNode = me ? (
     <div className="flex min-w-0 items-center gap-1">
-      <button type="button" onClick={() => setTab("me")} aria-label="打开个人中心" title="个人中心与推送渠道" className="flex min-w-0 items-center gap-1 rounded hover:bg-ink-100">
+      <button type="button" onClick={() => handleTab("me")} aria-label={t("打开个人中心")} title={t("个人中心与推送渠道")} className="flex min-w-0 items-center gap-1 rounded hover:bg-ink-100">
       {me.avatarUrl ? (
         <img src={me.avatarUrl} alt="" className="h-6 w-6 shrink-0 rounded-full border border-ink-200" />
       ) : (
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[10px] font-semibold text-ink-600">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink-100 text-[11px] font-semibold text-ink-600">
           {(me.name ?? me.username).slice(0, 1).toUpperCase()}
         </span>
       )}
       <span
-        className="hidden min-w-0 truncate text-[11.5px] font-medium text-ink-800 sm:inline"
-        title={`${me.name ?? me.username} · ${me.linuxdoId < 0 ? "GitHub" : `LINUX DO 信任等级 ${me.trustLevel}`}`}
+        className="hidden min-w-0 truncate text-[12px] font-medium text-ink-800 sm:inline"
+        title={`${me.name ?? me.username} · ${me.linuxdoId < 0 ? "GitHub" : t("LINUX DO 信任等级 {level}", { level: me.trustLevel })}`}
       >
         {me.name ?? me.username}
       </span>
@@ -879,7 +859,7 @@ export function App() {
         type="button"
         onClick={() => void logout()}
         className="shrink-0 rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-900"
-        title="退出登录"
+        title={t("退出登录")}
       >
         <LogOut size={12} />
       </button>
@@ -891,115 +871,27 @@ export function App() {
         setAuthHash(null);
         setAuthOpen(true);
       }}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ink-950 px-2 py-1 text-[11.5px] font-medium whitespace-nowrap text-white hover:bg-brand-hover"
-      title="用 LINUX DO 登录"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ink-950 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white hover:bg-brand-hover"
+      title={t("用 LINUX DO 登录")}
     >
-      <User size={12} /> 登录
+      <User size={12} /> {t("登录")}
     </button>
   ) : null;
 
   // 快捷视图 + 数据源树：桌面在侧栏常驻，移动端折进「筛选」面板里
   const sourcePanelNode = (
-    <>
-      <div className="pt-1">
-        <div className="mb-1.5 flex items-center justify-between px-2">
-          <span className="text-[11px] font-medium text-ink-400">快捷视图</span>
-          {activeFilterCount > 0 && (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="inline-flex items-center gap-0.5 text-[11px] font-medium text-accent hover:underline"
-              title="清除全部筛选条件"
-            >
-              <RotateCcw size={10} /> 清除 {activeFilterCount}
-            </button>
-          )}
-        </div>
-        <div className="space-y-0.5">
-          {SECONDARY_VIEWS.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => switchPreset(p.key)}
-              className={
-                "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors " +
-                (preset === p.key
-                  ? "bg-canvas-subtle font-semibold text-ink-950"
-                  : "font-medium text-ink-600 hover:bg-canvas-subtle/60 hover:text-ink-950")
-              }
-            >
-              <p.icon size={13} className={preset === p.key ? "text-accent" : "text-ink-400"} />
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="border-t border-ink-200 pt-3">
-        <div className="mb-1.5 flex items-center justify-between px-2">
-          <span className="text-[11px] font-medium text-ink-400">数据源</span>
-          <button
-            type="button"
-            onClick={() => setShowAllSources((v) => !v)}
-            className="text-[11px] text-ink-400 hover:text-ink-700"
-          >
-            {showAllSources ? "隐藏禁用" : "显示全部"}
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => setSource("")}
-          className={
-            "mb-1 w-full rounded-md px-2.5 py-1 text-left text-[12px] transition-colors " +
-            (source === ""
-              ? "bg-canvas-subtle font-semibold text-ink-950"
-              : "font-medium text-ink-600 hover:bg-canvas-subtle/60")
-          }
-        >
-          全部来源
-        </button>
-        {grouped.map((g) => {
-          const collapsed = collapsedGroups[g.key] ?? !g.sources.some((s) => s.id === source);
-          const total = g.sources.reduce((n, s) => n + s.items, 0);
-          return (
-            <div key={g.key} className="mb-1">
-              <button
-                type="button"
-                aria-expanded={!collapsed}
-                onClick={() => setCollapsedGroups((m) => ({ ...m, [g.key]: !m[g.key] }))}
-                className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-ink-400 hover:text-ink-700"
-              >
-                {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
-                <span className="flex-1 text-left">{g.label}</span>
-                <span className="font-mono tabular-nums">{total}</span>
-              </button>
-              {!collapsed && (
-                <div className="space-y-0.5">
-                  {g.sources.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSource(s.id === source ? "" : s.id)}
-                      className={
-                        "flex w-full items-center justify-between rounded-md px-2.5 py-1 text-left text-[12px] transition-colors " +
-                        (source === s.id
-                          ? "bg-canvas-subtle font-semibold text-ink-950"
-                          : "text-ink-600 hover:bg-canvas-subtle/60") +
-                        (s.enabled ? "" : " opacity-45")
-                      }
-                      title={s.id + " · 采集周期 " + formatInterval(s.interval_sec)}
-                    >
-                      <span className="truncate">{s.name}</span>
-                      <span className="ml-1.5 shrink-0 font-mono text-[11px] tabular-nums text-ink-400">{s.items}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </>
+    <SourcePanel
+      views={SECONDARY_VIEWS}
+      preset={preset}
+      onPickPreset={switchPreset}
+      grouped={grouped}
+      source={source}
+      onPickSource={setSource}
+      showAllSources={showAllSources}
+      onToggleShowAll={() => setShowAllSources((v) => !v)}
+      collapsedGroups={collapsedGroups}
+      onToggleGroup={(key) => setCollapsedGroups((m) => ({ ...m, [key]: !m[key] }))}
+    />
   );
 
   return (
@@ -1010,18 +902,25 @@ export function App() {
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-            <h1 className="text-[14.5px] font-semibold tracking-tight text-ink-950">资源雷达</h1>
+            <h1 className="shrink-0 whitespace-nowrap text-[14px] font-semibold tracking-tight text-ink-950">{t("资源雷达")}</h1>
           </div>
           <span className="hidden font-mono text-[11px] tabular-nums text-ink-400 lg:inline">
-            {stats.data?.totals.aiKept ?? "—"} 精选
+            {stats.data?.totals.aiKept ?? "—"} {t("精选")}
           </span>
-          <div className="flex items-center gap-1 lg:hidden">
-            {helpRssNode}
-            {githubNode}
-            {tab === "feed" && <a href={exportUrl} className={ICON_BTN} title="按当前筛选导出 Markdown">
-              <Download size={14} />
-            </a>}
-            <button type="button" onClick={refreshAll} className={ICON_BTN} title="刷新数据">
+          <div className="mobile-toolbar flex items-center gap-1 lg:hidden">
+            <button type="button" onClick={() => setWelcomeOpen(true)} className={ICON_BTN} title={t("站点说明与使用提示")}>
+              <BookOpen size={14} />
+            </button>
+            {langNode}
+            <details className="feed-more">
+              <summary aria-label={t("更多工具")} title={t("更多工具")}><MoreHorizontal size={16} aria-hidden="true" /></summary>
+              <div className="feed-more-menu">
+                <button type="button" onClick={() => setRssOpen(true)}><Globe2 size={14} /> {t("RSS 订阅")}</button>
+                <a href={REPO_URL} target="_blank" rel="noreferrer"><Github size={14} /> GitHub</a>
+                {tab === "feed" && <a href={exportUrl}><Download size={14} /> {t("导出 Markdown")}</a>}
+              </div>
+            </details>
+            <button type="button" onClick={refreshAll} className={ICON_BTN} title={t("刷新数据")}>
               <RefreshCw size={14} className={items.loading ? "animate-spin" : ""} />
             </button>
           </div>
@@ -1031,12 +930,13 @@ export function App() {
         <div className="mt-2 hidden items-center gap-1 px-1 lg:mt-0 lg:flex">
           {helpRssNode}
           {githubNode}
+          {langNode}
           <div className="ml-auto min-w-0">{accountNode}</div>
         </div>
 
         {isPublicSite && (guest.hidden.length > 0 || guest.starred.length > 0 || guest.read.length > 0 || guest.blocked.length > 0) && (
           <div className="mt-2 rounded-md border border-ink-200 bg-surface-hover px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-600">
-            本机偏好：收藏 {guest.starred.length} · 已读 {guest.read.length} · 已关闭 {guest.hidden.length}
+            {t("本机偏好：收藏 {starred} · 已读 {read} · 已关闭 {hidden}", { starred: guest.starred.length, read: guest.read.length, hidden: guest.hidden.length })}
             {bootData?.loginEnabled && (
               <button
                 type="button"
@@ -1044,18 +944,18 @@ export function App() {
                   if (!me) { setAuthOpen(true); return; }
                   const r = await importGuestToAccount(guest);
                   if (r.ok) {
-                    notify(`已合并 ${r.imported} 条偏好到账号`);
+                    notify(t("已合并 {n} 条偏好到账号", { n: r.imported }));
                     syncGuest();
                     items.reload();
                     stats.reload();
                     blockRules.reload();
                   } else {
-                    notify(r.error ?? "合并失败");
+                    notify(r.error ?? t("合并失败"));
                   }
                 }}
                 className="ml-1 font-medium text-accent hover:underline"
               >
-                {me ? "合并到当前账号" : "登录后合并"}
+                {me ? t("合并到当前账号") : t("登录后合并")}
               </button>
             )}
           </div>
@@ -1065,9 +965,11 @@ export function App() {
           <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-400" />
           <input
             ref={searchRef}
+            maxLength={300}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === "Enter") { handleTab("feed", tab === "feed" ? { search: e.currentTarget.value.trim() } : { ...DEFAULT_FEED_STATE, search: e.currentTarget.value.trim() }); return; }
               if (e.key === "Escape") {
                 if (search) {
                   setSearch("");
@@ -1077,8 +979,8 @@ export function App() {
                 }
               }
             }}
-            placeholder="搜索福利、兑换码…"
-            className="h-8 w-full rounded-md border border-ink-200 bg-surface pr-8 pl-8 text-[12.5px] text-ink-950 transition-colors outline-none placeholder:text-ink-400 focus:border-accent"
+            placeholder={t("搜索资源、兑换码…")}
+            className="h-8 w-full rounded-md border border-ink-200 bg-surface pr-8 pl-8 text-[12px] text-ink-950 transition-colors outline-none placeholder:text-ink-400 focus:border-accent"
           />
           {search ? (
             <button
@@ -1088,12 +990,12 @@ export function App() {
                 setDebounced("");
               }}
               className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-              title="清空搜索"
+              title={t("清空搜索")}
             >
               <X size={12} />
             </button>
           ) : (
-            <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded border border-ink-200 bg-canvas px-1.5 py-0.5 font-mono text-[10.5px] text-ink-400 lg:inline">
+            <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded border border-ink-200 bg-canvas px-1.5 py-0.5 font-mono text-[11px] text-ink-400 lg:inline">
               /
             </kbd>
           )}
@@ -1101,7 +1003,7 @@ export function App() {
 
         {/* 导航：手机横向可滚 + 右侧账号，桌面纵列无边框 */}
         <div className="-mx-3.5 mt-2.5 flex items-center gap-1.5 px-3.5 pb-0.5 lg:mx-0 lg:mt-0 lg:block lg:px-0 lg:pb-0">
-          <nav ref={mobileNavRef} aria-label="页面导航" className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:block lg:flex-none lg:space-y-0.5 lg:overflow-visible">
+          <nav ref={mobileNavRef} aria-label={t("页面导航")} className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:block lg:flex-none lg:space-y-0.5 lg:overflow-visible">
           {tabs.slice(0, 3).map((t) => (
             <button
               key={t.key}
@@ -1113,7 +1015,7 @@ export function App() {
               className={
                 "flex shrink-0 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors lg:w-full " +
                 (tab === t.key
-                  ? "bg-ink-950 text-white lg:bg-canvas-subtle lg:font-semibold lg:text-ink-950"
+                  ? "bg-brand-subtle font-semibold text-accent lg:bg-canvas-subtle lg:text-ink-950"
                   : "text-ink-600 hover:bg-canvas-subtle/70 hover:text-ink-950")
               }
             >
@@ -1134,10 +1036,11 @@ export function App() {
             </button>
           ))}
           <div className="mx-1 h-4 w-px shrink-0 self-center bg-ink-200 lg:hidden" />
-          <div className="hidden px-2.5 pt-3 pb-1 text-[11px] font-medium text-ink-400 lg:block">
-            {adminReady ? "管理" : me ? "个人空间" : "管理"}
-          </div>
-          {tabs.slice(3).map((t) => (
+          {tabs.slice(3).map((t, index) => {
+            const previous = tabs[index + 2];
+            const group = navigationGroup(t.key);
+            return <Fragment key={t.key}>
+              {(index === 0 || !previous || group !== navigationGroup(previous.key)) && <div className="hidden px-2.5 pt-3 pb-1 text-[12px] font-medium text-ink-500 lg:block">{group}</div>}
             <button
               key={t.key}
               type="button"
@@ -1148,7 +1051,7 @@ export function App() {
               className={
                 "flex shrink-0 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors lg:w-full " +
                 (tab === t.key
-                  ? "bg-ink-950 text-white lg:bg-canvas-subtle lg:font-semibold lg:text-ink-950"
+                  ? "bg-brand-subtle font-semibold text-accent lg:bg-canvas-subtle lg:text-ink-950"
                   : "text-ink-600 hover:bg-canvas-subtle/70 hover:text-ink-950")
               }
             >
@@ -1161,7 +1064,7 @@ export function App() {
                   className={
                     "rounded px-1.5 py-0.5 font-mono text-[11px] tabular-nums " +
                     (tab === t.key
-                      ? "bg-white/20 text-white lg:bg-surface lg:text-ink-700"
+                      ? "bg-surface text-accent lg:text-ink-700"
                       : "bg-ink-200/80 text-ink-600")
                   }
                 >
@@ -1169,11 +1072,18 @@ export function App() {
                 </span>
               )}
             </button>
-          ))}
+            </Fragment>;
+          })}
           </nav>
           {/* 移动端账号入口：贴着导航右侧，不单独占一行 */}
           <div className="shrink-0 lg:hidden">{accountNode}</div>
         </div>
+        {tab !== "feed" && <nav className="mt-3 hidden border-t border-ink-200 pt-3 lg:block" aria-label={t("个人快捷入口")}>
+          <div className="rail-section-label px-2.5 pb-1">{t("我的")}</div>
+          {SECONDARY_VIEWS.filter((view) => view.key === "starred" || view.key === "hidden").map((view) => <button key={view.key} type="button"
+            className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] text-ink-600 hover:bg-canvas-subtle"
+            onClick={() => handleTab("feed", { ...DEFAULT_FEED_STATE, preset: view.key })}><view.icon size={14} />{view.label}</button>)}
+        </nav>}
         {/* 场景预设 & 数据源：桌面侧栏常驻，移动端折进主区「筛选」面板 */}
         {tab === "feed" && (
           <div className="mt-3 hidden lg:mt-0 lg:block">
@@ -1187,38 +1097,29 @@ export function App() {
         {/* 桌面 48px 顶栏 */}
         <header className="sticky top-0 z-20 hidden h-12 items-center justify-between gap-4 border-b border-ink-200 bg-surface/95 px-6 backdrop-blur-sm lg:flex">
           <div className="flex min-w-0 items-center gap-2 text-[13px]">
-            <span className="text-ink-500">{adminReady && ADMIN_TABS.has(tab) ? "管理工作台" : tab === "me" || (me && (tab === "rules" || tab === "push")) ? "个人空间" : "公开内容"}</span>
+            <span className="text-ink-500">{tab === "me" || ((tab === "rules" || tab === "push") && effectiveScope === "personal") ? t("个人空间") : ADMIN_TABS.has(tab) || tab === "admin" ? t("管理工作台") : t("公开内容")}</span>
             <ChevronRight size={12} className="text-ink-300" />
-            <span className="font-medium text-ink-900">{tabs.find((t) => t.key === tab)?.label ?? "管理区"}</span>
+            <span className="font-medium text-ink-900">{tabs.find((t) => t.key === tab)?.label ?? t("管理区")}</span>
           </div>
 
           <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-500">
             {tab === "feed" && <><span className="font-mono tabular-nums">
               24h <strong className="font-semibold text-ink-900">+{stats.data?.totals.last24h ?? "—"}</strong>
             </span>
-            <span className="text-ink-300" aria-hidden="true">·</span>
-            <span className="font-mono tabular-nums">
-              含码 <strong className="font-semibold text-ink-900">{stats.data?.totals.withCodes ?? "—"}</strong>
-            </span>
-            {(stats.data?.totals.aiRejected ?? 0) > 0 && (
-              <>
-                <span className="text-ink-300" aria-hidden="true">·</span>
-                <span>已滤 {stats.data?.totals.aiRejected} 条水帖</span>
-              </>
-            )}
             <a
               href={exportUrl}
-              className="ml-1 inline-flex h-7 items-center gap-1.5 rounded-md border border-ink-200 bg-surface px-2.5 text-[12px] font-medium text-ink-700 transition-colors hover:bg-ink-100 hover:text-ink-950"
-              title="按当前筛选导出 Markdown"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-950"
+              title={t("按当前筛选导出 Markdown")}
+              aria-label={t("按当前筛选导出 Markdown")}
             >
-              <Download size={12} /> 导出
+              <Download size={14} />
             </a>
             </>}
             <button
               type="button"
               onClick={refreshAll}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-ink-200 bg-surface text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950"
-              title="刷新数据"
+              title={t("刷新数据")}
             >
               <RefreshCw size={13} className={items.loading ? "animate-spin" : ""} />
             </button>
@@ -1228,30 +1129,38 @@ export function App() {
         {/* 主内容区 */}
         <main className={tab === "feed" ? "workspace-content min-w-0 flex-1" : "workspace-content min-w-0 flex-1 px-3.5 py-3.5 sm:px-6 sm:py-5"}>
           {/* 懒加载的面板首次进入时给一个轻量占位，避免整页闪白 */}
+          {(ADMIN_TABS.has(tab) || tab === "admin") && <WorkspaceScopeBar
+            scope={tab === "rules" || tab === "push" ? effectiveScope : "site"}
+            subject={tab === "rules" ? "rules" : tab === "push" ? "push" : "admin"}
+            canSwitch={Boolean(isPublicSite && me && (tab === "rules" || tab === "push"))}
+            siteAllowed={adminReady} onChange={changeWorkspace} onOpenProfile={() => handleTab("me")}
+          />}
+          {configurationError && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-alert-subtle p-3 text-[13px] text-alert">
+            <span>{t("配置加载失败：")}{configurationError}</span>
+            <button type="button" className="font-medium underline" onClick={() => { subs.reload(); blockRules.reload(); push.reload(); }}>{t("重新加载")}</button>
+          </div>}
+          {canConfigure && configurationLoading && <div role="status" aria-label={t("配置加载中")} className="space-y-4 py-6">
+            <div className="h-4 w-40 rounded bg-ink-100" /><div className="h-24 rounded bg-surface-muted" /><div className="h-24 rounded bg-surface-muted" />
+          </div>}
           <Suspense
             fallback={
-              <div className="flex items-center justify-center gap-1.5 px-6 py-10 text-[12.5px] text-ink-400">
-                <Loader2 size={13} className="animate-spin" /> 载入中…
+              <div className="flex items-center justify-center gap-1.5 px-6 py-10 text-[12px] text-ink-400">
+                <Loader2 size={13} className="animate-spin" /> {t("载入中…")}
               </div>
             }
           >
-          {((tab as string) === "admin" || (ADMIN_TABS.has(tab) && !adminReady && !((tab === "rules" || tab === "push") && me))) && (
+          {(tab === "admin" || (ADMIN_TABS.has(tab) && !((tab === "rules" || tab === "push") ? canConfigure : adminReady))) && (
             <AdminGate protectedMode={protectedMode} entryAllowed={adminEntryAllowed} onAuthChange={setAdminAuthed}>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  { key: "rules" as Tab, label: "订阅与屏蔽", desc: "关键词订阅、屏蔽词防火墙", icon: ShieldBan },
-                  { key: "push" as Tab, label: "推送规则", desc: "推送时机、阈值、格式与免打扰", icon: Zap },
-                  { key: "ai" as Tab, label: "AI 引擎", desc: "规则初筛、审核模型、提示词与补审", icon: Bot },
-                  { key: "ops" as Tab, label: "数据源运维", desc: "采集开关、间隔、数据清理", icon: Wrench },
-                ].map((entry) => (
+              <div className="admin-entries grid gap-x-8 sm:grid-cols-2">
+                {ADMIN_ENTRIES.map((entry) => (
                   <button
                     key={entry.key}
                     type="button"
-                    onClick={() => setTab(entry.key)}
-                    className="panel flex flex-col items-start gap-1.5 p-4 text-left transition-colors hover:border-ink-400"
+                    onClick={() => { setWorkspaceScope("site"); handleTab(entry.key); }}
+                    className="admin-entry flex flex-col items-start gap-1.5 py-4 text-left transition-colors hover:border-ink-400"
                   >
                     <entry.icon size={16} className="text-accent" />
-                    <span className="text-[13.5px] font-semibold text-ink-950">{entry.label}</span>
+                    <span className="text-[14px] font-semibold text-ink-950">{entry.label}</span>
                     <span className="text-[12px] leading-relaxed text-ink-500">{entry.desc}</span>
                   </button>
                 ))}
@@ -1261,9 +1170,15 @@ export function App() {
 
           {tab === "feed" && (
             <>
+              {firstVisitNotice && bootData && <section className="first-visit-notice" aria-label={t("站点公告")}>
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold text-ink-700">{t(bootData.onboarding.title)}</h2>
+                <button type="button" className="scope-link shrink-0" onClick={() => setWelcomeOpen(true)}>{t("查看说明")}</button>
+                <button type="button" className="notice-dismiss" aria-label={t("收起站点公告")} onClick={closeWelcome}><X size={15} /></button>
+              </section>}
               {/* 移动端：频道胶囊 + 筛选/视图压成一行，省掉两条整行按钮 */}
               <div className="flex items-stretch border-b border-ink-100 bg-surface">
-                <div className="channel-nav no-scrollbar min-w-0 flex-1" role="group" aria-label="内容频道">
+                <div ref={channelRef} onScroll={syncChannelScroll} className="channel-nav no-scrollbar min-w-0 flex-1" role="group" aria-label={t("内容频道")}>
                   {PRIMARY_CHANNELS.map((p) => (
                     <button
                       key={p.key}
@@ -1277,6 +1192,10 @@ export function App() {
                     </button>
                   ))}
                 </div>
+                {(channelScroll.left || channelScroll.right) && <button type="button" className="channel-scroll-control" aria-label={channelScroll.right ? t("更多频道") : t("前面频道")}
+                  onClick={() => channelRef.current?.scrollBy({ left: channelScroll.right ? 240 : -240, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}>
+                  <ChevronRight size={16} className={channelScroll.right ? "" : "rotate-180"} />
+                </button>}
                 <div className="relative flex shrink-0 items-center gap-1 border-l border-ink-100 bg-surface px-2 lg:hidden">
                   {/* 左侧渐隐，避免横向滚动的频道胶囊被硬切一半 */}
                   <span className="pointer-events-none absolute inset-y-0 -left-4 w-4 bg-gradient-to-l from-surface to-transparent" aria-hidden="true" />
@@ -1286,100 +1205,39 @@ export function App() {
                     className={
                       "relative inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors " +
                       (mobileFilterBar
-                        ? "border-ink-950 bg-ink-950 text-white"
+                        ? "border-brand-border bg-brand-subtle text-accent"
                         : "border-ink-200 bg-surface text-ink-600")
                     }
-                    title="筛选条件"
-                    aria-label="筛选条件"
+                    title={t("筛选条件")}
+                    aria-label={t("筛选条件")}
                     aria-expanded={mobileFilterBar}
                   >
                     <SlidersHorizontal size={14} />
                     {activeFilterCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 font-mono text-[9px] leading-none text-white">
+                      <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 font-mono text-[11px] leading-none text-white">
                         {activeFilterCount}
                       </span>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => updateViewMode(viewMode === "compact" ? "grid2" : "compact")}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-ink-200 bg-surface text-ink-600 transition-colors hover:text-ink-950"
-                    title={viewMode === "compact" ? "切到卡片网格" : "切到紧凑列表"}
-                    aria-label="切换视图"
-                  >
-                    {viewMode === "compact" ? <LayoutGrid size={14} /> : <AlignJustify size={14} />}
-                  </button>
                 </div>
               </div>
-              {/* 快捷子分类胶囊条：当前频道热门子类目一键直达，不用再进二级下拉找 */}
-              {(() => {
-                const countMap = new Map((stats.data?.byCategory ?? []).map((c) => [c.category ?? "other", c.n]));
-                const allowed = categoriesForPreset(preset);
-                const ordered = [...allowed].sort((a, b) => (countMap.get(b) ?? 0) - (countMap.get(a) ?? 0));
-                // 只挂真的有内容的分类（外加已选中的，方便一键取消）；全空时退回频道默认顺序
-                const withItems = ordered.filter((key) => (countMap.get(key) ?? 0) > 0 || categories.includes(key));
-                const quickCats = (withItems.length ? withItems : ordered).slice(0, 10);
-                return (
-                  <div className="flex items-stretch border-b border-ink-100 bg-surface">
-                    <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-3.5 py-1">
-                    <button
-                      type="button"
-                      onClick={() => setCategories([])}
-                      className={
-                        "shrink-0 rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-colors active:scale-[0.97] " +
-                        (categories.length === 0
-                          ? "bg-brand-subtle font-semibold text-accent"
-                          : "text-ink-500 hover:bg-ink-100 hover:text-ink-900")
-                      }
-                    >
-                      全部{preset === "news" ? "要闻" : preset === "info" ? "资讯" : "分类"}
-                    </button>
-                    {quickCats.map((key) => {
-                      const n = countMap.get(key) ?? 0;
-                      const active = categories.includes(key);
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() =>
-                            setCategories((cur) =>
-                              cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key],
-                            )
-                          }
-                          className={
-                            "inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] transition-colors active:scale-[0.97] " +
-                            (active
-                              ? "bg-ink-950 font-medium text-white"
-                              : n > 0
-                                ? "text-ink-600 hover:bg-ink-100 hover:text-ink-950"
-                                : "text-ink-400 hover:bg-ink-100")
-                          }
-                        >
-                          <span>{categoryLabelForPreset(key, preset)}</span>
-                          {n > 0 && (
-                            <span className={"font-mono text-[10.5px] tabular-nums " + (active ? "text-white/75" : "text-ink-400")}>
-                              {n}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                    </div>
-                    {/* 移动端统计并进这一行右端，不再单占一条 */}
-                    <div className="relative flex shrink-0 items-center border-l border-ink-100 bg-surface px-2.5 text-[11px] whitespace-nowrap text-ink-500 sm:hidden">
-                      <span className="pointer-events-none absolute inset-y-0 -left-4 w-4 bg-gradient-to-l from-surface to-transparent" aria-hidden="true" />
-                      共 <strong className="ml-1 font-mono font-semibold tabular-nums text-ink-900">{items.data?.total ?? 0}</strong>
-                      <span className="ml-0.5">条</span>
-                      {preset === "verified" && <span className="ml-1 font-medium text-deal">· 验真</span>}
-                    </div>
-                  </div>
-                );
-              })()}
 
+              <FeedToolbar
+                policyLabels={policyLabels}
+                loading={items.loading}
+                total={items.data?.total ?? 0}
+                view={viewMode}
+                onView={updateViewMode}
+                showSummary={showRowSummary}
+                canToggleSummary={viewMode === "compact"}
+                onToggleSummary={toggleRowSummary}
+                canMarkRead={visible.some((item) => !item.read)}
+                onMarkRead={() => void markVisibleRead()}
+              />
               {/* 40px 细线筛选条（根据当前频道自适应隐藏无关的价格/方式筛选） */}
               <div
                 className={
-                  "feed-controls border-b border-ink-200 bg-surface-hover px-3.5 py-2.5 sm:px-6 sm:py-2 " +
+                  "feed-controls border-b border-ink-200 bg-surface px-3.5 py-2.5 sm:px-6 sm:py-2 " +
                   (mobileFilterBar ? "block" : "hidden sm:block")
                 }
               >
@@ -1388,34 +1246,35 @@ export function App() {
                   <div className="filter-category relative" ref={catRef}>
                     <button
                       type="button"
+                      aria-expanded={catOpen} aria-controls="category-filter-options"
                       onClick={() => setCatOpen((v) => !v)}
                       className={
                         "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition-colors " +
                         (categories.length
-                          ? "border-ink-950 bg-ink-950 font-medium text-white"
-                          : "border-ink-200 bg-surface text-ink-700 hover:border-ink-300")
+                          ? "border-brand-border bg-brand-subtle font-medium text-accent"
+                          : "border-transparent bg-canvas text-ink-600 hover:bg-canvas-subtle hover:text-ink-900")
                       }
                     >
                       <span>
                         {categories.length === 0
-                          ? "分类"
+                          ? t("分类")
                           : categories.length === 1
-                            ? `分类：${categoryLabelForPreset(categories[0]!, preset)}`
-                            : `分类：已选 ${categories.length} 项`}
+                            ? t("分类：{name}", { name: t(categoryLabelForPreset(categories[0]!, preset)) })
+                            : t("分类：已选 {n} 项", { n: categories.length })}
                       </span>
                       <ChevronDown size={12} />
                     </button>
                     {catOpen && (
-                      <div className="pop-enter panel absolute top-full left-0 z-40 mt-1.5 w-[260px] p-2.5 shadow-lg">
+                      <div id="category-filter-options" role="group" aria-label={t("筛选分类")} className="pop-enter panel absolute top-full left-0 z-40 mt-1.5 w-[260px] p-2.5 shadow-lg">
                         <div className="mb-2 flex items-center justify-between text-[11px] text-ink-500">
-                          <span>{preset === "news" ? "要闻栏目（支持多选）" : preset === "info" ? "行业资讯栏目（支持多选）" : preset === "deal" ? "好价分类（支持多选）" : preset === "opensource" ? "开源方向（支持多选）" : "福利分类（支持多选）"}</span>
+                          <span>{preset === "news" ? t("要闻栏目（支持多选）") : preset === "info" ? t("行业资讯栏目（支持多选）") : preset === "deal" ? t("好价分类（支持多选）") : preset === "opensource" ? t("开源方向（支持多选）") : t("福利分类（支持多选）")}</span>
                           {categories.length > 0 && (
                             <button
                               type="button"
                               onClick={() => setCategories([])}
                               className="font-medium text-accent hover:underline"
                             >
-                              清空
+                              {t("清空")}
                             </button>
                           )}
                         </div>
@@ -1431,22 +1290,23 @@ export function App() {
                                 <button
                                   key={key}
                                   type="button"
+                                  aria-pressed={checked}
                                   onClick={() =>
                                     setCategories((cur) =>
                                       cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key],
                                     )
                                   }
                                   className={
-                                    "flex items-center justify-between rounded border px-2 py-1 text-left text-[11.5px] transition-colors " +
+                                    "flex items-center justify-between rounded border px-2 py-1 text-left text-[12px] transition-colors " +
                                     (checked
-                                      ? "border-ink-950 bg-ink-950 font-medium text-white"
+                                      ? "border-brand-border bg-brand-subtle font-medium text-accent"
                                       : n > 0
                                         ? "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100"
                                         : "border-ink-100 bg-canvas/70 text-ink-400 hover:bg-ink-100")
                                   }
                                 >
-                                  <span className="truncate">{categoryLabelForPreset(key, preset)}</span>
-                                  <span className={"ml-1 font-mono text-[10.5px] " + (checked ? "text-white/70" : "text-ink-400")}>
+                                  <span className="truncate">{t(categoryLabelForPreset(key, preset))}</span>
+                                  <span className={"ml-1 font-mono text-[11px] " + (checked ? "text-accent/75" : "text-ink-400")}>
                                     {n}
                                   </span>
                                 </button>
@@ -1462,64 +1322,67 @@ export function App() {
                   {advancedFilters && <select
                     value={kindFilter}
                     onChange={(e) => setKindFilter(e.target.value)}
-                    className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                    title="内容形态"
+                    className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                    title={t("内容形态")}
                   >
-                    <option value="auto">形态：{preset === "verified" ? "真福利" : preset === "deal" ? "好价" : preset === "opensource" ? "开源" : preset === "news" ? "要闻" : preset === "info" ? "资讯" : "全部"}</option>
-                    <option value="all">形态：全部（含其它）</option>
+                    <option value="auto">{t("形态：")}{preset === "verified" ? t("真福利") : preset === "deal" ? t("好价") : preset === "opensource" ? t("开源") : preset === "news" ? t("要闻") : preset === "info" ? t("资讯") : t("全部")}</option>
+                    <option value="all">{t("形态：全部（含其它）")}</option>
                     {KIND_ORDER.map((k) => (
                       <option key={k} value={k}>
-                        {KIND_LABEL[k]}
+                        {t(KIND_LABEL[k] ?? k)}
                       </option>
                     ))}
                   </select>}
 
+                  {advancedFilters && <>
                   {/* 语言筛选 */}
                   <select
                     value={lang}
                     onChange={(e) => setLang(e.target.value as "all" | "zh" | "en")}
-                    className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                    title="按标题语言筛选"
+                    className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                    title={t("按标题语言筛选")}
                   >
-                    <option value="all">语言：全部</option>
-                    <option value="zh">仅看中文</option>
-                    <option value="en">仅看英文</option>
+                    <option value="all">{t("语言：全部")}</option>
+                    <option value="zh">{t("仅看中文")}</option>
+                    <option value="en">{t("仅看英文")}</option>
                   </select>
+                  </>}
 
-                  {preset !== "news" && preset !== "info" && preset !== "opensource" && (
+                  {advancedFilters && preset !== "news" && preset !== "info" && preset !== "opensource" && (
                     <>
                       <select
                         value={priceCap}
                         onChange={(e) => setPriceCap(e.target.value)}
-                        className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                        title="价格上限"
+                        className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                        title={t("价格上限")}
                       >
                         <option value="auto">
-                          价格：不限
+                          {t("价格：不限")}
                         </option>
-                        <option value="all">价格：不限</option>
-                        <option value="free">仅白嫖 (0 元)</option>
-                        <option value="5">≤ 5 元</option>
-                        <option value="10">≤ 10 元</option>
-                        <option value="30">≤ 30 元</option>
-                        <option value="100">≤ 100 元</option>
+                        <option value="all">{t("价格：不限")}</option>
+                        <option value="free">{t("仅白嫖 (0 元)")}</option>
+                        <option value="5">{t("≤ 5 元")}</option>
+                        <option value="10">{t("≤ 10 元")}</option>
+                        <option value="30">{t("≤ 30 元")}</option>
+                        <option value="100">{t("≤ 100 元")}</option>
                       </select>
 
                       {advancedFilters && <select
                         value={obtain}
                         onChange={(e) => setObtain(e.target.value)}
-                        className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                        title={OBTAIN_HINT[obtain] ?? "获取方式"}
+                        className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                        title={t(OBTAIN_HINT[obtain] ?? "获取方式")}
                       >
                         <option value="auto">
-                          方式：{preset === "verified" ? "白嫖+条件" : "不限"}
+                          {t("方式：")}{preset === "verified" ? t("白嫖+条件") : t("不限")}
                         </option>
-                        <option value="all">方式：全部（含抽奖/试用）</option>
-                        <option value="free">仅直接白嫖</option>
-                        <option value="conditional">有条件领取</option>
-                        <option value="lottery">抽奖/开奖</option>
-                        <option value="trial">免费试用</option>
-                        <option value="promo">推广/引流</option>
+                        <option value="all">{t("方式：全部（含抽奖/试用）")}</option>
+                        <option value="free">{t("仅直接白嫖")}</option>
+                        <option value="conditional">{t("有条件领取")}</option>
+                        <option value="lottery">{t("抽奖/开奖")}</option>
+                        <option value="trial">{t("免费试用")}</option>
+                        <option value="promo">{t("推广/引流")}</option>
+                        <option value="paid">{t("需付费")}</option>
                       </select>}
                     </>
                   )}
@@ -1527,46 +1390,46 @@ export function App() {
                   <select
                     value={range}
                     onChange={(e) => setRange(e.target.value)}
-                    className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                    title="发布时间窗口"
+                    className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                    title={t("发布时间窗口")}
                   >
                     <option value="auto">
-                      时间：{preset === "verified" ? "7天内" : "不限"}
+                      {t("时间：")}{preset === "verified" ? t("7天内") : t("不限")}
                     </option>
-                    <option value="all">时间：不限</option>
-                    <option value="1d">24 小时内</option>
-                    <option value="3d">3 天内</option>
-                    <option value="7d">一周内</option>
-                    <option value="30d">一个月内</option>
+                    <option value="all">{t("时间：不限")}</option>
+                    <option value="1d">{t("24 小时内")}</option>
+                    <option value="3d">{t("3 天内")}</option>
+                    <option value="7d">{t("一周内")}</option>
+                    <option value="30d">{t("一个月内")}</option>
                   </select>
 
                   {advancedFilters && <select
                     value={minScore}
                     onChange={(e) => setMinScore(e.target.value)}
-                    className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                    title="最低评分"
+                    className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                    title={t("最低评分")}
                   >
-                    <option value="all">评分：不限</option>
-                    <option value="50">≥ 50 分</option>
-                    <option value="60">≥ 60 分</option>
-                    <option value="70">≥ 70 分</option>
+                    <option value="all">{t("评分：不限")}</option>
+                    <option value="50">{t("≥ 50 分")}</option>
+                    <option value="60">{t("≥ 60 分")}</option>
+                    <option value="70">{t("≥ 70 分")}</option>
                   </select>}
-                  <button type="button" aria-label={advancedFilters ? "收起高级筛选" : "高级筛选"} aria-expanded={advancedFilters} onClick={() => setAdvancedFilters((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-2 text-[12px] font-medium text-accent hover:bg-brand-subtle">
-                    <SlidersHorizontal size={12} /> {advancedFilters ? "收起高级筛选" : "高级筛选"}
-                    {(kindFilter !== "auto" || obtain !== "auto" || minScore !== "all") && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-label="高级条件已生效" />}
+                  <button type="button" aria-label={advancedFilters ? t("收起高级筛选") : t("高级筛选")} aria-expanded={advancedFilters} onClick={() => setAdvancedFilters((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-2 text-[12px] font-medium text-accent hover:bg-brand-subtle">
+                    <SlidersHorizontal size={12} /> {advancedFilters ? t("收起高级筛选") : t("高级筛选")}
+                    {(kindFilter !== "auto" || obtain !== "auto" || minScore !== "all") && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-label={t("高级条件已生效")} />}
                   </button>
 
                   <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value)}
-                    className="h-7 rounded-md border border-ink-200 bg-surface px-1.5 text-[11.5px] text-ink-700 outline-none focus:border-accent"
-                    title="排序方式"
+                    className="h-7 rounded-md border border-transparent bg-canvas px-2 text-[12px] font-medium text-ink-600 outline-none hover:bg-canvas-subtle hover:text-ink-900 focus:border-accent"
+                    title={t("排序方式")}
                   >
-                    <option value="newest">最新</option>
-                    <option value="score">高分</option>
-                    <option value="oldest">最早</option>
-                    <option value="expiring">快截止</option>
-                    {preset !== "news" && preset !== "info" && <option value="price_asc">低价</option>}
+                    <option value="newest">{t("最新")}</option>
+                    <option value="score">{t("高分")}</option>
+                    <option value="oldest">{t("最早")}</option>
+                    <option value="expiring">{t("快截止")}</option>
+                    {preset !== "news" && preset !== "info" && <option value="price_asc">{t("低价")}</option>}
                   </select>
 
                   <button
@@ -1576,183 +1439,41 @@ export function App() {
                     className={
                       "h-7 rounded-md border px-2.5 text-[12px] font-medium transition-colors active:scale-[0.97] " +
                       (unreadOnly
-                        ? "border-ink-950 bg-ink-950 text-white"
-                        : "border-ink-200 bg-surface text-ink-600 hover:border-ink-300")
+                        ? "border-brand-border bg-brand-subtle text-accent"
+                        : "border-transparent bg-canvas text-ink-600 hover:bg-canvas-subtle")
                     }
                   >
-                    未读
+                    {t("未读")}
                   </button>
-                  {viewMode === "compact" && <button type="button" aria-pressed={showRowSummary} onClick={toggleRowSummary}
-                    className={"inline-flex items-center gap-1 rounded-md border px-2.5 text-[12px] font-medium " + (showRowSummary ? "border-brand-border bg-brand-subtle text-accent" : "border-ink-200 bg-surface text-ink-600")}
-                    title="展开或收起每条资源的 AI 摘要，不影响筛选结果">显示摘要</button>}
 
-                  {visible.some((i) => !i.read) && (
-                    <button
-                      type="button"
-                      onClick={() => void markVisibleRead()}
-                      className="inline-flex h-7 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2 text-[12px] font-medium text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950 active:scale-[0.97]"
-                      title="把当前列表里的未读条目一次性标为已读"
-                    >
-                      <CheckCheck size={12} /> 标已读
-                    </button>
-                  )}
 
-                  {activeFilterCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-accent hover:bg-brand-subtle"
-                    >
-                      <RotateCcw size={11} /> 重置 ({activeFilterCount})
-                    </button>
-                  )}
 
-                  {/* 右端统计与视图切换 */}
-                  <div className="ml-auto hidden shrink-0 items-center gap-2 sm:flex">
-                    <span className="text-[12px] text-ink-500">
-                      {items.loading ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Loader2 size={11} className="animate-spin" /> 加载中…
-                        </span>
-                      ) : (
-                        <>
-                          共 <strong className="font-mono font-semibold tabular-nums text-ink-900">{items.data?.total ?? 0}</strong> 条
-                        </>
-                      )}
-                    </span>
-                    <div className="flex items-center gap-0.5 rounded-md border border-ink-200 bg-surface p-0.5">
-                      {[
-                        { key: "compact" as const, icon: AlignJustify, label: "紧凑列表，适合快速扫读", text: "列表" },
-                        { key: "grid2" as const, icon: LayoutGrid, label: "双列图文卡片", text: "2列" },
-                        { key: "grid3" as const, icon: LayoutGrid, label: "三列图文卡片", text: "3列" },
-                      ].map((v) => (
-                        <button
-                          key={v.key}
-                          type="button"
-                          onClick={() => updateViewMode(v.key)}
-                          className={
-                            "inline-flex items-center gap-1 rounded px-2 py-1 text-[11.5px] font-medium transition-colors " +
-                            (viewMode === v.key ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-950")
-                          }
-                          title={v.label}
-                        >
-                          <v.icon size={12} />
-                          <span>{v.text}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
                 {/* 移动端：快捷视图与数据源折进这个面板，排在筛选条之后 */}
-                {tab === "feed" && (
-                  <div className="mt-2.5 space-y-3 border-t border-ink-200 pt-2.5 lg:hidden">{sourcePanelNode}</div>
+                <ActiveFilters
+                  state={feedState}
+                  onRemove={removeFilter}
+                  onReset={resetFilters}
+                  sourceName={sourceName}
+                  categoryName={(category) => t(categoryLabelForPreset(category, preset))}
+                />
+                {tab === "feed" && mobileFilterBar && (
+                  <details className="mobile-source"><summary>{t("快捷视图与数据源")}</summary>{sourcePanelNode}</details>
                 )}
 
-                {activeFilterCount > 0 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-ink-100 pt-2 text-[11.5px]">
-                    <span className="text-ink-400">当前条件：</span>
-                    {debounced && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearch("");
-                          setDebounced("");
-                        }}
-                        className="rounded bg-ink-100 px-2 py-0.5 text-ink-700 hover:bg-ink-200"
-                      >
-                        搜索：{debounced} ×
-                      </button>
-                    )}
-                    {source && (
-                      <button
-                        type="button"
-                        onClick={() => setSource("")}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        源：{sourceName(source)} ×
-                      </button>
-                    )}
-                    {categories.map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setCategories((cur) => cur.filter((x) => x !== cat))}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        分类：{categoryLabelForPreset(cat, preset)} ×
-                      </button>
-                    ))}
-                    {lang !== "all" && (
-                      <button
-                        type="button"
-                        onClick={() => setLang("all")}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        语言：{lang === "zh" ? "仅看中文" : "仅看英文"} ×
-                      </button>
-                    )}
-                    {priceCap !== "auto" && (
-                      <button
-                        type="button"
-                        onClick={() => setPriceCap("auto")}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        价格：{priceCap === "all" ? "不限" : priceCap === "free" ? "仅白嫖" : `≤${priceCap}元`} ×
-                      </button>
-                    )}
-                    {obtain !== "auto" && (
-                      <button
-                        type="button"
-                        onClick={() => setObtain("auto")}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        方式：{obtain === "all" ? "全部" : (OBTAIN_LABEL[obtain] ?? obtain)} ×
-                      </button>
-                    )}
-                    {range !== "auto" && (
-                      <button
-                        type="button"
-                        onClick={() => setRange("auto")}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        时间：{range === "all" ? "不限" : range} ×
-                      </button>
-                    )}
-                    {minScore !== "all" && (
-                      <button
-                        type="button"
-                        onClick={() => setMinScore("all")}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        评分：≥{minScore} ×
-                      </button>
-                    )}
-                    {kindFilter !== "auto" && <button type="button" onClick={() => setKindFilter("auto")} className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70">形态：{kindFilter === "all" ? "全部" : KIND_LABEL[kindFilter]} ×</button>}
-                    {unreadOnly && (
-                      <button
-                        type="button"
-                        onClick={() => setUnreadOnly(false)}
-                        className="rounded bg-brand-subtle px-2 py-0.5 text-accent hover:bg-ink-200/70"
-                      >
-                        仅未读 ×
-                      </button>
-                    )}
-                    <button type="button" onClick={resetFilters} className="ml-auto font-medium text-accent hover:underline">清除条件</button>
-                  </div>
-                )}
               </div>
               {activeFilterCount > 0 && !mobileFilterBar && <div className="flex items-center justify-between gap-3 border-b border-ink-100 bg-brand-subtle/40 px-3.5 py-2 text-[12px] sm:hidden">
-                <button type="button" onClick={() => setMobileFilterBar(true)} className="min-w-0 truncate text-ink-700">已筛选 {activeFilterCount} 项{source ? ` · ${sourceName(source)}` : ""}{categories.length ? ` · ${categories.map((cat) => categoryLabelForPreset(cat, preset)).join("、")}` : ""} · 查看条件</button>
-                <button type="button" onClick={resetFilters} className="shrink-0 font-medium text-accent">清除</button>
+                <button type="button" onClick={() => setMobileFilterBar(true)} className="min-w-0 truncate text-ink-700">{t("已筛选 {n} 项", { n: activeFilterCount })}{source ? ` · ${sourceName(source)}` : ""}{categories.length ? ` · ${categories.map((cat) => t(categoryLabelForPreset(cat, preset))).join("、")}` : ""} · {t("查看条件")}</button>
+                <button type="button" onClick={resetFilters} className="shrink-0 font-medium text-accent">{t("清除")}</button>
               </div>}
 
 
               {items.error && (
                 <div role="alert" className="mx-3.5 my-3 rounded-lg border border-alert-border bg-alert-subtle p-4 text-[13px] text-alert sm:mx-6">
-                  加载失败：{items.error} <button type="button" onClick={items.reload} className="ml-2 underline">重新加载</button>
+                  {t("加载失败：")}{items.error} <button type="button" onClick={items.reload} className="ml-2 underline">{t("重新加载")}</button>
                 </div>
               )}
-              {items.loading && !visible.length && <div role="status" aria-label="资源加载中" className="divide-y divide-ink-100">
+              {items.loading && !visible.length && <div role="status" aria-label={t("资源加载中")} className="divide-y divide-ink-100">
                 {Array.from({ length: 5 }, (_, index) => <div key={index} className="flex items-center gap-4 px-6 py-5">
                   <div className="h-4 w-9 rounded bg-ink-100" /><div className="flex-1 space-y-2"><div className="h-3 w-2/3 rounded bg-ink-100" /><div className="h-2.5 w-1/3 rounded bg-ink-100" /></div>
                 </div>)}
@@ -1777,7 +1498,7 @@ export function App() {
                       {relatedOpen === item.id && relatedMap[item.id] ? (
                         <div className="pop-enter border-b border-ink-100 bg-surface-hover px-3.5 py-2 sm:px-6">
                           <div className="mb-1 text-[11px] font-medium text-ink-500">
-                            同一事件 / 福利的其他 {relatedMap[item.id]!.length} 条来源报道
+                            {t("同一事件 / 福利的其他 {n} 条来源报道", { n: relatedMap[item.id]!.length })}
                           </div>
                           <ul className="space-y-1">
                             {relatedMap[item.id]!.map((r) => (
@@ -1830,58 +1551,18 @@ export function App() {
               )}
 
               {!items.loading && !items.error && !visible.length && (
-                preset === "pan" ? (
-                  <div className="relative min-h-[520px]">
-                    {/* 背景示例条目：只用来示意频道长什么样，全部是占位文案，不含任何真实资源 */}
-                    <div className="pointer-events-none select-none opacity-55 blur-[0.6px]" aria-hidden="true">
-                      {PAN_DEMO_ROWS.map((row, i) => (
-                        <div key={i} className="flex items-start gap-3 border-b border-ink-100 px-6 py-4">
-                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-ink-300" />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[14px] text-ink-900">{row.title}</div>
-                            <div className="mt-1 text-[11.5px] text-ink-400">{row.meta}</div>
-                          </div>
-                          <span className="shrink-0 font-mono text-[11px] text-ink-300">{row.score}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {/* 说明卡浮在示例列表之上 */}
-                    <div className="absolute inset-0 flex items-start justify-center bg-gradient-to-b from-surface/35 via-surface/70 to-surface px-4 pt-10 sm:pt-16">
-                      <div className="w-full max-w-xl rounded-lg border border-ink-200 bg-surface p-6 shadow-sm">
-                        <div className="flex items-center gap-2 text-[15px] font-medium text-ink-900">
-                          <FolderOpen size={16} className="text-ink-400" />
-                          网盘/网课频道在公开演示站已停用
-                        </div>
-                        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-500">
-                          该频道聚合的是第三方网盘分享链接，公开展示存在版权风险，因此演示站不采集、不展示这类内容。背景条目为占位示意，不是真实资源。
-                        </p>
-                        <div className="mt-4 border-t border-ink-100 pt-4">
-                          <div className="text-[12px] font-medium text-ink-700">能力说明（自部署可开启）</div>
-                          <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-ink-500">
-                            <li>· 多源采集：TG 频道、linux.do、RSS、GitHub Releases</li>
-                            <li>· AI 语义分流：自动识别网盘资源、网课教程、影视剧集</li>
-                            <li>· 一条消息含多个资源时自动拆分入库，标题清洗掉栏目前缀</li>
-                          </ul>
-                        </div>
-                        <a href={REPO_URL} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 text-[12.5px] font-medium text-brand hover:underline">
-                          查看自部署文档 →
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
                 <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
                   <Radar size={28} className="text-ink-300" />
-                  <div className="text-[15px] font-medium text-ink-900">{preset === "hidden" ? "还没有已关闭的内容" : preset === "starred" ? "还没有符合条件的收藏" : "当前条件下暂无内容"}</div>
-                  <p className="max-w-md text-[12.5px] leading-relaxed text-ink-500">
-                    {preset === "hidden" ? "列表里点“不想看”的内容会来到这里，需要时可恢复。" : preset === "starred" ? "点资源旁的星标即可收藏；已收藏但未显示时，可先清除筛选。" : `「${PRESETS.find((p) => p.key === preset)?.label ?? "当前频道"}」暂时没有匹配结果，可以清除条件或浏览全部收录。`}
+                  <div className="text-[17px] font-medium text-ink-900">{preset === "hidden" ? t("还没有已关闭的内容") : preset === "starred" ? t("还没有符合条件的收藏") : t("当前条件下暂无内容")}</div>
+                  <p className="max-w-md text-[13px] leading-relaxed text-ink-500">
+                    {preset === "hidden" ? t("列表里点“不想看”的内容会来到这里，需要时可恢复。") : preset === "starred" ? t("点资源旁的星标即可收藏；已收藏但未显示时，可先清除筛选。") : t("「{channel}」暂时没有匹配结果，可以清除条件或浏览全部收录。", { channel: PRESETS.find((p) => p.key === preset)?.label ?? t("当前频道") })}
                   </p>
+                  {preset === "pan" && isPublicSite && <p className="max-w-md text-[12px] leading-relaxed text-ink-500">{t("网盘与网课条目的可见范围由站点访问策略决定；第三方分享请核对来源与版权。")}</p>}
                   <div className="flex gap-2">
-                    {activeFilterCount > 0 && <button type="button" onClick={resetFilters} className="rounded-md border border-ink-200 px-4 py-2 text-[12.5px] font-medium text-ink-700 hover:bg-ink-100">清除当前条件</button>}
-                    <button type="button" onClick={() => { resetFilters(); setPreset("all"); }} className="rounded-md bg-brand px-4 py-2 text-[12.5px] font-medium text-white hover:bg-brand-hover">浏览全部收录</button>
+                    {activeFilterCount > 0 && <button type="button" onClick={resetFilters} className="rounded-md border border-ink-200 px-4 py-2 text-[12px] font-medium text-ink-700 hover:bg-ink-100">{t("清除当前条件")}</button>}
+                    <button type="button" onClick={() => { resetFilters(); setPreset("all"); }} className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover">{t("浏览全部收录")}</button>
                   </div>
                 </div>
-                )
               )}
             </>
           )}
@@ -1896,11 +1577,7 @@ export function App() {
               onHours={setHotHours}
               onScope={setHotScope}
               onReload={hot.reload}
-              onSearchWord={(w) => {
-                setSearch(w);
-                switchPreset(hotScope === "news" ? "news" : hotScope === "info" ? "info" : hotScope === "deals" ? "verified" : "all");
-                setTab("feed");
-              }}
+              onSearchWord={(w) => handleTab("feed", { ...DEFAULT_FEED_STATE, search: w, preset: hotScope === "news" ? "news" : hotScope === "info" ? "info" : hotScope === "deals" ? "verified" : "all" })}
               onJumpCategory={(cat) => {
                 const targetPreset =
                   hotScope === "news" || cat === "headline" || cat === "world"
@@ -1908,11 +1585,10 @@ export function App() {
                     : hotScope === "info" || cat === "stock" || cat === "tech" || cat === "finance"
                       ? "info"
                       : "all";
-                switchPreset(targetPreset);
-                setCategories([cat]);
-                setTab("feed");
+                handleTab("feed", { ...DEFAULT_FEED_STATE, preset: targetPreset, categories: [cat] });
               }}
               onOpenItem={async (id) => {
+                const epoch = overlayEpoch.current;
                 const found = items.data?.items?.find((it) => it.id === id);
                 if (found) {
                   setDetail(found);
@@ -1922,13 +1598,14 @@ export function App() {
                   const res = await fetch("/api/items/" + id);
                   if (res.ok) {
                     const item = (await res.json()) as Item;
+                    if (epoch !== overlayEpoch.current) return;
                     setDetail(item);
                     return;
                   }
                 } catch {
                   /* 回退到资源流 */
                 }
-                setTab("feed");
+                if (epoch === overlayEpoch.current) handleTab("feed");
               }}
               sourceName={sourceName}
             />
@@ -1942,11 +1619,11 @@ export function App() {
               onPickDate={setPickedDate}
               canAdmin={adminReady}
               onRunDaily={async () => {
-                notify("正在生成今日精选…");
+                notify(t("正在生成今日精选…"));
                 const res = await fetch("/api/digests/run", { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as { date?: string; count?: number; error?: string };
-                if (!res.ok) notify(data.error ?? "生成失败");
-                else notify(`已生成 ${data.count ?? 0} 条精选`);
+                if (!res.ok) notify(data.error ?? t("生成失败"));
+                else notify(t("已生成 {n} 条精选", { n: data.count ?? 0 }));
                 digests.reload();
                 setPickedDate(res.ok && data.date ? data.date : null);
                 digestDetail.reload();
@@ -1957,11 +1634,11 @@ export function App() {
               onQuickBlock={setQuickBlock}
               onCopyCode={copyCode}
               onRunWeekly={async () => {
-                notify("正在汇总本周精选…");
+                notify(t("正在汇总本周精选…"));
                 const res = await fetch("/api/digests/weekly", { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as { date?: string; count?: number; error?: string; pushed?: boolean };
-                if (!res.ok) notify(data.error ?? "生成失败");
-                else notify(`周报已生成 ${data.count ?? 0} 条${data.pushed ? "，已发 Telegram" : ""}`);
+                if (!res.ok) notify(data.error ?? t("生成失败"));
+                else notify(t("周报已生成 {n} 条{suffix}", { n: data.count ?? 0, suffix: data.pushed ? t("，已发 Telegram") : "" }));
                 digests.reload();
                 setPickedDate(res.ok && data.date ? data.date : null);
                 digestDetail.reload();
@@ -1969,9 +1646,10 @@ export function App() {
             />
           )}
 
-          {(adminReady || me) && tab === "rules" && (
+          {canConfigure && !configurationLoading && !configurationError && tab === "rules" && (
             <RulesPanel
-              allowRegex={adminReady}
+              key={configScopeKey}
+              allowRegex={effectiveScope === "site" && adminReady}
               subscriptions={subs.data?.subscriptions ?? []}
               rules={blockRules.data?.rules ?? []}
               presets={blockRules.data?.presets ?? []}
@@ -1981,11 +1659,7 @@ export function App() {
               sourceName={sourceName}
               onAddSub={addSubscription}
               onRemoveSub={removeSubscription}
-              onJumpToSubscribed={(kw) => {
-                setSearch(kw);
-                setPreset("all");
-                setTab("feed");
-              }}
+              onJumpToSubscribed={(kw) => handleTab("feed", { ...DEFAULT_FEED_STATE, preset: "all", search: kw })}
               onAddRule={addRule}
               onImportPresets={async () => {
                 const res = await fetch(rulesBase + "/block-rules", {
@@ -1993,11 +1667,11 @@ export function App() {
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ presets: true }),
                 });
-                if (!res.ok) { notify("导入屏蔽词失败"); return; }
+                if (!res.ok) { notify(t("导入屏蔽词失败")); return; }
                 blockRules.reload();
                 items.reload();
                 stats.reload();
-                notify("已导入常见噪音屏蔽词");
+                notify(t("已导入常见噪音屏蔽词"));
               }}
               onToggleRule={async (id, enabled) => {
                 const res = await fetch(rulesBase + "/block-rules/" + id, {
@@ -2005,19 +1679,19 @@ export function App() {
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ enabled }),
                 });
-                if (!res.ok) { notify("修改规则失败"); return; }
+                if (!res.ok) { notify(t("修改规则失败")); return; }
                 blockRules.reload();
                 items.reload();
                 setBlockedPreview(null);
               }}
               onDeleteRule={async (id) => {
                 const res = await fetch(rulesBase + "/block-rules/" + id, { method: "DELETE" });
-                if (!res.ok) { notify("删除规则失败"); return; }
+                if (!res.ok) { notify(t("删除规则失败")); return; }
                 blockRules.reload();
                 items.reload();
                 stats.reload();
                 setBlockedPreview(null);
-                notify("规则已删除，相关条目已恢复显示");
+                notify(t("规则已删除，相关条目已恢复显示"));
               }}
               onLoadBlockedPreview={async () => {
                 const res = await fetch("/api/items?includeBlocked=1&limit=80&sort=newest");
@@ -2027,8 +1701,9 @@ export function App() {
             />
           )}
 
-          {pushBase && tab === "push" && (
+          {pushBase && !configurationLoading && !configurationError && tab === "push" && (
             <PushPanel
+              key={configScopeKey}
               payload={push.data}
               preview={pushPreview}
               logs={pushLogs.data?.logs ?? []}
@@ -2040,24 +1715,24 @@ export function App() {
                   body: JSON.stringify(p),
                 });
                 if (!res.ok) {
-                  const error = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "保存失败";
+                  const error = ((await res.json().catch(() => ({}))) as { error?: string }).error ?? t("保存失败");
                   notify(error);
                   throw new Error(error);
                 }
                 push.reload();
                 setPushPreview(null);
-                notify("推送规则已保存");
+                notify(t("推送规则已保存"));
               }}
               onPreview={async () => {
                 const res = await fetch((pushBase ?? "/api/push") + "/preview?limit=6");
-                if (!res.ok) { notify("试算失败，请稍后重试"); return; }
+                if (!res.ok) { notify(t("试算失败，请稍后重试")); return; }
                 setPushPreview((await res.json()) as PushPreview);
               }}
               onFlush={async () => {
                 const res = await fetch((pushBase ?? "/api/push") + "/flush", { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as { sent?: number; queued?: number; error?: string };
-                if (!res.ok) { notify(data.error ?? "发送失败"); return; }
-                notify(`已发送 ${data.sent ?? 0} 条，队列剩 ${data.queued ?? 0} 条`);
+                if (!res.ok) { notify(data.error ?? t("发送失败")); return; }
+                notify(t("已发送 {sent} 条，队列剩 {queued} 条", { sent: data.sent ?? 0, queued: data.queued ?? 0 }));
                 push.reload();
                 pushLogs.reload();
                 setPushPreview(null);
@@ -2065,7 +1740,7 @@ export function App() {
               onTest={async () => {
                 const res = await fetch((pushBase ?? "/api/push") + "/test", { method: "POST" });
                 const data = await res.json().catch(() => ({})) as { error?: string };
-                notify(res.ok ? "测试消息已发送到当前渠道" : data.error ?? "推送未启用或缺少凭据");
+                notify(res.ok ? t("测试消息已发送到当前渠道") : data.error ?? t("推送未启用或缺少凭据"));
                 pushLogs.reload();
               }}
             />
@@ -2079,6 +1754,7 @@ export function App() {
               onNotify={notify}
               sourceName={sourceName}
               onOpenItem={async (id) => {
+                const epoch = overlayEpoch.current;
                 const found = items.data?.items?.find((it) => it.id === id);
                 if (found) {
                   setDetail(found);
@@ -2088,6 +1764,7 @@ export function App() {
                   const res = await fetch("/api/items/" + id);
                   if (res.ok) {
                     const item = (await res.json()) as Item;
+                    if (epoch !== overlayEpoch.current) return;
                     setDetail(item);
                   }
                 } catch {
@@ -2097,8 +1774,14 @@ export function App() {
             />
           )}
 
+          {tab === "me" && !me && bootData && <div className="space-y-3 py-10">
+            <h2 className="text-[17px] font-semibold text-ink-950">{t("登录后查看账号与通知")}</h2>
+            <p className="text-[13px] text-ink-500">{t("未登录时，收藏和屏蔽保存在当前浏览器中。")}</p>
+            {bootData.loginEnabled && <button type="button" className="rounded-md bg-brand px-4 py-2 text-[13px] text-white" onClick={() => { setAuthHash(null); setAuthOpen(true); }}>{t("登录")}</button>}
+            <button type="button" className="scope-link ml-3" onClick={() => handleTab("feed")}>{t("回到资源流")}</button>
+          </div>}
           {me && tab === "me" && bootData && <UserPushPanel key={me.id} boot={bootData} />}
-          {adminReady && tab === "ops" && <SiteAdminPanel />}
+          {adminReady && tab === "site" && <SiteAdminPanel onPublicConfigChange={boot.reload} />}
           {adminReady && tab === "ops" && (
             <OpsPanel
               onClassificationChanged={() => { refreshAll(); hot.reload(); digestDetail.reload(); }}
@@ -2107,7 +1790,7 @@ export function App() {
               sourceName={sourceName}
               onCollectSource={async (id) => {
                 const isCookieSite = id === "zhihu-search" || id === "xhs-search" || id === "xiaoheihe-search";
-                notify(isCookieSite ? "正在通过 VPS Cookie 采集（约 15-40 秒）…" : "正在采集…");
+                notify(isCookieSite ? t("正在通过 VPS Cookie 采集（约 15-40 秒）…") : t("正在采集…"));
                 const res = await fetch(`/api/sources/${id}/collect`, { method: "POST" });
                 const data = (await res.json().catch(() => ({}))) as {
                   ok?: boolean;
@@ -2115,9 +1798,9 @@ export function App() {
                   summary?: { inserted: number; fetched: number; status: string };
                 };
                 if (!res.ok || data.ok === false || data.summary?.status === "failed") {
-                  notify(data.error ?? "采集失败");
+                  notify(data.error ?? t("采集失败"));
                 } else {
-                  notify(`完成：抓取 ${data.summary?.fetched ?? 0}，新增 ${data.summary?.inserted ?? 0}`);
+                  notify(t("完成：抓取 {fetched}，新增 {inserted}", { fetched: data.summary?.fetched ?? 0, inserted: data.summary?.inserted ?? 0 }));
                 }
                 refreshAll();
               }}
@@ -2128,7 +1811,7 @@ export function App() {
                   body: JSON.stringify({ enabled }),
                 });
                 sources.reload();
-                notify(enabled ? "已启用该源" : "已禁用该源");
+                notify(enabled ? t("已启用该源") : t("已禁用该源"));
               }}
               onChangeInterval={async (id, sec) => {
                 await fetch("/api/sources/" + id, {
@@ -2137,10 +1820,10 @@ export function App() {
                   body: JSON.stringify({ interval_sec: sec }),
                 });
                 sources.reload();
-                notify("采集周期已改为 " + formatInterval(sec));
+                notify(t("采集周期已改为 {interval}", { interval: formatInterval(sec) }));
               }}
               onAddRss={async (name, url, intervalSec, kindHint, categoryHint, fixedCategory) => {
-                notify("正在添加并试采…");
+                notify(t("正在添加并试采…"));
                 const res = await fetch("/api/sources", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
@@ -2150,9 +1833,9 @@ export function App() {
                   error?: string;
                   summary?: { fetched: number; inserted: number; status: string; error?: string };
                 };
-                if (!res.ok) notify(data.error ?? "添加失败");
-                else if (data.summary?.status === "failed") notify("已添加，但首次采集失败：" + (data.summary.error ?? ""));
-                else notify(`已添加，抓取 ${data.summary?.fetched ?? 0} 条，新增 ${data.summary?.inserted ?? 0}`);
+                if (!res.ok) notify(data.error ?? t("添加失败"));
+                else if (data.summary?.status === "failed") notify(t("已添加，但首次采集失败：{error}", { error: data.summary.error ?? "" }));
+                else notify(t("已添加，抓取 {fetched} 条，新增 {inserted}", { fetched: data.summary?.fetched ?? 0, inserted: data.summary?.inserted ?? 0 }));
                 refreshAll();
               }}
               onUpdateSource={async (id, patch) => {
@@ -2163,7 +1846,7 @@ export function App() {
                 });
                 const data = (await res.json().catch(() => ({}))) as { error?: string; reclassified?: number };
                 if (!res.ok) {
-                  notify(data.error ?? "保存失败");
+                  notify(data.error ?? t("保存失败"));
                   return false;
                 }
                 // Commit the acknowledged config locally before closing/reopening the editor.
@@ -2172,18 +1855,18 @@ export function App() {
                 refreshAll();
                 hot.reload();
                 digestDetail.reload();
-                notify(data.reclassified ? `配置已更新，${data.reclassified} 条历史资源已重新归类` : "数据源配置已更新");
+                notify(data.reclassified ? t("配置已更新，{n} 条历史资源已重新归类", { n: data.reclassified }) : t("数据源配置已更新"));
                 return true;
               }}
               onDeleteSource={async (id) => {
                 const res = await fetch("/api/sources/" + id, { method: "DELETE" });
                 const data = (await res.json().catch(() => ({}))) as { error?: string };
                 if (!res.ok) {
-                  notify(data.error ?? "删除失败");
+                  notify(data.error ?? t("删除失败"));
                   return false;
                 }
                 refreshAll();
-                notify("已删除自定义数据源");
+                notify(t("已删除自定义数据源"));
                 return true;
               }}
               onNotify={notify}
@@ -2192,13 +1875,14 @@ export function App() {
           </Suspense>
         </main>
 
-        <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-ink-200 px-3.5 py-3 text-[11.5px] text-ink-400 sm:px-6">
-          <span>资源雷达 · 多源聚合 · AI 语义分流 · 所筛即所推</span>
+        <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-ink-200 px-3.5 py-3 text-[12px] text-ink-400 sm:px-6">
+          <span>{t("资源雷达 · 多源聚合 · 浏览筛选与通知配置独立")}</span>
+          <a href={REPO_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ink-500 hover:text-accent" aria-label={t("GitHub 主仓库")}><Github size={12} /> GitHub</a>
           <span className="font-mono tabular-nums">
-            {stats.data?.totals.active ?? 0} 条在库 · {stats.data?.totals.unread ?? 0} 条未读
+            {t("{active} 条在库 · {unread} 条未读", { active: stats.data?.totals.active ?? 0, unread: stats.data?.totals.unread ?? 0 })}
           </span>
-          <span className="w-full text-[11px] leading-relaxed text-ink-400/80">
-            本站仅聚合公开渠道的资源标题与原始链接，不存储、不代理、不转存任何文件。如权利人认为内容侵权，请联系删除，本站将在收到通知后第一时间下架。
+          <span className="w-full text-[11px] leading-relaxed text-ink-400">
+            {t("本站仅聚合公开渠道的资源标题与原始链接，不存储、不代理、不转存任何文件。如权利人认为内容侵权，请联系删除，本站将在收到通知后第一时间下架。")}
           </span>
         </footer>
       </div>
@@ -2219,7 +1903,7 @@ export function App() {
           onClassificationSave={adminReady ? async (id, update) => {
             const response = await fetch(`/api/admin/items/${id}/classification`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(update) });
             const result = await response.json() as { error?: string };
-            if (!response.ok) throw new Error(result.error ?? "保存分类失败");
+            if (!response.ok) throw new Error(result.error ?? t("保存分类失败"));
             // A fresh detail carries personal state and manual metadata without crossing user/admin scopes.
             const fullResponse = await fetch(`/api/items/${id}`);
             if (fullResponse.ok) {

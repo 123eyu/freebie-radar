@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
+import { t } from "../lib/i18n.ts";
 import { Activity, Check, Copy, Database, ExternalLink, Gauge, KeyRound, Loader2, Pencil, Play, Plus, Rss, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import {
   CATEGORY_LABEL,
@@ -13,27 +14,27 @@ import { DEFAULT_FIXED_CATEGORIES } from "../../../shared/source-classification.
 import { ClassificationPanel } from "./ClassificationPanel.tsx";
 
 const INTERVAL_OPTIONS = [
-  { label: "60 秒", sec: 60 },
-  { label: "90 秒", sec: 90 },
-  { label: "2 分钟", sec: 120 },
-  { label: "5 分钟", sec: 300 },
-  { label: "15 分钟", sec: 900 },
-  { label: "30 分钟", sec: 1800 },
-  { label: "1 小时", sec: 3600 },
-  { label: "6 小时", sec: 21600 },
+  { label: t("60 秒"), sec: 60 },
+  { label: t("90 秒"), sec: 90 },
+  { label: t("2 分钟"), sec: 120 },
+  { label: t("5 分钟"), sec: 300 },
+  { label: t("15 分钟"), sec: 900 },
+  { label: t("30 分钟"), sec: 1800 },
+  { label: t("1 小时"), sec: 3600 },
+  { label: t("6 小时"), sec: 21600 },
 ];
 
 /** 用途（kind）下拉：来自 shared/taxonomy.ts，与推送/主页同一份 */
 const KIND_HINT_OPTIONS = [
-  { value: "", label: "用途：自动识别" },
-  ...KIND_ORDER.map((key) => ({ value: key, label: `用途：${KIND_LABEL[key]}` })),
+  { value: "", label: t("用途：自动识别") },
+  ...KIND_ORDER.map((key) => ({ value: key, label: t("用途：{v}", { v: t(KIND_LABEL[key] ?? key) }) })),
 ];
 
 /** 分类下拉按大类分组，覆盖全部分类（以前这里只列了 13 个，网盘/网课/拼车等选不到） */
 const CATEGORY_HINT_GROUPS = categoryOptionGroups();
 
 function categoryHintLabel(value: string): string {
-  return value ? (CATEGORY_LABEL[value as keyof typeof CATEGORY_LABEL] ?? value) : "自动识别";
+  return value ? t(CATEGORY_LABEL[value as keyof typeof CATEGORY_LABEL] ?? value) : t("自动识别");
 }
 
 /**
@@ -54,12 +55,12 @@ function sourceHints(source: Source): { category: string; kind: string } {
       .map((v) => v.trim());
     const unique = [...new Set(values)];
     if (!unique.length) return "";
-    const labelOf = (v: string) => (key === "categoryHint" ? categoryHintLabel(v) : (KIND_LABEL[v] ?? v));
+    const labelOf = (v: string) => (key === "categoryHint" ? categoryHintLabel(v) : (t(KIND_LABEL[v] ?? v)));
     if (unique.length === 1) return labelOf(unique[0]!);
     return `${labelOf(unique[0]!)} +${unique.length - 1}`;
   };
   const fixed = typeof cfg.fixedCategory === "string" ? cfg.fixedCategory : DEFAULT_FIXED_CATEGORIES[source.id];
-  return { category: fixed ? `固定 · ${categoryHintLabel(fixed)}` : pick("categoryHint"), kind: pick("kindHint") };
+  return { category: fixed ? t("固定 · {v}", { v: categoryHintLabel(fixed) }) : pick("categoryHint"), kind: pick("kindHint") };
 }
 
 type OpsTab = "sources" | "runs" | "quality" | "retention";
@@ -101,7 +102,7 @@ function CategoryHintSelect({
   value,
   onChange,
   className,
-  emptyLabel = "分类：自动识别",
+  emptyLabel = t("分类：自动识别"),
   ariaLabel,
 }: {
   value: string;
@@ -114,12 +115,12 @@ function CategoryHintSelect({
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className={className} aria-label={ariaLabel}>
       <option value="">{emptyLabel}</option>
-      {value && !known && <option value={value}>{value}（未知分类）</option>}
+      {value && !known && <option value={value}>{value}{t("（未知分类）")}</option>}
       {CATEGORY_HINT_GROUPS.map((group) => (
-        <optgroup key={group.label} label={group.label}>
+        <optgroup key={group.label} label={t(group.label)}>
           {group.options.map((opt) => (
-            <option key={opt.value} value={opt.value} title={opt.desc}>
-              {opt.label}
+            <option key={opt.value} value={opt.value} title={t(opt.desc)}>
+              {t(opt.label)}
             </option>
           ))}
         </optgroup>
@@ -165,12 +166,12 @@ function SourceInlineEditor({
       try {
         const parsed = JSON.parse(rawJson);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          setJsonErr("JSON 必须是对象 {}");
+          setJsonErr(t("JSON 必须是对象 {}"));
           return null;
         }
         base = parsed as Record<string, unknown>;
       } catch (e) {
-        setJsonErr(e instanceof Error ? e.message : "JSON 语法错误");
+        setJsonErr(e instanceof Error ? e.message : t("JSON 语法错误"));
         return null;
       }
     } else {
@@ -235,10 +236,10 @@ function SourceInlineEditor({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-ink-200 bg-surface p-3.5 text-[12.5px]">
+    <div className="space-y-3 rounded-lg border border-ink-200 bg-surface p-3.5 text-[12px]">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-medium text-ink-950">
-          编辑数据源 <span className="font-mono text-[11px] text-ink-400">{source.id}</span>
+          {t("编辑数据源")} <span className="font-mono text-[11px] text-ink-400">{source.id}</span>
         </div>
         <button
           type="button"
@@ -249,23 +250,23 @@ function SourceInlineEditor({
             }
             setShowJson((v) => !v);
           }}
-          className="text-[11.5px] font-medium text-brand hover:underline"
+          className="text-[12px] font-medium text-brand hover:underline"
         >
-          {showJson ? "切回表单编辑" : "高级 JSON 配置"}
+          {showJson ? t("切回表单编辑") : t("高级 JSON 配置")}
         </button>
       </div>
 
       <div className="grid gap-2.5 sm:grid-cols-12">
         <label className="space-y-1 sm:col-span-4">
-          <span className="text-[11px] text-ink-500">显示名称</span>
+          <span className="text-[11px] text-ink-500">{t("显示名称")}</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12.5px] text-ink-950 outline-none focus:border-brand"
+            className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand"
           />
         </label>
         <label className="space-y-1 sm:col-span-2">
-          <span className="text-[11px] text-ink-500">采集周期</span>
+          <span className="text-[11px] text-ink-500">{t("采集周期")}</span>
           <select
             value={intervalSec}
             onChange={(e) => setIntervalSec(Number(e.target.value))}
@@ -282,7 +283,7 @@ function SourceInlineEditor({
           </select>
         </label>
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-[11px] text-ink-500">源级兜底用途（feed 未指定时生效）</span>
+          <span className="text-[11px] text-ink-500">{t("源级兜底用途（feed 未指定时生效）")}</span>
           <select
             value={kindHint}
             onChange={(e) => setKindHint(e.target.value)}
@@ -296,7 +297,7 @@ function SourceInlineEditor({
           </select>
         </label>
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-[11px] text-ink-500">兜底分类（内容识别不出时采用）</span>
+          <span className="text-[11px] text-ink-500">{t("兜底分类（内容识别不出时采用）")}</span>
           <CategoryHintSelect
             value={categoryHint}
             onChange={setCategoryHint}
@@ -307,13 +308,13 @@ function SourceInlineEditor({
 
       <div className="grid gap-3 rounded-lg border border-brand-border bg-brand-subtle/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
         <div>
-          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-accent"><ShieldCheck size={14} /> 固定分类（硬规则）</div>
-          <p className="mt-1 text-[11.5px] leading-relaxed text-ink-600">选定后，该源资源固定归入此类，优先于关键词、RSS 提示和 AI（单条人工纠正除外）；保存时同步重整历史条目，不触发 AI 或推送。启停和收藏不受影响。取消固定后，新条目恢复自动分类，已有条目保持原分类。</p>
+          <div className="flex items-center gap-1.5 text-[12px] font-semibold text-accent"><ShieldCheck size={14} /> {t("固定分类（硬规则）")}</div>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-600">{t("选定后，该源资源固定归入此类，优先于关键词、RSS 提示和 AI（单条人工纠正除外）；保存时同步重整历史条目，不触发 AI 或推送。启停和收藏不受影响。取消固定后，新条目恢复自动分类，已有条目保持原分类。")}</p>
         </div>
         <label className="space-y-1">
-          <span className="text-[12px] font-medium text-ink-700">固定分类</span>
-          <CategoryHintSelect value={fixedCategory} onChange={setFixedCategory} emptyLabel="不固定 · 按内容自动分类" ariaLabel="固定分类" className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand" />
-          {source.id === "linuxdo-resource" && <span className="block text-[11px] text-ink-500">资源荟萃推荐：网盘资源；不会再混进真福利。</span>}
+          <span className="text-[12px] font-medium text-ink-700">{t("固定分类")}</span>
+          <CategoryHintSelect value={fixedCategory} onChange={setFixedCategory} emptyLabel={t("不固定 · 按内容自动分类")} ariaLabel={t("固定分类")} className="w-full rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800 outline-none focus:border-brand" />
+          {source.id === "linuxdo-resource" && <span className="block text-[11px] text-ink-500">{t("资源荟萃推荐：网盘资源；不会再混进真福利。")}</span>}
         </label>
       </div>
 
@@ -321,21 +322,21 @@ function SourceInlineEditor({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[11px] text-ink-500">
-              订阅地址（{feedRows.length} 条）· 每条可单独指定分类/用途，留空则用源级兜底
+              {t("订阅地址（{n} 条）· 每条可单独指定分类/用途，留空则用源级兜底", { n: feedRows.length })}
             </span>
             <button
               type="button"
               onClick={() => setFeedRows((rows) => [...rows, { ...EMPTY_FEED_ROW }])}
-              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[11.5px] font-medium text-ink-700 hover:border-brand-border hover:text-brand"
+              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:text-brand"
             >
-              <Plus size={11} /> 添加订阅地址
+              <Plus size={11} /> {t("添加订阅地址")}
             </button>
           </div>
           {feedRows.map((row, i) => (
             <div key={i} className="space-y-2 rounded-lg border border-ink-200 bg-surface-hover p-2.5">
               <div className="grid gap-2 sm:grid-cols-12">
                 <label className="space-y-1 sm:col-span-6">
-                  <span className="text-[11px] text-ink-500">RSS / Atom 地址 #{i + 1}</span>
+                  <span className="text-[11px] text-ink-500">{t("RSS / Atom 地址 #{n}", { n: i + 1 })}</span>
                   <input
                     value={row.url}
                     onChange={(e) => updateFeed(i, { url: e.target.value })}
@@ -344,7 +345,7 @@ function SourceInlineEditor({
                   />
                 </label>
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-[11px] text-ink-500">每次条数</span>
+                  <span className="text-[11px] text-ink-500">{t("每次条数")}</span>
                   <input
                     type="number"
                     min={1}
@@ -355,7 +356,7 @@ function SourceInlineEditor({
                   />
                 </label>
                 <div className="space-y-1 sm:col-span-2">
-                  <span className="text-[11px] text-ink-500">分类</span>
+                  <span className="text-[11px] text-ink-500">{t("分类")}</span>
                   <CategoryHintSelect
                     value={row.categoryHint}
                     onChange={(v) => updateFeed(i, { categoryHint: v })}
@@ -363,7 +364,7 @@ function SourceInlineEditor({
                   />
                 </div>
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-[11px] text-ink-500">用途</span>
+                  <span className="text-[11px] text-ink-500">{t("用途")}</span>
                   <select
                     value={row.kindHint}
                     onChange={(e) => updateFeed(i, { kindHint: e.target.value })}
@@ -379,11 +380,11 @@ function SourceInlineEditor({
               </div>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="min-w-[200px] flex-1 space-y-1">
-                  <span className="text-[11px] text-ink-500">标题必含关键词（逗号分隔，留空全收）</span>
+                  <span className="text-[11px] text-ink-500">{t("标题必含关键词（逗号分隔，留空全收）")}</span>
                   <input
                     value={row.titleKeywords}
                     onChange={(e) => updateFeed(i, { titleKeywords: e.target.value })}
-                    placeholder="如：免费, 限免, free"
+                    placeholder={t("如：免费, 限免, free")}
                     className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand"
                   />
                 </label>
@@ -391,23 +392,23 @@ function SourceInlineEditor({
                   <button
                     type="button"
                     onClick={() => setFeedRows((rows) => rows.filter((_, x) => x !== i))}
-                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-alert hover:border-alert/40 hover:bg-alert-subtle"
+                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] font-medium text-alert hover:border-alert/40 hover:bg-alert-subtle"
                   >
-                    <Trash2 size={11} /> 删除这条
+                    <Trash2 size={11} /> {t("删除这条")}
                   </button>
                 )}
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 {[
-                  { key: "includeCategories" as const, label: "只采这些 RSS 栏目", placeholder: "info, promotion" },
-                  { key: "excludeCategories" as const, label: "排除这些 RSS 栏目", placeholder: "trade, discussion" },
-                  { key: "excludeTitleKeywords" as const, label: "标题排除词", placeholder: "求助, 广告, 招募" },
+                  { key: "includeCategories" as const, label: t("只采这些 RSS 栏目"), placeholder: "info, promotion" },
+                  { key: "excludeCategories" as const, label: t("排除这些 RSS 栏目"), placeholder: "trade, discussion" },
+                  { key: "excludeTitleKeywords" as const, label: t("标题排除词"), placeholder: t("求助, 广告, 招募") },
                 ].map((field) => <label key={field.key} className="space-y-1">
                   <span className="text-[11px] text-ink-500">{field.label}</span>
                   <input value={row[field.key]} onChange={(event) => updateFeed(i, { [field.key]: event.target.value })} placeholder={field.placeholder} className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-950 outline-none focus:border-brand" />
                 </label>)}
               </div>
-              <p className="text-[11px] leading-relaxed text-ink-500">逗号分隔，排除优先。这些栏目是原站 RSS 标签，不是本站分类；采集过滤从下次采集起生效，不删除历史资源。</p>
+              <p className="text-[11px] leading-relaxed text-ink-500">{t("逗号分隔，排除优先。这些栏目是原站 RSS 标签，不是本站分类；采集过滤从下次采集起生效，不删除历史资源。")}</p>
             </div>
           ))}
         </div>
@@ -415,7 +416,7 @@ function SourceInlineEditor({
 
       {!showJson && source.kind === "telegram" && (
         <label className="block space-y-1">
-          <span className="text-[11px] text-ink-500">Telegram 公开频道名（逗号或空格分隔）</span>
+          <span className="text-[11px] text-ink-500">{t("Telegram 公开频道名（逗号或空格分隔）")}</span>
           <input
             value={tgChannels}
             onChange={(e) => setTgChannels(e.target.value)}
@@ -427,14 +428,14 @@ function SourceInlineEditor({
 
       {showJson && (
         <div className="space-y-1">
-          <span className="text-[11px] text-ink-500">源 config JSON（可直接增删栏目 / feeds / 过滤参数）</span>
+          <span className="text-[11px] text-ink-500">{t("源 config JSON（可直接增删栏目 / feeds / 过滤参数）")}</span>
           <textarea
             rows={5}
             value={rawJson}
             onChange={(e) => setRawJson(e.target.value)}
-            className="w-full rounded-lg border border-ink-200 bg-surface p-2 font-mono text-[11.5px] text-ink-900 outline-none focus:border-brand"
+            className="w-full rounded-lg border border-ink-200 bg-surface p-2 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
           />
-          {jsonErr && <div className="text-[11.5px] text-alert">{jsonErr}</div>}
+          {jsonErr && <div className="text-[12px] text-alert">{jsonErr}</div>}
         </div>
       )}
 
@@ -458,7 +459,7 @@ function SourceInlineEditor({
                   : "border-ink-200 bg-surface text-alert hover:border-alert/40 hover:bg-alert-subtle")
               }
             >
-              <Trash2 size={12} /> {confirmDel ? "再点一次确认删除" : "删除自定义源"}
+              <Trash2 size={12} /> {confirmDel ? t("再点一次确认删除") : t("删除自定义源")}
             </button>
           )}
         </div>
@@ -468,7 +469,7 @@ function SourceInlineEditor({
             onClick={onCancel}
             className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-1 text-[12px] text-ink-600 hover:bg-ink-100"
           >
-            <X size={12} /> 取消
+            <X size={12} /> {t("取消")}
           </button>
           <button
             type="button"
@@ -476,7 +477,7 @@ function SourceInlineEditor({
             onClick={() => void handleSave()}
             className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
           >
-            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} 保存配置
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {t("保存配置")}
           </button>
         </div>
       </div>
@@ -510,6 +511,7 @@ export function OpsPanel({
   onNotify?: (msg: string) => void;
 }) {
   const [subTab, setSubTab] = useState<OpsTab>("sources");
+  const [externalTools, setExternalTools] = useState<{ epicClaimer: { url: string } | null } | null>(null);
   const [filterText, setFilterText] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "error" | "disabled">("all");
   const [runningIds, setRunningIds] = useState<string[]>([]);
@@ -572,6 +574,15 @@ export function OpsPanel({
     void loadCookieStatus();
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/external-tools")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) setExternalTools(d as { epicClaimer: { url: string } | null }); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+
   const saveCookiePatch = async (
     patch: { runnerUrl?: string; xhsProxy?: string; cookies?: Partial<Record<"zhihu" | "xhs" | "xiaoheihe" | "nga" | "weibo", string>> },
     busyKey: string,
@@ -586,14 +597,14 @@ export function OpsPanel({
       });
       const d = (await r.json().catch(() => ({}))) as NonNullable<typeof cookieStatus> & { error?: string };
       if (!r.ok) {
-        onNotify?.(d.error ?? "保存失败");
+        onNotify?.(d.error ?? t("保存失败"));
         return false;
       }
       setCookieStatus(d);
       setRunnerUrlInput(d.runnerUrl || "");
       setXhsProxyInput(d.xhsProxy || "");
       if (clearKey) setCookieInputs((prev) => ({ ...prev, [clearKey]: "" }));
-      onNotify?.("Cookie 托管配置已保存");
+      onNotify?.(t("Cookie 托管配置已保存"));
       return true;
     } finally {
       setCookieBusy(null);
@@ -610,7 +621,7 @@ export function OpsPanel({
       });
       const d = (await r.json().catch(() => ({}))) as NonNullable<typeof runnerTest>;
       setRunnerTest(d);
-      onNotify?.(d.ok ? "VPS Cookie 执行器在线且已就绪" : "执行器未连接：" + (d.error ?? "检查端口/服务"));
+      onNotify?.(d.ok ? t("VPS Cookie 执行器在线且已就绪") : t("执行器未连接：") + (d.error ?? t("检查端口/服务")));
     } finally {
       setCookieBusy(null);
     }
@@ -634,7 +645,7 @@ export function OpsPanel({
       if (!probe.ok) throw new Error("not ok");
     } catch {
       setShowIngestGuide(true);
-      onNotify?.("未检测到本机回环助手（请按下方指引先启动，Cookie 绝不上传）");
+      onNotify?.(t("未检测到本机回环助手（请按下方指引先启动，Cookie 绝不上传）"));
       return;
     }
     const target = new URL(base + "/login");
@@ -647,7 +658,7 @@ export function OpsPanel({
 
   const buildUserscript = () => {
     const origin = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8788";
-    const tok = ingestTokenInput.trim() || "请替换为你的 INGEST_TOKEN";
+    const tok = ingestTokenInput.trim() || t("请替换为你的 INGEST_TOKEN");
     return `// ==UserScript==
 // @name         Freebie Radar 零 Cookie 上传采集助手
 // @namespace    https://github.com/ZiChuanLan/freebie-radar
@@ -779,37 +790,55 @@ export function OpsPanel({
       <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {[
-            { key: "sources" as OpsTab, label: `数据源 (${enabledCount}/${sources.length})`, icon: Rss },
-            { key: "runs" as OpsTab, label: `采集记录 (${runs.length})`, icon: Activity },
-            { key: "quality" as OpsTab, label: "来源质量榜", icon: Gauge },
-            { key: "retention" as OpsTab, label: "数据保留与清理", icon: Database },
-          ].map((t) => (
+            { key: "sources" as OpsTab, label: t("数据源 ({n}/{total})", { n: enabledCount, total: sources.length }), icon: Rss },
+            { key: "runs" as OpsTab, label: t("采集记录 ({n})", { n: runs.length }), icon: Activity },
+            { key: "quality" as OpsTab, label: t("来源质量榜"), icon: Gauge },
+            { key: "retention" as OpsTab, label: t("数据保留与清理"), icon: Database },
+          ].map((tab) => (
             <button
-              key={t.key}
+              key={tab.key}
               type="button"
-              onClick={() => setSubTab(t.key)}
+              onClick={() => setSubTab(tab.key)}
               className={
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors " +
-                (subTab === t.key ? "bg-brand text-white" : "text-ink-600 hover:bg-ink-100")
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors " +
+                (subTab === tab.key ? "border border-brand-border bg-brand-subtle text-accent" : "border border-transparent text-ink-600 hover:bg-ink-100")
               }
             >
-              <t.icon size={13} />
-              {t.label}
+              <tab.icon size={13} />
+              {tab.label}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-3 text-[12px] text-ink-500">
           <span>
-            异常源{" "}
+            {t("异常源")}{" "}
             <span className={`font-mono font-semibold ${errorCount > 0 ? "text-alert" : "text-deal"}`}>{errorCount}</span>
           </span>
           {retCounts && (
             <span>
-              在库 <span className="font-mono font-semibold text-ink-800">{retCounts.total}</span>
+              {t("在库")} <span className="font-mono font-semibold text-ink-800">{retCounts.total}</span>
             </span>
           )}
         </div>
       </div>
+
+      {externalTools?.epicClaimer && (
+        <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-900">
+            <ExternalLink size={14} className="text-accent" />
+            <span className="font-semibold">{t("外部工具")}</span>
+            <span className="text-[12px] text-ink-500">{t("Epic 喜加一领取器 · 独立项目（自带面板，领取与验证都在那边）")}</span>
+          </div>
+          <a
+            href={externalTools.epicClaimer.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-3 py-1.5 text-[12px] font-medium text-accent hover:bg-ink-200/70"
+          >
+            {t("打开领取器")} <ExternalLink size={11} />
+          </a>
+        </div>
+      )}
 
       {subTab === "sources" && (
         <div className="space-y-4">
@@ -819,7 +848,7 @@ export function OpsPanel({
                 <input
                   value={filterText}
                   onChange={(e) => setFilterText(e.target.value)}
-                  placeholder="搜源名称 / 类型…"
+                  placeholder={t("搜源名称 / 类型…")}
                   className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-[12px] text-ink-900 outline-none focus:border-brand"
                 />
                 {(["all", "ok", "error", "disabled"] as const).map((k) => (
@@ -829,10 +858,10 @@ export function OpsPanel({
                     onClick={() => setStatusFilter(k)}
                     className={
                       "rounded-lg px-2.5 py-1 text-[12px] font-medium transition-colors " +
-                      (statusFilter === k ? "bg-brand-subtle text-brand" : "text-ink-600 hover:bg-ink-100")
+                      (statusFilter === k ? "border border-brand-border bg-brand-subtle text-accent" : "border border-transparent text-ink-600 hover:bg-ink-100")
                     }
                   >
-                    {k === "all" ? `全部 (${sources.length})` : k === "ok" ? "正常" : k === "error" ? `异常 (${errorCount})` : "已禁用"}
+                    {k === "all" ? t("全部 ({n})", { n: sources.length }) : k === "ok" ? t("正常") : k === "error" ? t("异常 ({n})", { n: errorCount }) : t("已禁用")}
                   </button>
                 ))}
               </div>
@@ -840,26 +869,26 @@ export function OpsPanel({
                 <button
                   type="button"
                   onClick={() => setShowIngestGuide((v) => !v)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:text-brand"
+                  className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:text-accent"
                 >
-                  <KeyRound size={13} /> {showIngestGuide ? "收起 Cookie 托管" : "Cookie 托管（知乎/小红书/小黑盒/NGA）"}
+                  <KeyRound size={13} /> {showIngestGuide ? t("收起 Cookie 托管") : t("Cookie 托管（知乎/小红书/小黑盒/NGA）")}
                 </button>
               <button
                 type="button"
                 onClick={() => setShowAddRss((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-3 py-1.5 text-[12px] font-medium text-brand hover:bg-ink-200/70"
+                className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-3 py-1.5 text-[12px] font-medium text-accent hover:bg-ink-200/70"
               >
-                <Plus size={13} /> {showAddRss ? "收起" : "添加 RSS / Atom"}
+                <Plus size={13} /> {showAddRss ? t("收起") : t("添加 RSS / Atom")}
               </button>
             </div>
               </div>
 
             {showIngestGuide && (
-              <div className="space-y-3.5 border-b border-ink-100 bg-brand-subtle/50 px-4 py-3.5 text-[12.5px] text-ink-700">
+              <div className="space-y-3.5 border-b border-ink-100 bg-brand-subtle/50 px-4 py-3.5 text-[12px] text-ink-700">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 font-medium text-ink-950">
-                    <KeyRound size={14} className="text-brand" />
-                    VPS Cookie 托管采集（按需拉起无头 Chrome，抓完立即释放，平时 0 MB 内存）
+                    <KeyRound size={14} className="text-accent" />
+                    {t("VPS Cookie 托管采集（按需拉起无头 Chrome，抓完立即释放，平时 0 MB 内存）")}
                   </div>
                   {runnerTest && (
                     <span
@@ -868,7 +897,7 @@ export function OpsPanel({
                         (runnerTest.ok ? "bg-deal-subtle text-deal" : "bg-alert-subtle text-alert")
                       }
                     >
-                      {runnerTest.ok ? `执行器在线${runnerTest.chrome ? " · Chrome 就绪" : ""}` : `未连通：${runnerTest.error ?? "离线"}`}
+                      {runnerTest.ok ? t("执行器在线") + (runnerTest.chrome ? t(" · Chrome 就绪") : "") : t("未连通：") + (runnerTest.error ?? t("离线"))}
                     </span>
                   )}
                 </div>
@@ -876,7 +905,7 @@ export function OpsPanel({
                 {/* 执行器地址与小红书代理 */}
                 <div className="grid gap-2 sm:grid-cols-12">
                   <label className="space-y-1 sm:col-span-5">
-                    <span className="text-[11px] text-ink-500">VPS 执行器地址（仅内网/Docker 网桥监听）</span>
+                    <span className="text-[11px] text-ink-500">{t("VPS 执行器地址（仅内网/Docker 网桥监听）")}</span>
                     <input
                       value={runnerUrlInput}
                       onChange={(e) => setRunnerUrlInput(e.target.value)}
@@ -885,7 +914,7 @@ export function OpsPanel({
                     />
                   </label>
                   <label className="space-y-1 sm:col-span-4">
-                    <span className="text-[11px] text-ink-500">小红书国内代理出口（海外 VPS 必填，如 http://47.110.65.20:8888）</span>
+                    <span className="text-[11px] text-ink-500">{t("小红书国内代理出口（海外 VPS 必填，如 http://47.110.65.20:8888）")}</span>
                     <input
                       value={xhsProxyInput}
                       onChange={(e) => setXhsProxyInput(e.target.value)}
@@ -900,7 +929,7 @@ export function OpsPanel({
                       onClick={() => void saveCookiePatch({ runnerUrl: runnerUrlInput, xhsProxy: xhsProxyInput }, "save-net")}
                       className="inline-flex h-8 flex-1 items-center justify-center rounded-lg bg-ink-950 px-2.5 text-[12px] font-medium text-white hover:bg-ink-800 disabled:opacity-40"
                     >
-                      {cookieBusy === "save-net" ? <Loader2 size={12} className="animate-spin" /> : "保存线路"}
+                      {cookieBusy === "save-net" ? <Loader2 size={12} className="animate-spin" /> : t("保存线路")}
                     </button>
                     <button
                       type="button"
@@ -908,7 +937,7 @@ export function OpsPanel({
                       onClick={() => void testCookieRunner()}
                       className="inline-flex h-8 items-center justify-center rounded-lg border border-ink-200 bg-surface px-2.5 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:text-brand disabled:opacity-40"
                     >
-                      {cookieBusy === "test-runner" ? <Loader2 size={12} className="animate-spin" /> : "测连通"}
+                      {cookieBusy === "test-runner" ? <Loader2 size={12} className="animate-spin" /> : t("测连通")}
                     </button>
                   </div>
                 </div>
@@ -917,20 +946,20 @@ export function OpsPanel({
                 <div className="grid gap-2.5 lg:grid-cols-2">
                   {(
                     [
-{ key: "zhihu" as const, sourceId: "zhihu-search", title: "知乎（zhihu.com）", hint: "关键字段：z_c0 / d_c0" },
-                      { key: "xhs" as const, sourceId: "xhs-search", title: "小红书（xiaohongshu.com）", hint: "关键字段：web_session / a1" },
-                      { key: "xiaoheihe" as const, sourceId: "xiaoheihe-search", title: "小黑盒（xiaoheihe.cn）", hint: "关键字段：user_token / x_app_id" },
+{ key: "zhihu" as const, sourceId: "zhihu-search", title: t("知乎（zhihu.com）"), hint: t("关键字段：z_c0 / d_c0") },
+                      { key: "xhs" as const, sourceId: "xhs-search", title: t("小红书（xiaohongshu.com）"), hint: t("关键字段：web_session / a1") },
+                      { key: "xiaoheihe" as const, sourceId: "xiaoheihe-search", title: t("小黑盒（xiaoheihe.cn）"), hint: t("关键字段：user_token / x_app_id") },
                       {
                         key: "nga" as const,
                         sourceId: "nga-deals",
-                        title: "NGA（bbs.nga.cn）",
-                        hint: "关键字段：ngaPassportUid / ngaPassportCid（HTTP 直连，无需执行器）",
+                        title: t("NGA（bbs.nga.cn）"),
+                        hint: t("关键字段：ngaPassportUid / ngaPassportCid（HTTP 直连，无需执行器）"),
                       },
                       {
                         key: "weibo" as const,
                         sourceId: "weibo-freebies",
-                        title: "微博（weibo.com）",
-                        hint: "关键字段：SUB / SUBP（PC 端 ajax 直连，无需执行器）",
+                        title: t("微博（weibo.com）"),
+                        hint: t("关键字段：SUB / SUBP（PC 端 ajax 直连，无需执行器）"),
                       },
                     ] as const
                   ).map((site) => {
@@ -943,25 +972,25 @@ export function OpsPanel({
                           {st?.configured ? (
                             <span
                               className={
-                                "rounded px-1.5 py-0.5 text-[10.5px] font-medium " +
+                                "rounded px-1.5 py-0.5 text-[11px] font-medium " +
                                 (st.hasAuthHint ? "bg-deal-subtle text-deal" : "bg-code-subtle text-amber-800")
                               }
-                              title={`已保存字段：${st.keyNames.join(", ")}`}
+                              title={t("已保存字段：{fields}", { fields: st.keyNames.join(", ") })}
                             >
-                              已托管 {st.count} 项{st.hasAuthHint ? " · 含登录态" : " · 待核对"}
+                              {t("已托管 {n} 项", { n: st.count })}{st.hasAuthHint ? t(" · 含登录态") : t(" · 待核对")}
                             </span>
                           ) : (
-                            <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10.5px] text-ink-500">未配置</span>
+                            <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] text-ink-500">{t("未配置")}</span>
                           )}
                         </div>
                         <div className="text-[11px] text-ink-400">
-                          {st?.configured && st.updatedAt ? `更新于 ${timeAgo(st.updatedAt)} · ${st.keyNames.slice(0, 4).join(", ")}` : site.hint}
+                          {st?.configured && st.updatedAt ? t("更新于 {when} · {fields}", { when: timeAgo(st.updatedAt), fields: st.keyNames.slice(0, 4).join(", ") }) : t(site.hint)}
                         </div>
                         <textarea
                           rows={2}
                           value={draft}
                           onChange={(e) => setCookieInputs((prev) => ({ ...prev, [site.key]: e.target.value }))}
-                          placeholder="粘贴 Request Cookie 字符串（a=1; b=2）或 Cookie-Editor 导出的 JSON 数组（保存后不回显明文）"
+                          placeholder={t("粘贴 Request Cookie 字符串（a=1; b=2）或 Cookie-Editor 导出的 JSON 数组（保存后不回显明文）")}
                           className="w-full rounded-md border border-ink-200 bg-canvas/50 p-2 font-mono text-[11px] text-ink-900 outline-none focus:border-brand"
                         />
                         <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -970,9 +999,9 @@ export function OpsPanel({
                               type="button"
                               disabled={!draft.trim() || cookieBusy !== null}
                               onClick={() => void saveCookiePatch({ cookies: { [site.key]: draft } }, `save-${site.key}`, site.key)}
-                              className="inline-flex h-7 items-center gap-1 rounded-md bg-brand px-2.5 text-[11.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
+                              className="inline-flex h-7 items-center gap-1 rounded-md bg-brand px-2.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
                             >
-                              {cookieBusy === `save-${site.key}` ? <Loader2 size={11} className="animate-spin" /> : "保存"}
+                              {cookieBusy === `save-${site.key}` ? <Loader2 size={11} className="animate-spin" /> : t("保存")}
                             </button>
                             <button
                               type="button"
@@ -984,10 +1013,10 @@ export function OpsPanel({
                                 }
                                 await runSourceWithLock(site.sourceId);
                               }}
-                              className="inline-flex h-7 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2.5 text-[11.5px] font-medium text-ink-800 hover:border-brand-border hover:text-brand disabled:opacity-40"
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-ink-200 bg-surface px-2.5 text-[12px] font-medium text-ink-800 hover:border-brand-border hover:text-brand disabled:opacity-40"
                             >
                               {isRunning(site.sourceId) ? <Loader2 size={11} className="animate-spin" /> : <Play size={10} />}
-                              立即采集
+                              {t("立即采集")}
                             </button>
                           </div>
                           {st?.configured && (
@@ -997,7 +1026,7 @@ export function OpsPanel({
                               onClick={() => void saveCookiePatch({ cookies: { [site.key]: "" } }, `del-${site.key}`, site.key)}
                               className="text-[11px] text-alert hover:underline"
                             >
-                              清空
+                              {t("清空")}
                             </button>
                           )}
                         </div>
@@ -1006,14 +1035,14 @@ export function OpsPanel({
                   })}
                 </div>
 
-                <details className="rounded-lg border border-ink-200/80 bg-surface/80 px-3 py-2 text-[11.5px] text-ink-600">
+                <details className="rounded-lg border border-ink-200/80 bg-surface/80 px-3 py-2 text-[12px] text-ink-600">
                   <summary className="cursor-pointer font-medium text-ink-700">
-                    备用：本机回环助手 / 油猴脚本（Cookie 留在本机时使用）
+                    {t("备用：本机回环助手 / 油猴脚本（Cookie 留在本机时使用）")}
                   </summary>
                   <div className="mt-2 space-y-2">
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="space-y-1">
-                    <span className="text-[11.5px] text-ink-500">本机回环助手地址</span>
+                    <span className="text-[12px] text-ink-500">{t("本机回环助手地址")}</span>
                     <input
                       value={helperUrl}
                       onChange={(e) => {
@@ -1026,19 +1055,19 @@ export function OpsPanel({
                     />
                   </label>
                   <label className="space-y-1">
-                    <span className="text-[11.5px] text-ink-500">可选回传 INGEST_TOKEN（留空则用本机助手 .env）</span>
+                    <span className="text-[12px] text-ink-500">{t("可选回传 INGEST_TOKEN（留空则用本机助手 .env）")}</span>
                     <input
                       type="password"
                       value={ingestTokenInput}
                       onChange={(e) => setIngestTokenInput(e.target.value)}
-                      placeholder="若本机 .env 已配 INGEST_TOKEN 可留空"
+                      placeholder={t("若本机 .env 已配 INGEST_TOKEN 可留空")}
                       className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink-900 outline-none focus:border-brand"
                     />
                   </label>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[12px]">
-                  <span className="text-ink-500">方式 A（本机回环服务，平时无常驻浏览器）：</span>
-                  <code className="rounded bg-surface px-2 py-1 font-mono text-[11.5px] text-ink-900">
+                  <span className="text-ink-500">{t("方式 A（本机回环服务，平时无常驻浏览器）：")}</span>
+                  <code className="rounded bg-surface px-2 py-1 font-mono text-[12px] text-ink-900">
                     SERVER_URL={typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8788"} node scripts/pw-collect.mjs serve
                   </code>
                   <button
@@ -1047,21 +1076,21 @@ export function OpsPanel({
                       void navigator.clipboard?.writeText(
                         `SERVER_URL=${window.location.origin} node scripts/pw-collect.mjs serve`,
                       );
-                      onNotify?.("已复制回环助手启动命令");
+                      onNotify?.(t("已复制回环助手启动命令"));
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[11.5px] hover:border-brand-border hover:text-brand"
+                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[12px] hover:border-brand-border hover:text-accent"
                   >
-                    <Copy size={11} /> 复制命令
+                    <Copy size={11} /> {t("复制命令")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       void navigator.clipboard?.writeText(buildUserscript());
-                      onNotify?.("已复制 Tampermonkey 油猴脚本（免装 Playwright）");
+                      onNotify?.(t("已复制 Tampermonkey 油猴脚本（免装 Playwright）"));
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-surface px-2 py-1 text-[11.5px] text-brand hover:bg-brand-subtle"
+                    className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-surface px-2 py-1 text-[12px] text-accent hover:bg-brand-subtle"
                   >
-                    <Copy size={11} /> 复制油猴脚本（方式 B · 免装 Node）
+                    <Copy size={11} /> {t("复制油猴脚本（方式 B · 免装 Node）")}
                   </button>
                 </div>
                   </div>
@@ -1074,14 +1103,14 @@ export function OpsPanel({
                   <input
                     value={rssName}
                     onChange={(e) => setRssName(e.target.value)}
-                    placeholder="源名称（如 财联社电报 / 某博客）"
-                    className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] text-ink-950 outline-none focus:border-brand sm:col-span-3"
+                    placeholder={t("源名称（如 财联社电报 / 某博客）")}
+                    className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12px] text-ink-950 outline-none focus:border-brand sm:col-span-3"
                   />
                   <input
                     value={rssUrl}
                     onChange={(e) => setRssUrl(e.target.value)}
                     placeholder="https://example.com/feed"
-                    className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12.5px] text-ink-950 outline-none focus:border-brand sm:col-span-4"
+                    className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-[12px] text-ink-950 outline-none focus:border-brand sm:col-span-4"
                   />
                   <select
                     value={rssKindHint}
@@ -1103,13 +1132,13 @@ export function OpsPanel({
                   </div>
                 </div>
                 <label className="flex flex-wrap items-center gap-3 text-[12px] text-ink-600">
-                  <span className="font-medium">固定分类（可选）</span>
-                  <CategoryHintSelect value={rssFixedCategory} onChange={setRssFixedCategory} emptyLabel="不固定 · 按内容自动分类" className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800" />
-                  <span className="text-[11.5px] text-ink-500">适合网盘、课程等专源；AI 不会改到其它分类。</span>
+                  <span className="font-medium">{t("固定分类（可选）")}</span>
+                  <CategoryHintSelect value={rssFixedCategory} onChange={setRssFixedCategory} emptyLabel={t("不固定 · 按内容自动分类")} className="rounded-lg border border-ink-200 bg-surface px-2 py-2 text-[12px] text-ink-800" />
+                  <span className="text-[12px] text-ink-500">{t("适合网盘、课程等专源；AI 不会改到其它分类。")}</span>
                 </label>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-[12px] text-ink-500">
-                    <span>采集周期：</span>
+                    <span>{t("采集周期：")}</span>
                     <select
                       value={rssInterval}
                       onChange={(e) => setRssInterval(Number(e.target.value))}
@@ -1117,7 +1146,7 @@ export function OpsPanel({
                     >
                       {INTERVAL_OPTIONS.map((o) => (
                         <option key={o.sec} value={o.sec}>
-                          每 {o.label}
+                          {t("每 {v}", { v: o.label })}
                         </option>
                       ))}
                     </select>
@@ -1146,10 +1175,10 @@ export function OpsPanel({
                         setAddingRss(false);
                       }
                     }}
-                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand px-3.5 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40"
+                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40"
                   >
                     {addingRss ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
-                    加入并采集
+                    {t("加入并采集")}
                   </button>
                 </div>
               </div>
@@ -1187,26 +1216,26 @@ export function OpsPanel({
                                 : "bg-ink-100 text-ink-600")
                         }
                       >
-                        {s.last_status ?? "未运行"}
+                        {s.last_status ?? t("未运行")}
                       </span>
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-ink-500">
-                      <span className="font-mono tabular-nums text-ink-700">{s.items} 条在库</span>
+                      <span className="font-mono tabular-nums text-ink-700">{t("{n} 条在库", { n: s.items })}</span>
                       <span className="text-ink-400">
                         {(() => {
                           const hints = sourceHints(s);
-                          const cat = hints.category || "分类自动";
-                          const kind = hints.kind || "用途自动";
+                          const cat = hints.category || t("分类自动");
+                          const kind = hints.kind || t("用途自动");
                           return `${cat} · ${kind}`;
                         })()}
                       </span>
-                      <span>{timeAgo(s.last_run_at)}采集</span>
+                      <span>{t("{time}采集", { time: timeAgo(s.last_run_at) })}</span>
                       <button
                         type="button"
                         onClick={() => onToggleSource(s.id, !s.enabled)}
                         className={"h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors " + (s.enabled ? "bg-brand" : "bg-ink-300")}
-                        title={s.enabled ? "点击禁用" : "点击启用"}
+                        title={s.enabled ? t("点击禁用") : t("点击启用")}
                       >
                         <span
                           className={
@@ -1215,7 +1244,7 @@ export function OpsPanel({
                         />
                       </button>
                       {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
-                        <span className="text-[12px] text-ink-500">待配 Cookie</span>
+                        <span className="text-[12px] text-ink-500">{t("待配 Cookie")}</span>
                       ) : (
                         <select
                           value={s.interval_sec}
@@ -1241,31 +1270,31 @@ export function OpsPanel({
                         className={
                           "inline-flex items-center justify-center gap-1 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors " +
                           (editingId === s.id
-                            ? "border-ink-950 bg-ink-950 text-white"
+                            ? "border-brand-border bg-brand-subtle text-accent"
                             : "border-ink-200 bg-surface text-ink-700 hover:border-ink-300")
                         }
                       >
-                        <Pencil size={11} /> 编辑
+                        <Pencil size={11} /> {t("编辑")}
                       </button>
                       {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
                         <button
                           type="button"
                           onClick={() => setShowIngestGuide(true)}
-                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-2 text-[12px] font-medium text-brand hover:bg-ink-200/70"
-                          title="先贴入 Cookie 或启用本机回环采集"
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-2 text-[12px] font-medium text-accent hover:bg-ink-200/70"
+                          title={t("先贴入 Cookie 或启用本机回环采集")}
                         >
                           <KeyRound size={11} />
-                          配置 Cookie
+                          {t("配置 Cookie")}
                         </button>
                       ) : (
                         <button
                           type="button"
                           disabled={isRunning(s.id)}
                           onClick={() => void runSourceWithLock(s.id)}
-                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-2 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-2 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-accent disabled:opacity-50"
                         >
                           {isRunning(s.id) ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                          立即采集
+                          {t("立即采集")}
                         </button>
                       )}
                     </div>
@@ -1278,15 +1307,15 @@ export function OpsPanel({
               <table className="w-full text-left text-[13px]">
                 <thead className="bg-surface-hover text-[11px] tracking-wide text-ink-500 uppercase">
                   <tr className="border-b border-ink-200">
-                    <th className="px-4 py-2.5 font-medium">源</th>
-                    <th className="px-2 py-2.5 font-medium">启用</th>
-                    <th className="px-2 py-2.5 font-medium">采集周期</th>
-                    <th className="px-2 py-2.5 font-medium">分类口径</th>
-                    <th className="px-2 py-2.5 font-medium">在库条数</th>
-                    <th className="px-2 py-2.5 font-medium">最近采集</th>
-                    <th className="px-2 py-2.5 font-medium">状态</th>
-                    <th className="px-2 py-2.5 font-medium">错误信息</th>
-                    <th className="px-4 py-2.5 text-right font-medium">操作</th>
+                    <th className="px-4 py-2.5 font-medium">{t("源")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("启用")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("采集周期")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("分类口径")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("在库条数")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("最近采集")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("状态")}</th>
+                    <th className="px-2 py-2.5 font-medium">{t("错误信息")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium">{t("操作")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-100">
@@ -1308,7 +1337,7 @@ export function OpsPanel({
                             className={
                               "h-5 w-9 rounded-full p-0.5 transition-colors " + (s.enabled ? "bg-brand" : "bg-ink-300")
                             }
-                            title={s.enabled ? "点击禁用" : "点击启用"}
+                            title={s.enabled ? t("点击禁用") : t("点击启用")}
                           >
                             <span
                               className={
@@ -1320,7 +1349,7 @@ export function OpsPanel({
                         </td>
                         <td className="px-2 py-2.5">
                           {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
-                            <span className="text-[12px] text-ink-500">待配 Cookie</span>
+                            <span className="text-[12px] text-ink-500">{t("待配 Cookie")}</span>
                           ) : (
                             <select
                               value={s.interval_sec}
@@ -1339,14 +1368,13 @@ export function OpsPanel({
                         <td className="px-2 py-2.5">
                           {(() => {
                             const hints = sourceHints(s);
+                            if (!hints.category && !hints.kind) {
+                              return <span className="text-[11px] text-ink-400">{t("自动")}</span>;
+                            }
                             return (
                               <div className="flex flex-col gap-0.5 text-[11px]">
-                                <span className={hints.category ? "text-ink-700" : "text-ink-400"}>
-                                  {hints.category || "分类自动"}
-                                </span>
-                                <span className={hints.kind ? "text-ink-500" : "text-ink-400"}>
-                                  {hints.kind || "用途自动"}
-                                </span>
+                                {hints.category && <span className="text-ink-700">{hints.category}</span>}
+                                {hints.kind && <span className="text-ink-500">{hints.kind}</span>}
                               </div>
                             );
                           })()}
@@ -1366,11 +1394,11 @@ export function OpsPanel({
                                     : "bg-ink-100 text-ink-600")
                             }
                           >
-                            {s.last_status ?? "未运行"}
+                            {s.last_status ?? t("未运行")}
                           </span>
                         </td>
-                        <td className="max-w-[220px] truncate px-2 py-2.5 font-mono text-[11px] text-alert" title={s.last_error ?? ""}>
-                          {s.last_error ?? "—"}
+                        <td className="max-w-[220px] truncate px-2 py-2.5 font-mono text-[11px]" title={s.last_error ?? ""}>
+                          {s.last_error ? <span className="text-alert">{s.last_error}</span> : <span className="text-ink-300">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <div className="inline-flex items-center justify-end gap-1.5">
@@ -1380,29 +1408,29 @@ export function OpsPanel({
                               className={
                                 "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[12px] font-medium transition-colors " +
                                 (editingId === s.id
-                                  ? "border-ink-950 bg-ink-950 text-white"
+                                  ? "border-brand-border bg-brand-subtle text-accent"
                                   : "border-ink-200 bg-surface text-ink-600 hover:border-ink-300 hover:text-ink-950")
                               }
-                              title="编辑名称、RSS 地址、用途频道或 JSON 配置"
+                              title={t("编辑名称、RSS 地址、用途频道或 JSON 配置")}
                             >
-                              <Pencil size={11} /> 编辑
+                              <Pencil size={11} /> {t("编辑")}
                             </button>
                             {s.kind === "ingest" && !cookieStatus?.sites[siteKeyOf(s.id)]?.configured ? (
                               <>
                                 <button
                                   type="button"
                                   onClick={() => setShowIngestGuide(true)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-brand hover:bg-ink-200/70"
-                                  title="粘贴 Cookie 开启 VPS 全链路采集"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-brand-border bg-brand-subtle px-2.5 py-1 text-[12px] font-medium text-accent hover:bg-ink-200/70"
+                                  title={t("粘贴 Cookie 开启 VPS 全链路采集")}
                                 >
                                   <KeyRound size={11} />
-                                  配 Cookie
+                                  {t("配 Cookie")}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => void startLoopbackLogin(s.id)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[12px] text-ink-600 hover:border-brand-border hover:text-brand"
-                                  title="备用：通过本机回环助手扫码登录采集"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2 py-1 text-[12px] text-ink-600 hover:border-brand-border hover:text-accent"
+                                  title={t("备用：通过本机回环助手扫码登录采集")}
                                 >
                                   <ExternalLink size={11} />
                                 </button>
@@ -1412,10 +1440,10 @@ export function OpsPanel({
                                 type="button"
                                 disabled={isRunning(s.id)}
                                 onClick={() => void runSourceWithLock(s.id)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-brand disabled:opacity-50"
+                                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:border-brand-border hover:bg-brand-subtle hover:text-accent disabled:opacity-50"
                               >
                                 {isRunning(s.id) ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                                立即采集
+                                {t("立即采集")}
                               </button>
                             )}
                           </div>
@@ -1437,25 +1465,25 @@ export function OpsPanel({
           <div className="panel flex flex-wrap items-center justify-between gap-3 p-4">
             <div>
               <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
-                <Gauge size={15} className="text-brand" /> 来源质量榜
+                <Gauge size={15} className="text-accent" /> {t("来源质量榜")}
               </div>
               <p className="mt-0.5 text-[12px] text-ink-500">
-                留存率 = AI 判为有效 ÷ 已审条数。留存率低、条数又多的源，基本是在白烧采集与 AI 额度。
+                {t("留存率 = AI 判为有效 ÷ 已审条数。留存率低、条数又多的源，基本是在白烧采集与 AI 额度。")}
               </p>
             </div>
             <div className="flex items-center gap-0.5 rounded-md border border-ink-200 bg-surface p-0.5">
               {[
-                { d: 1, label: "今天" },
-                { d: 7, label: "7 天" },
-                { d: 30, label: "30 天" },
+                { d: 1, label: t("今天") },
+                { d: 7, label: t("7 天") },
+                { d: 30, label: t("30 天") },
               ].map((w) => (
                 <button
                   key={w.d}
                   type="button"
                   onClick={() => setQualityDays(w.d)}
                   className={
-                    "rounded px-2.5 py-1 text-[11.5px] font-medium transition-colors " +
-                    (qualityDays === w.d ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-950")
+                    "rounded px-2.5 py-1 text-[12px] font-medium transition-colors " +
+                    (qualityDays === w.d ? "bg-canvas-subtle font-semibold text-ink-950 shadow-[inset_0_0_0_1px_var(--color-brand-border)]" : "text-ink-500 hover:text-ink-950")
                   }
                 >
                   {w.label}
@@ -1467,20 +1495,20 @@ export function OpsPanel({
           <div className="panel overflow-hidden">
             {qualityLoading && !quality && (
               <div className="flex items-center gap-2 px-4 py-8 text-[13px] text-ink-500">
-                <Loader2 size={13} className="animate-spin" /> 统计中…
+                <Loader2 size={13} className="animate-spin" /> {t("统计中…")}
               </div>
             )}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-[13px]">
                 <thead className="bg-surface-hover text-[11px] tracking-wide text-ink-500 uppercase">
                   <tr className="border-b border-ink-200">
-                    <th className="px-4 py-2 font-medium">源</th>
-                    <th className="px-2 py-2 text-right font-medium">入库</th>
-                    <th className="px-2 py-2 text-right font-medium">已审</th>
-                    <th className="px-2 py-2 text-right font-medium">留存</th>
-                    <th className="px-2 py-2 font-medium">留存率</th>
-                    <th className="px-2 py-2 text-right font-medium">平均质量</th>
-                    <th className="px-2 py-2 text-right font-medium">已推</th>
+                    <th className="px-4 py-2 font-medium">{t("源")}</th>
+                    <th className="px-2 py-2 text-right font-medium">{t("入库")}</th>
+                    <th className="px-2 py-2 text-right font-medium">{t("已审")}</th>
+                    <th className="px-2 py-2 text-right font-medium">{t("留存")}</th>
+                    <th className="px-2 py-2 font-medium">{t("留存率")}</th>
+                    <th className="px-2 py-2 text-right font-medium">{t("平均质量")}</th>
+                    <th className="px-2 py-2 text-right font-medium">{t("已推")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1494,7 +1522,7 @@ export function OpsPanel({
                       return (
                         <tr key={q.id} className="border-b border-ink-100 last:border-0 hover:bg-surface-hover">
                           <td className="px-4 py-2">
-                            <div className="text-[12.5px] font-medium text-ink-900">{q.name}</div>
+                            <div className="text-[12px] font-medium text-ink-900">{q.name}</div>
                             <div className="font-mono text-[11px] text-ink-400">{q.id}</div>
                           </td>
                           <td className="px-2 py-2 text-right font-mono tabular-nums text-ink-700">{q.total}</td>
@@ -1504,12 +1532,12 @@ export function OpsPanel({
                             <div className="flex items-center gap-2">
                               <div className="h-1.5 w-16 overflow-hidden rounded-full bg-ink-100">
                                 <div
-                                  className={"h-full rounded-full " + (pct !== null && pct >= 60 ? "bg-deal" : pct !== null && pct >= 30 ? "bg-brand" : "bg-alert")}
+                                  className={"h-full rounded-full " + (pct !== null && pct >= 60 ? "bg-deal" : pct !== null && pct >= 30 ? "bg-accent" : "bg-alert")}
                                   style={{ width: (pct ?? 0) + "%" }}
                                 />
                               </div>
-                              <span className={"font-mono text-[11.5px] tabular-nums " + tone}>
-                                {pct === null ? "未审" : pct + "%"}
+                              <span className={"font-mono text-[12px] tabular-nums " + tone}>
+                                {pct === null ? t("未审") : pct + "%"}
                               </span>
                             </div>
                           </td>
@@ -1524,26 +1552,26 @@ export function OpsPanel({
               </table>
             </div>
             {quality && quality.filter((q) => q.total > 0).length === 0 && (
-              <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">这个时间范围内没有采集到条目</div>
+              <div className="px-4 py-10 text-center text-[12px] text-ink-500">{t("这个时间范围内没有采集到条目")}</div>
             )}
           </div>
         </div>
       )}
       {subTab === "runs" && (
         <div className="panel overflow-hidden">
-          <div className="border-b border-ink-100 px-4 py-3 text-[13.5px] font-semibold text-ink-950">
-            最近采集记录（{runs.length}）
+          <div className="border-b border-ink-100 px-4 py-3 text-[14px] font-semibold text-ink-950">
+            {t("最近采集记录（{n}）", { n: runs.length })}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-[13px]">
               <thead className="bg-surface-hover text-[11px] tracking-wide text-ink-500 uppercase">
                 <tr className="border-b border-ink-200">
-                  <th className="px-4 py-2 font-medium">时间</th>
-                  <th className="px-2 py-2 font-medium">源</th>
-                  <th className="px-2 py-2 font-medium">抓取</th>
-                  <th className="px-2 py-2 font-medium">新增</th>
-                  <th className="px-2 py-2 font-medium">耗时</th>
-                  <th className="px-4 py-2 font-medium">结果</th>
+                  <th className="px-4 py-2 font-medium">{t("时间")}</th>
+                  <th className="px-2 py-2 font-medium">{t("源")}</th>
+                  <th className="px-2 py-2 font-medium">{t("抓取")}</th>
+                  <th className="px-2 py-2 font-medium">{t("新增")}</th>
+                  <th className="px-2 py-2 font-medium">{t("耗时")}</th>
+                  <th className="px-4 py-2 font-medium">{t("结果")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
@@ -1573,17 +1601,17 @@ export function OpsPanel({
         <div className="panel space-y-4 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="flex items-center gap-2 text-[14.5px] font-semibold text-ink-950">
-                <Trash2 size={15} className="text-brand" /> 数据保留与自动清理
+              <div className="flex items-center gap-2 text-[14px] font-semibold text-ink-950">
+                <Trash2 size={15} className="text-accent" /> {t("数据保留与自动清理")}
               </div>
               <p className="mt-0.5 text-[12px] text-ink-500">
-                修改天数后失焦即保存；收藏条目永久保留不删除。
+                {t("修改天数后失焦即保存；收藏条目永久保留不删除。")}
               </p>
             </div>
             {retCounts && (
               <span className="text-[12px] text-ink-500">
-                在库 <span className="font-mono font-medium text-ink-800">{retCounts.total}</span> · 收藏{" "}
-                <span className="font-mono font-medium text-amber-700">{retCounts.starred}</span> · 已关闭{" "}
+                {t("在库")} <span className="font-mono font-medium text-ink-800">{retCounts.total}</span>{t(" · 收藏")}{" "}
+                <span className="font-mono font-medium text-amber-700">{retCounts.starred}</span>{t(" · 已关闭")}{" "}
                 <span className="font-mono font-medium">{retCounts.ignored}</span>
               </span>
             )}
@@ -1592,11 +1620,11 @@ export function OpsPanel({
           {retention && (
             <div className="grid gap-3 sm:grid-cols-5">
               {[
-                { key: "itemDays" as const, label: "非福利条目", hint: "天" },
-                { key: "keptDays" as const, label: "AI 判福利", hint: "天" },
-                { key: "ignoredDays" as const, label: "手动关闭", hint: "天" },
-                { key: "pushLogDays" as const, label: "推送日志", hint: "天" },
-                { key: "digestDays" as const, label: "每日精选", hint: "天" },
+                { key: "itemDays" as const, label: t("非福利条目"), hint: t("天") },
+                { key: "keptDays" as const, label: t("AI 判福利"), hint: t("天") },
+                { key: "ignoredDays" as const, label: t("手动关闭"), hint: t("天") },
+                { key: "pushLogDays" as const, label: t("推送日志"), hint: t("天") },
+                { key: "digestDays" as const, label: t("每日精选"), hint: t("天") },
               ].map((f) => (
                 <label key={f.key} className="block rounded-lg border border-ink-200 bg-surface-hover p-3">
                   <span className="mb-1.5 block text-[12px] font-medium text-ink-700">{f.label}</span>
@@ -1617,7 +1645,7 @@ export function OpsPanel({
                       }}
                       className="w-full rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 font-mono text-[13px] text-ink-900 outline-none focus:border-brand"
                     />
-                    <span className="text-[11.5px] text-ink-500">{f.hint}</span>
+                    <span className="text-[12px] text-ink-500">{f.hint}</span>
                   </div>
                 </label>
               ))}
@@ -1625,45 +1653,46 @@ export function OpsPanel({
           )}
 
           <div className="flex flex-wrap items-center gap-3 pt-1">
-            <label className="flex items-center gap-2 text-[12.5px] text-ink-700">
+            <label className="flex items-center gap-2 text-[12px] text-ink-700">
               <input
                 type="checkbox"
                 checked={retention?.auto ?? true}
                 onChange={(e) => void saveRetentionField({ auto: e.target.checked })}
                 className="h-4 w-4 accent-brand"
               />
-              每天自动清理过期数据
+              {t("每天自动清理过期数据")}
             </label>
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
                 onClick={previewCleanup}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3.5 py-1.5 text-[12.5px] font-medium text-ink-700 hover:bg-ink-100"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-surface px-3.5 py-1.5 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
               >
-                <Search size={13} /> 预演清理量
+                <Search size={13} /> {t("预演清理量")}
               </button>
               <button
                 type="button"
                 disabled={cleaning}
                 onClick={doCleanup}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-alert-border bg-alert-subtle px-3.5 py-1.5 text-[12.5px] font-medium text-alert hover:bg-red-100/80 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-alert-border bg-alert-subtle px-3.5 py-1.5 text-[12px] font-medium text-alert hover:bg-red-100/80 disabled:opacity-60"
               >
-                {cleaning ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} 立即清理
+                {cleaning ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} {t("立即清理")}
               </button>
             </div>
           </div>
 
           {cleanPreview && (
-            <div className="rounded-lg border border-ink-200 bg-surface-hover p-3 text-[12.5px] text-ink-700">
-              将清理：
+            <div className="rounded-lg border border-ink-200 bg-surface-hover p-3 text-[12px] text-ink-700">
+              {t("将清理：")}
               {Object.entries(cleanPreview)
                 .filter(([, n]) => n > 0)
-                .map(([k, n]) => `${k} ${n} 条`)
-                .join(" · ") || "没有需要清理的条目"}
+                .map(([k, n]) => `${k} ${t("{n} 条", { n })}`)
+                .join(" · ") || t("没有需要清理的条目")}
             </div>
           )}
         </div>
       )}
+
     </div>
   );
 }

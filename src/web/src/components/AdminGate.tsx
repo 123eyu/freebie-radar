@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 import { getToken, setToken, clearToken, verifyToken, ADMIN_AUTH_EVENT } from "../lib/auth.ts";
+import { t } from "../lib/i18n.ts";
 
 /**
  * 管理区登录门：拦在 #/admin/* 前面。
@@ -31,20 +32,20 @@ export function AdminGate({
       setChecking(true);
       void verifyToken(getToken()).then((ok) => {
         if (alive) { setAuthed(ok); onAuthChange?.(ok); }
-      }).catch(() => { if (alive) setError("无法验证管理凭据，请重试"); })
+      }).catch(() => { if (alive) setError(t("无法验证管理凭据，请重试")); })
         .finally(() => { if (alive) setChecking(false); });
     }
     return () => { alive = false; };
   }, [protectedMode, onAuthChange, entryAllowed]);
 
   useEffect(() => {
-    const expire = () => { setAuthed(false); setError("管理凭据已失效，请重新登录"); onAuthChange?.(false); };
+    const expire = () => { setAuthed(false); setError(t("管理凭据已失效，请重新登录")); onAuthChange?.(false); };
     window.addEventListener(ADMIN_AUTH_EVENT, expire);
     return () => window.removeEventListener(ADMIN_AUTH_EVENT, expire);
   }, [onAuthChange]);
 
   if (!entryAllowed) {
-    return <div role="alert" className="panel mx-auto max-w-sm p-6 text-[13px] leading-relaxed text-ink-600">此域名不开放管理登录，请从站长配置的专用管理入口访问。普通登录与个人推送不受影响。</div>;
+    return <div role="alert" className="panel mx-auto max-w-sm p-6 text-[13px] leading-relaxed text-ink-600">{t("此域名不开放管理登录，请从站长配置的专用管理入口访问。普通登录与个人推送不受影响。")}</div>;
   }
   if (!protectedMode || authed) {
     return (
@@ -52,7 +53,7 @@ export function AdminGate({
         {protectedMode && (
           <div className="panel flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
             <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-600">
-              <ShieldCheck size={13} className="text-deal" /> 已登录管理区
+              <ShieldCheck size={13} className="text-deal" /> {t("已登录管理区")}
             </span>
             <button
               type="button"
@@ -64,7 +65,7 @@ export function AdminGate({
               }}
               className="text-[12px] font-medium text-accent hover:underline"
             >
-              退出登录
+              {t("退出登录")}
             </button>
           </div>
         )}
@@ -74,15 +75,15 @@ export function AdminGate({
   }
 
   return (
-    <div className="mx-auto max-w-sm">
+    <div className="w-full max-w-md">
       <div className="panel space-y-4 p-6">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-subtle text-accent">
             <Lock size={17} />
           </div>
           <div>
-            <h2 className="text-[15px] font-semibold text-ink-900">管理区需要密码</h2>
-            <p className="text-[11.5px] text-ink-500">在 .env 里设置的 ADMIN_TOKEN</p>
+            <h2 className="text-[14px] font-semibold text-ink-900">{t("管理区需要密码")}</h2>
+            <p className="flex items-center gap-1 text-[12px] text-ink-500">{t("在 .env 里设置的")} <code className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[11px] text-ink-700">ADMIN_TOKEN</code></p>
           </div>
         </div>
 
@@ -100,10 +101,10 @@ export function AdminGate({
                 setAuthed(true);
                 onAuthChange?.(true);
               } else {
-                setError("密码不对");
+                setError(t("密码不对"));
               }
             } catch {
-              setError("无法连接服务端");
+              setError(t("无法连接服务端"));
             } finally {
               setChecking(false);
             }
@@ -115,24 +116,24 @@ export function AdminGate({
               type="password"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="管理密码"
+              placeholder={t("管理密码")}
               autoFocus
               className="w-full rounded-lg border border-ink-200 bg-surface py-2 pl-8 pr-2.5 text-[13px] text-ink-900 outline-none focus:border-brand"
             />
           </div>
-          {error && <p className="text-[11.5px] text-alert">{error}</p>}
+          {error && <p className="text-[12px] text-alert">{error}</p>}
           <button
             type="submit"
             disabled={checking || !input.trim()}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200"
           >
             {checking ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-            进入管理区
+            {t("进入管理区")}
           </button>
         </form>
 
-        <p className="text-[11.5px] leading-relaxed text-ink-500">
-          凭据仅保存在当前标签页；关闭后不会继续保存。资源流和每日精选无需管理密码。
+        <p className="text-[12px] leading-relaxed text-ink-500">
+          {t("凭据仅保存在当前标签页；关闭后不会继续保存。资源流和每日精选无需管理密码。")}
         </p>
       </div>
     </div>
