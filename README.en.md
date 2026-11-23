@@ -10,7 +10,8 @@
 
   <p>
     <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.5-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
-    <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready" />
+    <a href="https://hub.docker.com/r/zichuanlan/freebie-radar"><img src="https://img.shields.io/docker/pulls/zichuanlan/freebie-radar?logo=docker&logoColor=white" alt="Docker Pulls" /></a>
+    <a href="https://hub.docker.com/r/zichuanlan/freebie-radar"><img src="https://img.shields.io/docker/image-size/zichuanlan/freebie-radar/latest?logo=docker&logoColor=white&label=image" alt="Image Size" /></a>
     <img src="https://img.shields.io/badge/SQLite-Built--in-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
     <img src="https://img.shields.io/badge/React-19%20%2B%20Vite-61DAFB?logo=react&logoColor=black" alt="React" />
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
@@ -84,7 +85,18 @@ Instead of forcing every feed into a single freebie-only filter or dumping raw R
 
 ### Docker Compose (Recommended)
 
-Works out of the box **even without copying `.env` first**:
+Don't want to build anything? The official image is on Docker Hub — **one `docker run` and you're up**, no clone needed:
+
+```bash
+docker run -d --name radar --restart unless-stopped \
+  -p 127.0.0.1:8788:8788 \
+  -v "$PWD/data:/data" \
+  -e TZ=Asia/Shanghai \
+  -e ADMIN_TOKEN=replace-with-your-own-24-char-secret \
+  zichuanlan/freebie-radar:latest
+```
+
+Or pin a version through `RADAR_IMAGE` in `.env` (`latest` / `v1.1.0` / a git short SHA) so Compose pulls instead of building:
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -92,8 +104,16 @@ cd freebie-radar
 
 # Optional: customize ADMIN_TOKEN, Telegram bot, proxy, AI, etc.
 cp .env.example .env
+# Pin the image if you like; defaults to zichuanlan/freebie-radar:latest
+echo "RADAR_IMAGE=zichuanlan/freebie-radar:latest" >> .env
 
-# Start on http://127.0.0.1:8788
+docker compose pull
+docker compose up -d
+```
+
+Building from source instead (you changed code, or don't care about the published image):
+
+```bash
 docker compose up -d --build
 ```
 
@@ -108,10 +128,21 @@ Verify health & logs:
 
 ```bash
 curl http://127.0.0.1:8788/health
+# {"ok":true,"version":"1.1.0",...}
 docker compose logs -f --tail 50
 ```
 
-Data persists in `./data/radar.db`. Upgrades (`git pull && docker compose up -d --build`) run SQLite migrations automatically.
+### Image tags
+
+| Tag | Meaning |
+|---|---|
+| `latest` | Latest build |
+| `v1.1.0` | Matches the GitHub release / git tag — pin this in production |
+| `9191745` | The git short SHA at build time, for pinning or rolling back |
+
+The image is a multi-stage `node:24-alpine` build that keeps only production dependencies and `dist/web`; steady-state memory is roughly 80–100 MiB.
+
+Data persists in `./data/radar.db` (mounted at `/data/radar.db`). Upgrades: `docker compose pull && docker compose up -d` for the image, or `git pull && docker compose up -d --build` from source. Both run the SQLite migrations automatically.
 
 ### From Source (Node.js ≥ 22.5 + pnpm 10)
 

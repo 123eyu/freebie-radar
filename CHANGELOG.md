@@ -33,6 +33,13 @@
 - **三语 README**（`README.md` / `README.en.md` / `README.ja.md`）：数字全部按源码重新核对——116 个内置源（默认启用 67）、28 个分类、Schema v32、14 路封面图提取；补 `src/shared` 目录、完整 CLI 清单与 `docs/` 索引
 - **截图重拍**：`docs/ui-public.png` / `ui-grid.png` / `ui-push-panel.png` / `ui-ai-panel.png` / `ui-mobile.png` 全部换成当前界面（含新增移动端视图），拍摄于临时空库 + 合成样例数据，不含真实账号与个人数据
 
+### Docker Hub 官方镜像
+
+- **镜像发布**：`zichuanlan/freebie-radar`，`latest` 跟随最新构建，并按 GitHub Release 打版本标签（`v1.1.0`）、按构建提交打 git 短 SHA 标签（如 `9191745`），生产环境建议固定版本标签以便回滚
+- **一条命令起站**：README 三语与 `docs/deploy.md` 都给出不 clone、不构建的 `docker run` 用法（挂 `/data` 卷、`-e ADMIN_TOKEN`），并说明「用镜像升级」`docker compose pull && docker compose up -d` 与「从源码升级」`git pull && docker compose up -d --build` 两条路径
+- **compose 支持按需拉取**：`docker-compose.yml` 的镜像名改为 `${RADAR_IMAGE:-zichuanlan/freebie-radar:latest}`，`.env.example` 新增 `RADAR_IMAGE`；`build: .` 保留，本地缺失时 `up` 仍会自动构建
+- **可信度信号**：README 徽章从静态 `Docker-Ready` 换成 Docker Hub 的 pulls 与镜像体积实时徽章
+
 ### 实测
 
 `pnpm test` 208/208、`pnpm typecheck` 干净、`pnpm build` 通过、`pnpm docs:build` 通过、`pnpm i18n:check` 1304 条中文文案已进词典 1300 条（剩 4 条刻意不翻：语言自称、dev 缺词告警、分类抽样样例标题、推送预设关键词「年付」）。Playwright 逐档截图核验 1440 / 1024 / 390 三档无横向溢出，桌面列表 / 2 列 / 3 列与移动端列表 / 卡片均可正常渲染。

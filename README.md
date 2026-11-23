@@ -14,7 +14,8 @@
   <p>
     <a href="https://github.com/ZiChuanLan/freebie-radar/releases"><img src="https://img.shields.io/github/v/tag/ZiChuanLan/freebie-radar?label=release&color=2563eb" alt="Release" /></a>
     <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.5-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
-    <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready" />
+    <a href="https://hub.docker.com/r/zichuanlan/freebie-radar"><img src="https://img.shields.io/docker/pulls/zichuanlan/freebie-radar?logo=docker&logoColor=white" alt="Docker Pulls" /></a>
+    <a href="https://hub.docker.com/r/zichuanlan/freebie-radar"><img src="https://img.shields.io/docker/image-size/zichuanlan/freebie-radar/latest?logo=docker&logoColor=white&label=image" alt="Image Size" /></a>
     <img src="https://img.shields.io/badge/SQLite-Built--in-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
     <img src="https://img.shields.io/badge/React-19%20%2B%20Vite-61DAFB?logo=react&logoColor=black" alt="React" />
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
@@ -107,16 +108,35 @@ flowchart LR
 
 ### 方式一：Docker Compose（推荐，1 分钟跑起来）
 
-不需要预先安装 Node.js 或手动建表，**甚至不复制 `.env` 也可以直接启动**：
+不想自己构建？官方镜像已发布到 Docker Hub，**一条 `pull` 就能跑，不必 clone 仓库**：
+
+```bash
+docker run -d --name radar --restart unless-stopped \
+  -p 127.0.0.1:8788:8788 \
+  -v "$PWD/data:/data" \
+  -e TZ=Asia/Shanghai \
+  -e ADMIN_TOKEN=换成你自己的24位随机串 \
+  zichuanlan/freebie-radar:latest
+```
+
+也可以在 `.env` 里用 `RADAR_IMAGE` 固定镜像版本（`latest` / `v1.1.0` / git 短 SHA），让 compose 直接拉取而不构建：
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
 cd freebie-radar
 
-# 可选：复制并编辑环境变量（设置 ADMIN_TOKEN 管理密码、Telegram 推送、AI 等）
+# 可选：复制并编辑环境变量（ADMIN_TOKEN 管理密码、Telegram 推送、AI 等）
 cp .env.example .env
+# 按需固定版本，默认 zichuanlan/freebie-radar:latest
+echo "RADAR_IMAGE=zichuanlan/freebie-radar:latest" >> .env
 
-# 启动服务（默认监听 http://127.0.0.1:8788）
+docker compose pull
+docker compose up -d
+```
+
+想直接从源码构建（改动过代码、或与镜像版本无关）时，忽略 `RADAR_IMAGE` 的拉取步骤，改用：
+
+```bash
 docker compose up -d --build
 ```
 
@@ -131,12 +151,22 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.0.0",...}
+# {"ok":true,"version":"1.1.0",...}
 
 docker compose logs -f --tail 50
 ```
 
-数据库保存在 `./data/radar.db`，升级只需 `git pull && docker compose up -d --build`，自动完成数据库迁移，数据零丢失。
+数据库保存在 `./data/radar.db`（容器内 `/data/radar.db`）。升级时用镜像只需 `docker compose pull && docker compose up -d`，用源码则 `git pull && docker compose up -d --build`，两者都会自动完成数据库迁移，数据零丢失。
+
+### 镜像标签
+
+| 标签 | 含义 |
+|---|---|
+| `latest` | 最新构建 |
+| `v1.1.0` | 对应 GitHub Release / git tag，生产环境建议固定到这种 |
+| `9191745` | 构建时的 git 短 SHA，可精确回滚到某次提交 |
+
+镜像基于 `node:24-alpine` 多阶段构建，运行时只保留生产依赖与 `dist/web`，常驻内存约 80–100 MiB。
 
 ### 方式二：源码运行（Node.js ≥ 22.5 + pnpm 10）
 

@@ -11,7 +11,8 @@
   <p>
     <a href="https://github.com/ZiChuanLan/freebie-radar/releases"><img src="https://img.shields.io/github/v/tag/ZiChuanLan/freebie-radar?label=release&color=2563eb" alt="Release" /></a>
     <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.5-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
-    <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready" />
+    <a href="https://hub.docker.com/r/zichuanlan/freebie-radar"><img src="https://img.shields.io/docker/pulls/zichuanlan/freebie-radar?logo=docker&logoColor=white" alt="Docker Pulls" /></a>
+    <a href="https://hub.docker.com/r/zichuanlan/freebie-radar"><img src="https://img.shields.io/docker/image-size/zichuanlan/freebie-radar/latest?logo=docker&logoColor=white&label=image" alt="Image Size" /></a>
     <img src="https://img.shields.io/badge/SQLite-Built--in-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
     <img src="https://img.shields.io/badge/React-19%20%2B%20Vite-61DAFB?logo=react&logoColor=black" alt="React" />
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
@@ -104,7 +105,18 @@ flowchart LR
 
 ### 方法 1：Docker Compose（推奨、1 分で起動）
 
-Node.js の事前インストールも手動のテーブル作成も不要で、**`.env` をコピーしなくてもそのまま起動できます**：
+ビルドしたくない場合は、公式イメージが Docker Hub に公開されています。**`docker run` 1 回で起動でき、clone も不要**です：
+
+```bash
+docker run -d --name radar --restart unless-stopped \
+  -p 127.0.0.1:8788:8788 \
+  -v "$PWD/data:/data" \
+  -e TZ=Asia/Shanghai \
+  -e ADMIN_TOKEN=あなた自身の24桁ランダム文字列 \
+  zichuanlan/freebie-radar:latest
+```
+
+`.env` の `RADAR_IMAGE` でバージョンを固定すれば（`latest` / `v1.1.0` / git 短縮 SHA）、Compose はビルドせず pull します：
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -112,8 +124,16 @@ cd freebie-radar
 
 # 任意：環境変数をコピーして編集（ADMIN_TOKEN 管理パスワード、Telegram プッシュ通知、AI など）
 cp .env.example .env
+# 必要ならバージョンを固定（既定は zichuanlan/freebie-radar:latest）
+echo "RADAR_IMAGE=zichuanlan/freebie-radar:latest" >> .env
 
-# サービスを起動（デフォルトで http://127.0.0.1:8788 を待ち受け）
+docker compose pull
+docker compose up -d
+```
+
+ソースからビルドしたい場合（コードを変更した、公開イメージを使わない）はこちら：
+
+```bash
 docker compose up -d --build
 ```
 
@@ -128,12 +148,22 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.0.0",...}
+# {"ok":true,"version":"1.1.0",...}
 
 docker compose logs -f --tail 50
 ```
 
-データベースは `./data/radar.db` に保存されます。アップグレードは `git pull && docker compose up -d --build` だけで、データベース移行が自動で完了し、データは一切失われません。
+### イメージタグ
+
+| タグ | 意味 |
+|---|---|
+| `latest` | 最新ビルド |
+| `v1.1.0` | GitHub Release / git tag に対応。本番はこのタグで固定するのがおすすめ |
+| `9191745` | ビルド時点の git 短縮 SHA。特定コミットへの固定・ロールバック用 |
+
+イメージは `node:24-alpine` のマルチステージビルドで、実行時は本番依存と `dist/web` のみを保持します。常駐メモリは約 80〜100 MiB です。
+
+データベースは `./data/radar.db`（コンテナ内 `/data/radar.db`）に保存されます。アップグレードはイメージなら `docker compose pull && docker compose up -d`、ソースからなら `git pull && docker compose up -d --build` で、どちらもデータベース移行が自動で完了し、データは一切失われません。
 
 ### 方法 2：ソースから実行（Node.js ≥ 22.5 + pnpm 10）
 

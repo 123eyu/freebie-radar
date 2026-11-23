@@ -1,7 +1,9 @@
 services:
   radar:
     build: .
-    image: freebie-radar:latest
+    # 默认用 Docker Hub 官方镜像；改 .env 的 RADAR_IMAGE 可固定到 v1.1.0 或某个 git 短 SHA。
+    # 需要从源码构建时执行 docker compose up -d --build，构建产物同样打这个标签。
+    image: ${RADAR_IMAGE:-zichuanlan/freebie-radar:latest}
     restart: unless-stopped
     mem_limit: 256m
     ports:

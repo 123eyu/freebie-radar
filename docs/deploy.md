@@ -6,6 +6,36 @@
 
 本项目使用 `node:24-alpine` 单容器运行（成品镜像 ~340 MB），内置 Node.js 原生 `node:sqlite`（WAL 模式，自动增量迁移至 Schema v32），无需外接 PostgreSQL / Redis，且设置了 V8 堆与 SQLite 缓存限制，主服务容器实测常驻内存约 **80–100 MiB**。
 
+### 用官方镜像（不构建）
+
+镜像已发布到 Docker Hub：`zichuanlan/freebie-radar`。`latest` 跟随最新构建，同时按 GitHub Release 打 `v1.1.0` 这类版本标签、按构建提交打 git 短 SHA 标签（如 `9191745`），生产环境建议固定版本标签。
+
+```bash
+# 最省事：不 clone、不构建
+docker run -d --name radar --restart unless-stopped \
+  -p 127.0.0.1:8788:8788 \
+  -v radar-data:/data \
+  -e TZ=Asia/Shanghai \
+  -e ADMIN_TOKEN=<24 位随机串> \
+  zichuanlan/freebie-radar:latest
+```
+
+用 compose 管理则把镜像版本写进 `.env`，`docker compose pull` 只拉取、不构建：
+
+```bash
+git clone https://github.com/ZiChuanLan/freebie-radar.git
+cd freebie-radar
+cp .env.example .env
+# 可选：固定版本而非 latest（默认 zichuanlan/freebie-radar:latest）
+# echo "RADAR_IMAGE=zichuanlan/freebie-radar:v1.1.0" >> .env
+docker compose pull
+docker compose up -d
+```
+
+`docker compose` 里 `build: .` 与 `image:` 同时存在：镜像已在本地就用本地，缺失时 `up` 会自动构建；要强制按源码重建用 `docker compose up -d --build`。
+
+### 从源码构建
+
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
 cd freebie-radar
@@ -21,6 +51,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
+# {"ok":true,"version":"1.1.0",...}
 ```
 
 ### 可选：拉起 FlareSolverr 过 Cloudflare 护盾
@@ -62,7 +93,11 @@ docker compose exec radar node --no-warnings src/server/cli.ts ai-review 100 pen
 # 重新生成今日精选（--dry-run 只预览不写入/推送）
 docker compose exec radar node --no-warnings src/server/cli.ts daily --dry-run
 
-# 升级到最新版本（数据保存在 ./data/radar.db 不会丢失）
+# 用镜像升级（推荐固定版本标签）
+docker compose pull
+docker compose up -d
+
+# 从源码升级（数据保存在 ./data/radar.db 不会丢失）
 git pull origin main
 docker compose up -d --build
 ```

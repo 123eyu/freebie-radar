@@ -31,7 +31,7 @@ features:
   - title: 公开站与个人隔离
     details: SITE_MODE 一键切换自部署与公开站。公开站支持 LINUX DO / GitHub 登录、邀请码、名额上限、个人隔离与个人 Bot / RSS。
   - title: 部署省心
-    details: 单容器运行 116 个内置源（默认精选 67 个），内置 SQLite WAL（Schema v32），常驻内存约 80–100 MiB，支持版本检测与一键更新。
+    details: 官方镜像已发布到 Docker Hub（一条 docker run 起站），也支持源码构建；内置 SQLite WAL（Schema v32），常驻内存约 80–100 MiB。
   - title: 中英双语
     details: 界面文案全部走零依赖 i18n（中文即词典 key，非中文浏览器默认英文），顶栏/侧栏一键切换或 ?lang=en 直达。
   - title: 交给 AI 部署
