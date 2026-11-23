@@ -39,13 +39,82 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
+  /* 实心按钮/滑块/遮罩：与「文字深浅」解耦，深色主题下按钮翻成靛蓝，
+     白字与白色滑块在两种主题都成立，避免 bg-ink-950 + text-white 组合在深色下白底白字 */
+  --color-solid: #111318;
+  --color-solid-hover: #272b36;
+  --color-solid-dark: #090a0d;
+  --color-on-solid: #ffffff;
+  --color-knob: #ffffff;
+  --color-overlay: rgb(17 19 24 / 0.75);
+  --color-accent-solid: #312e81;
+  --color-deal-solid: #047857;
+  --color-alert-solid: #dc2626;
+
   --shadow-panel: none;
   --shadow-drawer: -8px 0 32px rgba(17, 19, 24, 0.08), -1px 0 0 rgba(17, 19, 24, 0.06);
+}
+
+/*
+ * 深色主题：只覆盖语义 token，组件不改。
+ * 选择 `html[data-theme="dark"]` 而不是 prefers-color-scheme，是为了让「跟随系统 / 手动」两种来源
+ * 统一由 lib/theme.ts 落到这个属性上——顺带避免安卓 Chrome 的自动深色反相把整站糊成黑底灰框。
+ */
+html[data-theme="dark"] {
+  --color-canvas: #0e1015;
+  --color-canvas-subtle: #171a21;
+  --color-surface: #12151b;
+  --color-surface-hover: #1a1e26;
+  --color-surface-muted: #161a21;
+
+  --color-ink-950: #f1f4f9;
+  --color-ink-900: #e4e8ef;
+  --color-ink-700: #c2c9d5;
+  --color-ink-600: #a7afbc;
+  --color-ink-500: #949dab;
+  --color-ink-400: #8a93a1;
+  --color-ink-300: #3b404b;
+  --color-ink-200: #2b3038;
+  --color-ink-100: #22262d;
+
+  --color-brand: #e4e8ef;
+  --color-brand-hover: #ffffff;
+  --color-brand-dark: #ffffff;
+  --color-brand-subtle: #1d2440;
+  --color-brand-border: #37416b;
+  --color-accent: #aab6ff;
+  --color-accent-solid: #4f46e5;
+  --color-deal-solid: #047857;
+  --color-alert-solid: #b91c1c;
+
+  --color-solid: #4f46e5;
+  --color-solid-hover: #6366f1;
+  --color-solid-dark: #4338ca;
+  --color-knob: #ffffff;
+  --color-overlay: rgb(0 0 0 / 0.72);
+
+  --color-deal: #34d399;
+  --color-deal-subtle: #08291f;
+  --color-deal-border: #14532d;
+
+  --color-code: #fbbf24;
+  --color-code-subtle: #2b2210;
+  --color-code-border: #4a3812;
+
+  --color-alert: #f87171;
+  --color-alert-subtle: #2c1416;
+  --color-alert-border: #4c1d1d;
+
+  --shadow-drawer: -8px 0 32px rgb(0 0 0 / 0.55), -1px 0 0 rgb(255 255 255 / 0.06);
 }
 
 @layer base {
   html {
     color-scheme: only light;
+  }
+  /* 深色主题：表单控件与滚动条一起切，别让原生控件留在浅色 */
+  html[data-theme="dark"] {
+    color-scheme: only dark;
   }
   body {
     margin: 0;

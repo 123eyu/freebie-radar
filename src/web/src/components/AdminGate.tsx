@@ -125,7 +125,7 @@ export function AdminGate({
           <button
             type="submit"
             disabled={checking || !input.trim()}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-solid px-3 py-2 text-[13px] font-medium text-on-solid hover:bg-solid-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200"
           >
             {checking ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
             {t("进入管理区")}

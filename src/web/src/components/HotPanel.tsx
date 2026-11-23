@@ -224,7 +224,7 @@ export function HotPanel({
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-ink-100">
                       <div
-                        className="h-full rounded-full bg-brand transition-all duration-500 ease-out group-hover:bg-accent"
+                        className="h-full rounded-full bg-solid transition-all duration-500 ease-out group-hover:bg-accent-solid"
                         style={{ width: Math.round((c.n / catMax) * 100) + "%" }}
                       />
                     </div>

@@ -72,6 +72,7 @@ Instead of forcing every feed into a single freebie-only filter or dumping raw R
 ### 5. Lightweight Stack, Bilingual UI & Optional Public Multi-User Mode
 - Runs native TypeScript on `node:24-alpine` with built-in `node:sqlite` (WAL mode, Schema v32 auto-migration, < 100MB typical memory).
 - **Bilingual UI (Chinese / English)**: every UI string goes through `src/web/src/lib/i18n.ts` (zero-dependency, the Chinese text *is* the dictionary key). Non-Chinese browsers default to English on first visit; toggle in the sidebar/topbar or via `?lang=en`, verified by `pnpm i18n:check`.
+- **Dark mode**: system / light / dark, three states. Dark mode only swaps semantic tokens — no duplicated components — and both entry points (side rail and mobile bar) stay in sync, including `color-scheme`, form controls and scrollbars.
 - **116 Built-in Sources (67 High-Signal Curated Enabled by Default)** covering LINUX DO, NodeSeek, V2EX, NGA (deals/carpools/secondhand), Bilibili, Weibo, CCTV News, OpenRouter `:free` models, GitHub, Epic, Steam, GamerPower, CheapShark, ITAD, SharewareOnSale, TickCoupon, Reddit, Bluesky, Telegram channels and Chinese VPS promo blogs, plus custom RSS and local browser/Tampermonkey ingestion for login-gated sites (Zhihu, Xiaohongshu, Xiaoheihe).
 - Set `ADMIN_TOKEN` (and optionally `ADMIN_HOSTS`) to keep browsing & daily digests public while protecting all configuration and mutation endpoints.
 - **Optional Public Multi-User Mode**: set `SITE_MODE=public` with LINUX DO or GitHub OAuth to isolate starred/read/hidden items, blocklists, personal Telegram Bot / Webhook (e.g. QQ bridges), and personal RSS tokens per user — with invite codes, user quota caps, and explicit personal vs `?workspace=site` admin scope switching. See [docs/accounts.md](docs/accounts.md).
@@ -96,7 +97,7 @@ docker run -d --name radar --restart unless-stopped \
   zichuanlan/freebie-radar:latest
 ```
 
-Or pin a version through `RADAR_IMAGE` in `.env` (`latest` / `v1.1.3` / a git short SHA) so Compose pulls instead of building:
+Or pin a version through `RADAR_IMAGE` in `.env` (`latest` / `v1.1.4` / a git short SHA) so Compose pulls instead of building:
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -128,7 +129,7 @@ Verify health & logs:
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.3",...}
+# {"ok":true,"version":"1.1.4",...}
 docker compose logs -f --tail 50
 ```
 
@@ -137,7 +138,7 @@ docker compose logs -f --tail 50
 | Tag | Meaning |
 |---|---|
 | `latest` | Latest build |
-| `v1.1.3` | Matches the GitHub release / git tag — pin this in production |
+| `v1.1.4` | Matches the GitHub release / git tag — pin this in production |
 | `19eb371` | The git short SHA at build time, for pinning or rolling back |
 
 The image is a multi-stage `node:24-alpine` build that keeps only production dependencies and `dist/web`; steady-state memory is roughly 80–100 MiB.

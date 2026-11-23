@@ -66,12 +66,12 @@ function Toggle({
       <span
         className={
           "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors " +
-          (value ? "bg-brand" : "bg-ink-300")
+          (value ? "bg-solid" : "bg-ink-300")
         }
       >
         <span
           className={
-            "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform " +
+            "inline-block h-3.5 w-3.5 transform rounded-full bg-knob shadow-sm transition-transform " +
             (value ? "translate-x-4.5" : "translate-x-0.5")
           }
         />
@@ -325,7 +325,7 @@ export function PushPanel({
             className={
               "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium transition-colors " +
               (s.enabled
-                ? "border-deal-border bg-deal-subtle text-deal hover:bg-emerald-100"
+                ? "border-deal-border bg-deal-subtle text-deal hover:bg-deal-subtle"
                 : "border-ink-200 bg-ink-100 text-ink-600 hover:bg-ink-200")
             }
           >
@@ -335,7 +335,7 @@ export function PushPanel({
       </section>
 
       {!payload?.ready && (
-        <div className="rounded-lg border border-code-border bg-code-subtle p-3.5 text-[12px] text-amber-900">
+        <div className="rounded-lg border border-code-border bg-code-subtle p-3.5 text-[12px] text-code">
           {t("当前渠道尚未就绪。个人用户请先在「我的」保存渠道凭据；自建站请检查服务端推送配置。规则可以先保存，但不会发送消息。")}
         </div>
       )}
@@ -1254,7 +1254,7 @@ export function PushPanel({
                                     setRouteDraft(null);
                                   });
                                 }}
-                                className="rounded bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover"
+                                className="rounded bg-solid px-3 py-1 text-[12px] font-medium text-on-solid hover:bg-solid-hover"
                               >
                                 {t("保存路由")}
                               </button>
@@ -1470,7 +1470,7 @@ export function PushPanel({
                   <Moon size={13} className="text-ink-500" /> {t("夜间免打扰时段")}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className={`text-[12px] font-medium ${payload?.quiet ? "text-amber-700" : "text-ink-500"}`}>
+                  <span className={`text-[12px] font-medium ${payload?.quiet ? "text-code" : "text-ink-500"}`}>
                     {!s.quietEnabled ? t("未启用") : payload?.quiet ? t("免打扰中") : t("正常推送时段")}
                   </span>
                   <button
@@ -1478,13 +1478,13 @@ export function PushPanel({
                     onClick={() => save({ quietEnabled: !s.quietEnabled })}
                     className={
                       "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors " +
-                      (s.quietEnabled ? "bg-brand" : "bg-ink-300")
+                      (s.quietEnabled ? "bg-solid" : "bg-ink-300")
                     }
                     title={s.quietEnabled ? t("点击关闭夜间免打扰") : t("点击开启夜间免打扰")}
                   >
                     <span
                       className={
-                        "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform " +
+                        "inline-block h-3.5 w-3.5 transform rounded-full bg-knob shadow-sm transition-transform " +
                         (s.quietEnabled ? "translate-x-4.5" : "translate-x-0.5")
                       }
                     />
@@ -1582,7 +1582,7 @@ export function PushPanel({
                       setBusy(null);
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[12px] font-medium text-white transition-colors hover:bg-brand-hover"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-solid px-3.5 py-2 text-[12px] font-medium text-on-solid transition-colors hover:bg-solid-hover"
                 >
                   {busy === "preview" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} {t("试算推送预览")}
                 </button>
@@ -1678,7 +1678,7 @@ export function PushPanel({
                       className={
                         "rounded-md px-2 py-0.5 font-medium " +
                         (l.kind === "instant"
-                          ? "bg-code-subtle text-amber-800"
+                          ? "bg-code-subtle text-code"
                           : l.kind === "batch"
                             ? "bg-brand-subtle text-accent"
                             : "bg-ink-100 text-ink-700")

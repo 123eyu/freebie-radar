@@ -77,12 +77,12 @@ function SwitchRow({
       <span
         className={
           "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors " +
-          (value ? "bg-brand" : "bg-ink-300")
+          (value ? "bg-solid" : "bg-ink-300")
         }
       >
         <span
           className={
-            "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform " +
+            "inline-block h-3.5 w-3.5 transform rounded-full bg-knob shadow-sm transition-transform " +
             (value ? "translate-x-4.5" : "translate-x-0.5")
           }
         />
@@ -368,7 +368,7 @@ export function AiPanel({
                   <CircleCheck size={11} /> {t("运行中")}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                <span className="inline-flex items-center gap-1 rounded-md bg-code-subtle px-1.5 py-0.5 text-[11px] font-medium text-code">
                   <AlertTriangle size={11} /> {t("未启用")}
                 </span>
               )}
@@ -428,7 +428,7 @@ export function AiPanel({
               type="button"
               onClick={runBackfill}
               disabled={backfilling || !s.ready}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-solid px-3 py-1 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-50"
             >
               {backfilling ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
               {t("立即执行")}
@@ -451,17 +451,17 @@ export function AiPanel({
           <div
             className={
               "rounded-lg border p-3 text-[12px] " +
-              (test.ok ? "border-deal-border bg-deal-subtle" : "border-red-200 bg-red-50")
+              (test.ok ? "border-deal-border bg-deal-subtle" : "border-alert-border bg-alert-subtle")
             }
           >
             <div className="mb-2 flex items-center gap-2 font-medium">
-              {test.ok ? <CircleCheck size={13} className="text-deal" /> : <CircleX size={13} className="text-red-600" />}
+              {test.ok ? <CircleCheck size={13} className="text-deal" /> : <CircleX size={13} className="text-alert" />}
               {test.ok ? t("连通正常") : t("调用失败")} · {test.model} · {test.ms} ms
-              {test.error && <span className="font-normal text-red-700">{test.error}</span>}
+              {test.error && <span className="font-normal text-alert">{test.error}</span>}
             </div>
             {test.results.map((r) => (
               <div key={r.title} className="flex flex-wrap items-center gap-2 py-1 text-[12px]">
-                <span className={"shrink-0 " + (r.keep ? "text-deal" : "text-red-600")}>
+                <span className={"shrink-0 " + (r.keep ? "text-deal" : "text-alert")}>
                   {r.keep ? <Check size={12} /> : <CircleX size={12} />}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium text-ink-800">{r.title}</span>
@@ -502,7 +502,7 @@ export function AiPanel({
             {backfill.reviewed === 0 && (backfill.skippedBlocked ?? 0) > 0 && !backfill.error ? (
               <span className="ml-1 text-ink-500">{t("— 当前没有未被屏蔽的待审条目")}</span>
             ) : null}
-            {backfill.error && <span className="text-red-700"> · {backfill.error}</span>}
+            {backfill.error && <span className="text-alert"> · {backfill.error}</span>}
           </div>
         )}
       </div>
@@ -513,8 +513,8 @@ export function AiPanel({
           <div className="flex items-center gap-2">
             {isLiveActive ? (
               <span className="relative flex h-2.5 w-2.5 items-center justify-center">
-                <span className="ai-pulse-ring absolute inline-flex h-full w-full rounded-full bg-accent" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                <span className="ai-pulse-ring absolute inline-flex h-full w-full rounded-full bg-accent-solid" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-solid" />
               </span>
             ) : (
               <span className="inline-flex h-2 w-2 rounded-full bg-deal" />
@@ -575,9 +575,9 @@ export function AiPanel({
                   </div>
 
                   {/* 柔和流光进度条 */}
-                  <div className="relative h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-brand-border/60">
+                  <div className="relative h-2 overflow-hidden rounded-full bg-knob/80 ring-1 ring-brand-border/60">
                     <div
-                      className="relative h-full overflow-hidden rounded-full bg-accent transition-[width] duration-300 ease-out"
+                      className="relative h-full overflow-hidden rounded-full bg-accent-solid transition-[width] duration-300 ease-out"
                       style={{ width: Math.max(6, pct) + "%" }}
                     >
                       <span className="ai-shimmer absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-white/45 to-transparent" />
@@ -601,7 +601,7 @@ export function AiPanel({
                       {job.recentEvents.slice(0, 4).map((ev, idx) => (
                         <div
                           key={ev.title + idx}
-                          className="ai-enter flex items-center gap-2 rounded bg-white/85 px-2.5 py-1 text-[12px]"
+                          className="ai-enter flex items-center gap-2 rounded bg-knob/85 px-2.5 py-1 text-[12px]"
                         >
                           <span className={"shrink-0 " + (ev.keep ? "text-deal" : "text-alert")}>
                             {ev.keep ? <Check size={12} /> : <CircleX size={12} />}
@@ -783,8 +783,8 @@ export function AiPanel({
                 }}
                 className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 transition-colors hover:border-ink-300"
               >
-                <span className={"relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors " + (form.aiDedupEnabled ? "bg-brand" : "bg-ink-300")}>
-                  <span className={"inline-block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform " + (form.aiDedupEnabled ? "translate-x-3.5" : "translate-x-0.5")} />
+                <span className={"relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors " + (form.aiDedupEnabled ? "bg-solid" : "bg-ink-300")}>
+                  <span className={"inline-block h-3 w-3 transform rounded-full bg-knob shadow-sm transition-transform " + (form.aiDedupEnabled ? "translate-x-3.5" : "translate-x-0.5")} />
                 </span>
                 <span className={form.aiDedupEnabled ? "text-deal" : "text-ink-500"}>{form.aiDedupEnabled ? t("已开启") : t("已关闭")}</span>
               </button>
@@ -1087,7 +1087,7 @@ export function AiPanel({
               })
             }
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-solid px-3.5 py-1.5 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-60"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {t("保存配置")}

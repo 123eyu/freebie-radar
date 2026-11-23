@@ -1,5 +1,27 @@
 # 变更记录
 
+## 2026-11-23 · v1.1.4
+
+### 深色模式
+
+- **三态主题**：跟随系统 / 浅色 / 深色，选择存 `radar_theme`，落到 `<html data-theme>`；侧栏与移动端顶栏两个切换按钮共用 `lib/theme.ts` 的模块级 store，不会各翻各的
+- **只换语义 token，组件不写两遍**：`styles.css` 的 `html[data-theme="dark"]` 覆盖 `--color-canvas / surface / ink-* / deal / code / alert` 一组取值，页面结构完全不动。规避了 `dark:` 变体在 60+ 个组件里翻倍
+- **与「文字深浅」解耦的实心色**：新增 `--color-solid` / `--color-on-solid` / `--color-knob` / `--color-overlay` / `--color-accent-solid` / `--color-deal-solid` / `--color-alert-solid`。此前主按钮统一是 `bg-ink-950 text-white`，而 `ink-950` 在深色下必须是接近白的文字色，直接翻转会得到白底白字；现在按钮底色单独走 `solid`（深色主题下翻成靛蓝），白字与白色开关滑块在两种主题都成立
+- **清掉写死的调色板**：4 个文件里的 `text-amber-900` / `bg-emerald-50` / `bg-red-50` 等换成 token。这些颜色不随主题翻转，深色下会变成深棕字压深棕底的不可读组合
+- **`color-scheme` 跟着切**：浅色 `only light`、深色 `only dark`，表单控件与滚动条一起换；仍然拒绝安卓 Chrome 的自动深色反相
+
+### 相对时间不再停在「刚刚」
+
+- **根因一：时钟不走**。`timeAgo()` 在渲染时取 `Date.now()`，但列表不会自己重渲染，页面开着多久都显示打开那一刻。新增 `lib/clock.ts`（模块级 30 秒 ticker + `useSyncExternalStore`）与 `<RelativeTime>` 小组件：只有时间标签重渲染，431 行列表不会每 30 秒整体重画；标签页切回来时补一次
+- **根因二：未来时间被算成「刚刚」**。Epic「即将免费」把开卖时间写进 `publishedAt`，负差值直接落进 `m < 1` 分支。现在未来时间显示「即将开始 / N 小时后开始 / N 天后开始」
+- **时间列放宽**：`w-14` → `w-[72px]` 且 `whitespace-nowrap`，中文「3 天后开始」不会再折成两行
+
+### 其他修正
+
+- 左轨数据源分组名与来源名补 `min-w-0` / `truncate`，超长名称不再横向顶出轨道
+- 工具栏策略摘要允许收缩并省略，文字变长时不会把右侧计数挤重叠
+
+
 ## 2026-11-23 · v1.1.0
 
 ### 工作台 v2：URL 即状态、列表优先、移动端一屏可用

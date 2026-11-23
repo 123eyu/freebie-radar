@@ -208,7 +208,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
   return (
     <div className="space-y-4">
       {msg && (
-        <div className="toast-enter fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-white">
+        <div className="toast-enter fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-on-solid">
           {msg}
         </div>
       )}
@@ -228,7 +228,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
                 type="checkbox"
                 checked={access.loginEnabled}
                 onChange={(e) => void patchAccess({ loginEnabled: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#111318]"
+                className="h-3.5 w-3.5 accent-[var(--color-accent)]"
               />
             </label>
             <label className="flex items-center justify-between gap-2 rounded-lg border border-ink-200 bg-surface-hover px-3 py-2 text-[12px] text-ink-800">
@@ -237,7 +237,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
                 type="checkbox"
                 checked={access.suspendUserSessionsOnClose}
                 onChange={(e) => void patchAccess({ suspendUserSessionsOnClose: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#111318]"
+                className="h-3.5 w-3.5 accent-[var(--color-accent)]"
               />
             </label>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -344,7 +344,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
               }
             }}
             disabled={busy !== null}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-3 py-1.5 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-60"
           >
             {busy === "invite" ? <Loader2 size={12} className="animate-spin" /> : <Ticket size={12} />} {t("生成")}
           </button>
@@ -471,7 +471,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
                   type="checkbox"
                   checked={onboarding.enabled}
                   onChange={(e) => void saveOnboarding({ enabled: e.target.checked })}
-                  className="h-3.5 w-3.5 accent-[#111318]"
+                  className="h-3.5 w-3.5 accent-[var(--color-accent)]"
                 />
                 {t("启用公告")}
               </label>
@@ -480,7 +480,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
                   type="checkbox"
                   checked={onboarding.showGuideCards}
                   onChange={(e) => void saveOnboarding({ showGuideCards: e.target.checked })}
-                  className="h-3.5 w-3.5 accent-[#111318]"
+                  className="h-3.5 w-3.5 accent-[var(--color-accent)]"
                 />
                 {t("显示使用指南")}
               </label>
@@ -516,7 +516,7 @@ export function SiteAdminPanel({ onPublicConfigChange }: { onPublicConfigChange?
               type="button"
               onClick={() => void runUpdate()}
               disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-2.5 py-1 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-60"
             >
               {busy === "update" ? <Loader2 size={11} className="animate-spin" /> : <DownloadCloud size={11} />} {t("备份并一键更新")}
             </button>

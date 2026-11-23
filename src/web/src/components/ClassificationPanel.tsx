@@ -63,7 +63,7 @@ export function ClassificationPanel({ sources, onChanged }: { sources: Source[];
               const result = await call("/api/admin/classification/reclassify", {});
               onChanged(); await load(); setNotice(t("已修正 {rerouted} 条分类，重算 {updated} 条分数", { rerouted: Number(result.rerouted ?? 0), updated: Number(result.updated ?? 0) }));
             });
-          }} className="rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-40">{t("修正历史误分（0 Token）")}</button>
+          }} className="rounded-md bg-solid px-3 py-1.5 text-[12px] font-medium text-on-solid disabled:opacity-40">{t("修正历史误分（0 Token）")}</button>
         </div>
         <div className="max-h-64 divide-y divide-ink-100 overflow-auto">
           {audit?.samples.map((sample) => <div key={sample.id} className="py-2 text-[12px]">
@@ -81,7 +81,7 @@ export function ClassificationPanel({ sources, onChanged }: { sources: Source[];
         <div className="flex flex-wrap gap-2">
           <label className="text-[12px] text-ink-700">{t("来源")}<select value={sourceId} onChange={(e) => setSourceId(e.target.value)} className="ml-2 max-w-full rounded-md border border-ink-200 px-2 py-2"><option value="">{t("普通未指定源")}</option>{sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
           <label className="text-[12px] text-ink-700">{t("模拟 AI 判定")}<select value={aiKind} onChange={(e) => setAiKind(e.target.value)} className="ml-2 rounded-md border border-ink-200 px-2 py-2"><option value="">{t("未给形态")}</option>{Object.entries(KIND_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-          <button type="button" disabled={!title.trim()} onClick={() => void perform(async () => { setPreview(await call("/api/admin/classification/preview", { title, summary, sourceId, aiKind }) as unknown as Preview); })} className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-2 text-[12px] text-white">{busy ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />} {t("规则试算")}</button>
+          <button type="button" disabled={!title.trim()} onClick={() => void perform(async () => { setPreview(await call("/api/admin/classification/preview", { title, summary, sourceId, aiKind }) as unknown as Preview); })} className="inline-flex items-center gap-1 rounded-md bg-solid px-3 py-2 text-[12px] text-on-solid">{busy ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />} {t("规则试算")}</button>
         </div>
         {preview && <div role="status" className="rounded-md bg-brand-subtle p-3 text-[12px] leading-relaxed text-accent">
           {t("规则：")}{t(KIND_LABEL[preview.ruleKind] ?? preview.ruleKind)}{t(" · 校验后：")}{t(KIND_LABEL[preview.finalKind] ?? preview.finalKind)}{t(" · 分类：")}{t(categoryLabel(preview.category))}

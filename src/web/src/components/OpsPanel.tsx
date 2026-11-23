@@ -455,7 +455,7 @@ function SourceInlineEditor({
               className={
                 "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-medium transition-colors " +
                 (confirmDel
-                  ? "border-alert bg-alert text-white"
+                  ? "border-alert bg-alert-solid text-on-solid"
                   : "border-ink-200 bg-surface text-alert hover:border-alert/40 hover:bg-alert-subtle")
               }
             >
@@ -475,7 +475,7 @@ function SourceInlineEditor({
             type="button"
             disabled={saving || !name.trim() || (!showJson && source.kind === "rss" && feedRows.some((row) => !/^https?:\/\//i.test(row.url.trim())))}
             onClick={() => void handleSave()}
-            className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded-lg bg-solid px-3 py-1 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-40"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {t("保存配置")}
           </button>
@@ -927,7 +927,7 @@ export function OpsPanel({
                       type="button"
                       disabled={cookieBusy !== null}
                       onClick={() => void saveCookiePatch({ runnerUrl: runnerUrlInput, xhsProxy: xhsProxyInput }, "save-net")}
-                      className="inline-flex h-8 flex-1 items-center justify-center rounded-lg bg-ink-950 px-2.5 text-[12px] font-medium text-white hover:bg-ink-800 disabled:opacity-40"
+                      className="inline-flex h-8 flex-1 items-center justify-center rounded-lg bg-ink-950 px-2.5 text-[12px] font-medium text-on-solid hover:bg-ink-800 disabled:opacity-40"
                     >
                       {cookieBusy === "save-net" ? <Loader2 size={12} className="animate-spin" /> : t("保存线路")}
                     </button>
@@ -973,7 +973,7 @@ export function OpsPanel({
                             <span
                               className={
                                 "rounded px-1.5 py-0.5 text-[11px] font-medium " +
-                                (st.hasAuthHint ? "bg-deal-subtle text-deal" : "bg-code-subtle text-amber-800")
+                                (st.hasAuthHint ? "bg-deal-subtle text-deal" : "bg-code-subtle text-code")
                               }
                               title={t("已保存字段：{fields}", { fields: st.keyNames.join(", ") })}
                             >
@@ -999,7 +999,7 @@ export function OpsPanel({
                               type="button"
                               disabled={!draft.trim() || cookieBusy !== null}
                               onClick={() => void saveCookiePatch({ cookies: { [site.key]: draft } }, `save-${site.key}`, site.key)}
-                              className="inline-flex h-7 items-center gap-1 rounded-md bg-brand px-2.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-40"
+                              className="inline-flex h-7 items-center gap-1 rounded-md bg-solid px-2.5 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-40"
                             >
                               {cookieBusy === `save-${site.key}` ? <Loader2 size={11} className="animate-spin" /> : t("保存")}
                             </button>
@@ -1175,7 +1175,7 @@ export function OpsPanel({
                         setAddingRss(false);
                       }
                     }}
-                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-brand px-3.5 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-40"
+                    className="inline-flex items-center justify-center gap-1 rounded-lg bg-solid px-3.5 py-1.5 text-[12px] font-medium text-on-solid transition-colors hover:bg-solid-hover disabled:opacity-40"
                   >
                     {addingRss ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
                     {t("加入并采集")}
@@ -1212,7 +1212,7 @@ export function OpsPanel({
                             : s.last_status === "failed"
                               ? "bg-alert-subtle text-alert"
                               : s.last_status === "degraded"
-                                ? "bg-code-subtle text-amber-800"
+                                ? "bg-code-subtle text-code"
                                 : "bg-ink-100 text-ink-600")
                         }
                       >
@@ -1234,12 +1234,12 @@ export function OpsPanel({
                       <button
                         type="button"
                         onClick={() => onToggleSource(s.id, !s.enabled)}
-                        className={"h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors " + (s.enabled ? "bg-brand" : "bg-ink-300")}
+                        className={"h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors " + (s.enabled ? "bg-solid" : "bg-ink-300")}
                         title={s.enabled ? t("点击禁用") : t("点击启用")}
                       >
                         <span
                           className={
-                            "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform " + (s.enabled ? "translate-x-4" : "")
+                            "block h-4 w-4 rounded-full bg-knob shadow-sm transition-transform " + (s.enabled ? "translate-x-4" : "")
                           }
                         />
                       </button>
@@ -1335,13 +1335,13 @@ export function OpsPanel({
                             type="button"
                             onClick={() => onToggleSource(s.id, !s.enabled)}
                             className={
-                              "h-5 w-9 rounded-full p-0.5 transition-colors " + (s.enabled ? "bg-brand" : "bg-ink-300")
+                              "h-5 w-9 rounded-full p-0.5 transition-colors " + (s.enabled ? "bg-solid" : "bg-ink-300")
                             }
                             title={s.enabled ? t("点击禁用") : t("点击启用")}
                           >
                             <span
                               className={
-                                "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform " +
+                                "block h-4 w-4 rounded-full bg-knob shadow-sm transition-transform " +
                                 (s.enabled ? "translate-x-4" : "")
                               }
                             />
@@ -1390,7 +1390,7 @@ export function OpsPanel({
                                 : s.last_status === "failed"
                                   ? "bg-alert-subtle text-alert"
                                   : s.last_status === "degraded"
-                                    ? "bg-code-subtle text-amber-800"
+                                    ? "bg-code-subtle text-code"
                                     : "bg-ink-100 text-ink-600")
                             }
                           >
@@ -1532,7 +1532,7 @@ export function OpsPanel({
                             <div className="flex items-center gap-2">
                               <div className="h-1.5 w-16 overflow-hidden rounded-full bg-ink-100">
                                 <div
-                                  className={"h-full rounded-full " + (pct !== null && pct >= 60 ? "bg-deal" : pct !== null && pct >= 30 ? "bg-accent" : "bg-alert")}
+                                  className={"h-full rounded-full " + (pct !== null && pct >= 60 ? "bg-deal" : pct !== null && pct >= 30 ? "bg-accent-solid" : "bg-alert-solid")}
                                   style={{ width: (pct ?? 0) + "%" }}
                                 />
                               </div>
@@ -1611,7 +1611,7 @@ export function OpsPanel({
             {retCounts && (
               <span className="text-[12px] text-ink-500">
                 {t("在库")} <span className="font-mono font-medium text-ink-800">{retCounts.total}</span>{t(" · 收藏")}{" "}
-                <span className="font-mono font-medium text-amber-700">{retCounts.starred}</span>{t(" · 已关闭")}{" "}
+                <span className="font-mono font-medium text-code">{retCounts.starred}</span>{t(" · 已关闭")}{" "}
                 <span className="font-mono font-medium">{retCounts.ignored}</span>
               </span>
             )}
@@ -1674,7 +1674,7 @@ export function OpsPanel({
                 type="button"
                 disabled={cleaning}
                 onClick={doCleanup}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-alert-border bg-alert-subtle px-3.5 py-1.5 text-[12px] font-medium text-alert hover:bg-red-100/80 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-alert-border bg-alert-subtle px-3.5 py-1.5 text-[12px] font-medium text-alert hover:bg-alert-subtle/80 disabled:opacity-60"
               >
                 {cleaning ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} {t("立即清理")}
               </button>

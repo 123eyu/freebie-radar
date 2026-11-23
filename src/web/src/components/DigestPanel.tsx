@@ -77,7 +77,7 @@ export function DigestPanel({
                   setRunning(false);
                 }
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[12px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-solid px-3.5 py-2 text-[12px] font-medium text-on-solid transition-colors hover:bg-solid-hover disabled:opacity-50"
             >
               {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
               {t("立即生成今日精选")}

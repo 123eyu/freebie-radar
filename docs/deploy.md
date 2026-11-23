@@ -8,7 +8,7 @@
 
 ### 用官方镜像（不构建）
 
-镜像已发布到 Docker Hub：`zichuanlan/freebie-radar`。`latest` 跟随最新构建，同时按 GitHub Release 打 `v1.1.3` 这类版本标签、按构建提交打 git 短 SHA 标签（如 `19eb371`），生产环境建议固定版本标签。
+镜像已发布到 Docker Hub：`zichuanlan/freebie-radar`。`latest` 跟随最新构建，同时按 GitHub Release 打 `v1.1.4` 这类版本标签、按构建提交打 git 短 SHA 标签（如 `19eb371`），生产环境建议固定版本标签。
 
 ```bash
 # 最省事：不 clone、不构建
@@ -27,7 +27,7 @@ git clone https://github.com/ZiChuanLan/freebie-radar.git
 cd freebie-radar
 cp .env.example .env
 # 可选：固定版本而非 latest（默认 zichuanlan/freebie-radar:latest）
-# echo "RADAR_IMAGE=zichuanlan/freebie-radar:v1.1.3" >> .env
+# echo "RADAR_IMAGE=zichuanlan/freebie-radar:v1.1.4" >> .env
 docker compose pull
 docker compose up -d
 ```
@@ -51,7 +51,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.3",...}
+# {"ok":true,"version":"1.1.4",...}
 ```
 
 ### 可选：拉起 FlareSolverr 过 Cloudflare 护盾

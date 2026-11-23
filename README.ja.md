@@ -80,6 +80,10 @@
 - **公開 / 管理の分離**：`ADMIN_TOKEN` を設定すると、リソースフィード、今日のホットトピック、デイリーピックは公開閲覧のまま、管理設定と書き込み系 API はすべて自動的に認証で保護されます（`ADMIN_HOSTS` による専用管理ドメインの限定にも対応）。
 - **任意の公開マルチユーザーモード**：`SITE_MODE=public` + LINUX DO / GitHub OAuth を設定すると、公開コンテンツは引き続き読み取り専用で共有されますが、「見たくない / スター / 既読 / ブロックワード / 注目ワード」はログインユーザーごとに分離されます（招待コード登録や登録枠上限に対応）。未ログインの訪問者の嗜好はそのブラウザにのみ保存されます。ログインユーザーは自分の Telegram Bot や Webhook（QQ ブリッジ等）を紐付けて個人向けプッシュ通知を受け取ることも、公開 RSS や個人専用 RSS を購読することもでき、`?workspace=site` で個人設定とサイト全体管理を明示的に切り替えられます。詳細は [docs/accounts.md](docs/accounts.md) を参照してください。
 
+### 7. ダークモード
+
+システム / ライト / ダークの 3 状態。ダークはセマンティック token を差し替えるだけで、コンポーネントを二重に持たない。サイドバーとモバイルバーの 2 か所の入り口は常に同期します。
+
 ### 6. 外部ツール入口（Epic 無料配布ゲームの受け取りツール）
 - **受け取りツールは独立したプロジェクトです**：Epic の自動受け取りはブラウザと hCaptcha の突破を伴い、規模も実行環境もレーダーに押し込むのに向いていません。別途デプロイされ（独立プロセス、独立データベース、専用パネル）、レーダー側は「データソース運用」パネルに入口を 1 つ用意するだけです。
 - `EPIC_CLAIMER_URL=https://あなたの受け取りツールのアドレス` を設定すると「データソース運用 → 外部ツール」にカードが表示されます。設定しなければこのブロックは表示されず、レーダーは一切の受け取り処理を行いません。
@@ -116,7 +120,7 @@ docker run -d --name radar --restart unless-stopped \
   zichuanlan/freebie-radar:latest
 ```
 
-`.env` の `RADAR_IMAGE` でバージョンを固定すれば（`latest` / `v1.1.3` / git 短縮 SHA）、Compose はビルドせず pull します：
+`.env` の `RADAR_IMAGE` でバージョンを固定すれば（`latest` / `v1.1.4` / git 短縮 SHA）、Compose はビルドせず pull します：
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -148,7 +152,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.3",...}
+# {"ok":true,"version":"1.1.4",...}
 
 docker compose logs -f --tail 50
 ```
@@ -158,7 +162,7 @@ docker compose logs -f --tail 50
 | タグ | 意味 |
 |---|---|
 | `latest` | 最新ビルド |
-| `v1.1.3` | GitHub Release / git tag に対応。本番はこのタグで固定するのがおすすめ |
+| `v1.1.4` | GitHub Release / git tag に対応。本番はこのタグで固定するのがおすすめ |
 | `19eb371` | ビルド時点の git 短縮 SHA。特定コミットへの固定・ロールバック用 |
 
 イメージは `node:24-alpine` のマルチステージビルドで、実行時は本番依存と `dist/web` のみを保持します。常駐メモリは約 80〜100 MiB です。

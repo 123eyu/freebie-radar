@@ -106,7 +106,17 @@ export function timeAgo(iso: string | null | undefined): string {
   if (!iso) return "—";
   const ms = new Date(iso).getTime();
   if (Number.isNaN(ms)) return "—";
-  const m = Math.round((Date.now() - ms) / 60000);
+  const diff = Date.now() - ms;
+  // 未来时间戳（Epic「即将免费」把开卖时间写进 published_at）不能算成「刚刚」，
+  // 否则列表会永远停在刚打开的那一刻。
+  if (diff < 0) {
+    const inMin = Math.round(-diff / 60000);
+    if (inMin < 60) return t("即将开始");
+    const inHour = Math.round(inMin / 60);
+    if (inHour < 24) return t("{n} 小时后开始", { n: inHour });
+    return t("{n} 天后开始", { n: Math.round(inHour / 24) });
+  }
+  const m = Math.round(diff / 60000);
   if (m < 1) return t("刚刚");
   if (m < 60) return t("{n} 分钟前", { n: m });
   const h = Math.round(m / 60);

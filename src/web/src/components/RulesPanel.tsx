@@ -84,7 +84,7 @@ export function RulesPanel({
             type="button"
             disabled={busy || !kw.trim()}
             onClick={() => void addKeyword()}
-            className="inline-flex items-center gap-1 rounded-lg bg-brand px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-brand-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200"
+            className="inline-flex items-center gap-1 rounded-lg bg-solid px-3.5 py-2 text-[13px] font-medium text-on-solid transition-colors hover:bg-solid-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200"
           >
             <Plus size={14} /> {t("添加")}
           </button>
@@ -195,7 +195,7 @@ export function RulesPanel({
                 setBusy(false);
               }
             }}
-            className="rounded-lg bg-brand px-3 py-2 text-[12px] font-medium text-white transition-colors hover:bg-brand-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200 sm:col-span-2"
+            className="rounded-lg bg-solid px-3 py-2 text-[12px] font-medium text-on-solid transition-colors hover:bg-solid-hover disabled:bg-ink-200 disabled:text-ink-500 disabled:hover:bg-ink-200 sm:col-span-2"
           >
             {t("添加屏蔽")}
           </button>

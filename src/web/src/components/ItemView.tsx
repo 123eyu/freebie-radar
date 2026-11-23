@@ -18,6 +18,13 @@ import { KIND_LABEL, OBTAIN_HINT, OBTAIN_LABEL, categoryLabelForKind, expiresLab
 import type { Item } from "../types.ts";
 import { ItemClassificationEditor, type ClassificationPatch } from "./ItemClassificationEditor.tsx";
 import { t } from "../lib/i18n.ts";
+import { useNow } from "../lib/clock.ts";
+
+/** 相对时间：订阅共享时钟，只有这一小块每 30 秒重渲染。 */
+export function RelativeTime({ iso, className = "" }: { iso: string | null | undefined; className?: string }) {
+  useNow();
+  return <span className={className}>{timeAgo(iso)}</span>;
+}
 
 export function CodeChip({ code, onCopy }: { code: string; onCopy: (code: string) => void }) {
   const [copied, setCopied] = useState(false);
@@ -35,7 +42,7 @@ export function CodeChip({ code, onCopy }: { code: string; onCopy: (code: string
         "inline-flex max-w-[46vw] items-center gap-1 truncate rounded px-2 py-1 font-mono text-[11px] font-semibold transition-colors sm:max-w-none sm:py-0.5 " +
         (copied
           ? "bg-deal-subtle text-deal"
-          : "bg-code-subtle text-code hover:bg-amber-200/70")
+          : "bg-code-subtle text-code hover:bg-code-border/70")
       }
       title={t("点击复制兑换码")}
     >
@@ -86,8 +93,8 @@ const OBTAIN_TEXT: Record<string, string> = {
 
 /** 获取方式徽章：非 free 的一律标出来，避免抽奖/试用/推广混进「完全白嫖」。 */
 const KIND_STYLE: Record<string, string> = {
-  deal: "bg-amber-50 text-amber-700",
-  opensource: "bg-emerald-50 text-emerald-700",
+  deal: "bg-code-subtle text-code",
+  opensource: "bg-deal-subtle text-deal",
   news: "bg-rose-50 text-rose-700",
   info: "bg-sky-50 text-sky-700",
 };
@@ -208,7 +215,7 @@ export function CompactRow({
         <span
           className={
             "h-[7px] w-[7px] rounded-full " +
-            (item.read ? "border border-ink-300 bg-transparent" : "bg-accent")
+            (item.read ? "border border-ink-300 bg-transparent" : "bg-accent-solid")
           }
           title={item.read ? t("已读") : t("未读")}
         />
@@ -289,7 +296,7 @@ export function CompactRow({
           )}
           <MetaSep className="sm:hidden" />
           <span className="shrink-0 tabular-nums text-ink-400 sm:hidden">
-            {timeAgo(item.published_at ?? item.first_seen_at)}
+            <RelativeTime iso={item.published_at ?? item.first_seen_at} />
           </span>
         </div>
         {showSummary && item.ai?.reason && <p title={item.ai.reason} className="row-summary mt-1 text-[12px] leading-relaxed text-ink-500">{item.ai.reason}</p>}
@@ -348,8 +355,8 @@ export function CompactRow({
           </button>
           </span>
         </div>
-        <span className="hidden w-14 shrink-0 text-right font-mono text-[12px] tabular-nums text-ink-400 sm:inline-block">
-          {timeAgo(item.published_at ?? item.first_seen_at)}
+        <span className="hidden w-[72px] shrink-0 whitespace-nowrap text-right font-mono text-[12px] tabular-nums text-ink-400 sm:inline-block">
+          <RelativeTime iso={item.published_at ?? item.first_seen_at} />
         </span>
       </div>
     </div>
@@ -439,7 +446,7 @@ export function ItemCard({
           <span
             className={
               "absolute top-2.5 right-2.5 rounded-md px-2 py-0.5 font-mono text-[12px] font-semibold tabular-nums backdrop-blur-sm " +
-              (item.score >= 70 ? "bg-deal/90 text-white" : "bg-ink-950/75 text-white")
+              (item.score >= 70 ? "bg-deal-solid text-on-solid" : "bg-overlay text-white")
             }
           >
             {Math.round(item.score)}
@@ -453,7 +460,7 @@ export function ItemCard({
             <span
               className={
                 "h-[6px] w-[6px] shrink-0 rounded-full " +
-                (item.read ? "border border-ink-300 bg-transparent" : "bg-accent")
+                (item.read ? "border border-ink-300 bg-transparent" : "bg-accent-solid")
               }
               title={item.read ? t("已读") : t("未读")}
             />
@@ -530,7 +537,7 @@ export function ItemCard({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex min-w-0 items-center gap-2">
-            <span className="tabular-nums">{timeAgo(item.published_at ?? item.first_seen_at)}</span>
+            <span className="tabular-nums"><RelativeTime iso={item.published_at ?? item.first_seen_at} /></span>
             {exp && (
               <span className={"inline-flex items-center gap-1 truncate " + (exp.urgent ? "font-medium text-code" : "")}>
                 <Clock3 size={11} /> {exp.text}
@@ -555,7 +562,7 @@ export function ItemCard({
               onClick={() => onPatch(item.id, { starred: !item.starred })}
               className={
                 "rounded-md p-1.5 hover:bg-ink-100 " +
-                (item.starred ? "text-amber-500" : "text-ink-400 hover:text-ink-800")
+                (item.starred ? "text-code" : "text-ink-400 hover:text-ink-800")
               }
               title={item.starred ? t("取消收藏") : t("收藏")}
             >
@@ -743,7 +750,7 @@ export function ItemDetailDrawer({
               {t("评分")} {Math.round(item.score)}
             </span>
             {exp && (
-              <span className={"inline-flex items-center gap-1 " + (exp.urgent ? "font-medium text-amber-700" : "text-ink-500")}>
+              <span className={"inline-flex items-center gap-1 " + (exp.urgent ? "font-medium text-code" : "text-ink-500")}>
                 <Clock3 size={11} /> {exp.text}
               </span>
             )}
@@ -758,7 +765,7 @@ export function ItemDetailDrawer({
                 "flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-[12px] " +
                 (item.ai.keep === false
                   ? "border-ink-200 bg-ink-100/70 text-ink-600"
-                  : "border-deal-border bg-deal-subtle/70 text-emerald-900")
+                  : "border-deal-border bg-deal-subtle/70 text-deal")
               }
             >
               <Sparkles size={14} className={item.ai.keep === false ? "text-ink-500" : "text-deal"} />
@@ -782,7 +789,7 @@ export function ItemDetailDrawer({
 
           {codes.length > 0 && (
             <div className="rounded-lg border border-code-border bg-code-subtle/70 p-3.5">
-              <div className="mb-2 text-[12px] font-medium text-amber-900">{t("提取到的兑换码（点击复制）")}</div>
+              <div className="mb-2 text-[12px] font-medium text-code">{t("提取到的兑换码（点击复制）")}</div>
               <div className="flex flex-wrap gap-2">
                 {codes.map((code) => (
                   <CodeChip key={code} code={code} onCopy={onCopyCode} />
@@ -850,7 +857,7 @@ export function ItemDetailDrawer({
             onClick={() => {
               if (!item.read) onPatch(item.id, { read: true });
             }}
-            className="inline-flex min-w-full flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-hover sm:min-w-0 sm:py-2"
+            className="inline-flex min-w-full flex-1 items-center justify-center gap-1.5 rounded-lg bg-solid px-4 py-2.5 text-[13px] font-medium text-on-solid transition-colors hover:bg-solid-hover sm:min-w-0 sm:py-2"
           >
             {item.kind === "news" || item.kind === "info" ? t("查看原文详情") : t("打开原帖领取")} <ArrowUpRight size={14} />
           </a>
@@ -860,7 +867,7 @@ export function ItemDetailDrawer({
             className={
               "inline-flex grow basis-[calc(50%-0.25rem)] items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-[13px] transition-colors sm:grow-0 sm:basis-auto sm:py-2 " +
               (item.starred
-                ? "border-amber-300 bg-code-subtle text-amber-800"
+                ? "border-code-border bg-code-subtle text-code"
                 : "border-ink-200 bg-surface text-ink-700 hover:bg-ink-100")
             }
           >
@@ -879,7 +886,7 @@ export function ItemDetailDrawer({
               onClose();
               onQuickBlock(item);
             }}
-            className="inline-flex grow basis-[calc(50%-0.25rem)] items-center justify-center gap-1 rounded-lg border border-alert-border bg-alert-subtle px-3 py-2.5 text-[13px] text-alert hover:bg-red-100/80 sm:grow-0 sm:basis-auto sm:py-2"
+            className="inline-flex grow basis-[calc(50%-0.25rem)] items-center justify-center gap-1 rounded-lg border border-alert-border bg-alert-subtle px-3 py-2.5 text-[13px] text-alert hover:bg-alert-subtle/80 sm:grow-0 sm:basis-auto sm:py-2"
           >
             <ShieldAlert size={14} /> {t("屏蔽")}
           </button>
@@ -1019,7 +1026,7 @@ export function QuickBlockModal({
                   setBusy(false);
                 }
               }}
-              className="rounded-lg bg-alert px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+              className="rounded-lg bg-alert-solid px-4 py-2 text-[12px] font-medium text-on-solid transition-colors hover:bg-alert-solid disabled:opacity-40"
             >
               {t("加入屏蔽规则")}
             </button>

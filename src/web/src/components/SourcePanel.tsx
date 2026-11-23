@@ -65,7 +65,7 @@ export function SourcePanel({ views, preset, onPickPreset, grouped, source, onPi
             <button type="button" aria-expanded={!collapsed} onClick={() => onToggleGroup(group.key)}
               className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-ink-400 hover:text-ink-700">
               {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
-              <span className="flex-1 text-left">{group.label}</span>
+              <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
               <span className="font-mono tabular-nums">{total}</span>
             </button>
             {!collapsed && (
@@ -79,7 +79,7 @@ export function SourcePanel({ views, preset, onPickPreset, grouped, source, onPi
                     }
                     title={item.id + " · " + t("采集周期 {interval}", { interval: formatInterval(item.interval_sec) })}
                   >
-                    <span className="truncate">{item.name}</span>
+                    <span className="min-w-0 truncate">{item.name}</span>
                     <span className="ml-1.5 shrink-0 font-mono text-[11px] tabular-nums text-ink-400">{item.items}</span>
                   </button>
                 ))}

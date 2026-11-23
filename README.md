@@ -79,6 +79,7 @@
 ### 5. 极简部署与单密码鉴权分区
 - **零外部数据库**：基于 `node:24-alpine` 原生运行 TypeScript，内置 `node:sqlite`（WAL 模式 + 内存上限调优，自动增量迁移至 Schema v32），日常运行内存 < 100MB。
 - **中英双语界面**：界面文案全部走 `src/web/src/lib/i18n.ts`（零依赖，中文即词典 key），非中文浏览器首次访问自动切换英文；顶部/侧栏一键切换，也可用 `?lang=en` 直达，内置 `pnpm i18n:check` 扫描覆盖率。
+- **深色模式**：跟随系统 / 浅色 / 深色三态，只替换语义 token 而不复制组件；侧栏与移动端两个入口始终同步，`color-scheme`、表单控件与滚动条一起切换，同时保留对安卓自动深色反相的拒绝。
 - **116 个内置数据源（默认精选启用 67 个）**：覆盖 LINUX DO、NodeSeek（含福利/资讯/拼车交易板块）、V2EX、NGA（优惠/拼车/二手）、B站、微博、CCTV 新闻、OpenRouter `:free` 模型、GitHub、Epic、Steam、GamerPower、CheapShark、ITAD、SharewareOnSale、TickCoupon、Reddit、Bluesky、Telegram 频道与中文主机圈促销博客，并支持自定义 RSS 与本地回环/油猴脚本抓取知乎/小红书/小黑盒。
 - **公开/管理隔离**：配置 `ADMIN_TOKEN` 后，资源流、热点与每日精选保持公开浏览，管理配置与写入接口全部自动鉴权保护（支持 `ADMIN_HOSTS` 绑定专用管理域名）。
 - **可选的公开多用户模式**：设 `SITE_MODE=public` + LINUX DO / GitHub OAuth 后，公共内容仍只读共享，但「不想看 / 收藏 / 已读 / 屏蔽词 / 关注词」按登录用户隔离（支持邀请码注册与名额上限）；未登录访客偏好只存本机浏览器；登录用户可绑自己的 Telegram Bot 或 Webhook（如 QQ 桥接）收个人推送，也能订阅公开或个人专属 RSS，并通过 `?workspace=site` 显式切换站级管理与个人设置。详见 [docs/accounts.md](docs/accounts.md)。
@@ -119,7 +120,7 @@ docker run -d --name radar --restart unless-stopped \
   zichuanlan/freebie-radar:latest
 ```
 
-也可以在 `.env` 里用 `RADAR_IMAGE` 固定镜像版本（`latest` / `v1.1.3` / git 短 SHA），让 compose 直接拉取而不构建：
+也可以在 `.env` 里用 `RADAR_IMAGE` 固定镜像版本（`latest` / `v1.1.4` / git 短 SHA），让 compose 直接拉取而不构建：
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -151,7 +152,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.3",...}
+# {"ok":true,"version":"1.1.4",...}
 
 docker compose logs -f --tail 50
 ```
@@ -163,7 +164,7 @@ docker compose logs -f --tail 50
 | 标签 | 含义 |
 |---|---|
 | `latest` | 最新构建 |
-| `v1.1.3` | 对应 GitHub Release / git tag，生产环境建议固定到这种 |
+| `v1.1.4` | 对应 GitHub Release / git tag，生产环境建议固定到这种 |
 | `19eb371` | 构建时的 git 短 SHA，可精确回滚到某次提交 |
 
 镜像基于 `node:24-alpine` 多阶段构建，运行时只保留生产依赖与 `dist/web`，常驻内存约 80–100 MiB。

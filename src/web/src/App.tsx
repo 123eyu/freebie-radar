@@ -39,6 +39,7 @@ import {
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { AdminGate } from "./components/AdminGate.tsx";
 import { LangSwitch } from "./components/LangSwitch.tsx";
+import { ThemeSwitch } from "./components/ThemeSwitch.tsx";
 import { WorkspaceScopeBar } from "./components/WorkspaceScope.tsx";
 import { FeedViewSwitch } from "./components/FeedViewSwitch.tsx";
 import { FeedToolbar } from "./components/FeedToolbar.tsx";
@@ -170,7 +171,7 @@ function useApi<T>(url: string | null, scope = ""): { data: T | null; loading: b
 function Toast({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-white shadow-lg">
+    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-on-solid shadow-lg">
       <Bell size={14} className="text-ink-300" />
       {message}
     </div>
@@ -834,8 +835,9 @@ export function App() {
     </a>
   );
 
-  // 界面语言切换：桌面侧栏第二行与移动端品牌行各放一个
+  // 界面语言与主题：桌面侧栏第二行与移动端品牌行各放一个
   const langNode = <LangSwitch className={ICON_BTN} />;
+  const themeNode = <ThemeSwitch className={ICON_BTN} />;
 
   // 账号态：移动端放进导航行右侧，桌面端留在侧栏第二行
   const accountNode = me ? (
@@ -871,7 +873,7 @@ export function App() {
         setAuthHash(null);
         setAuthOpen(true);
       }}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ink-950 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white hover:bg-brand-hover"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ink-950 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-on-solid hover:bg-solid-hover"
       title={t("用 LINUX DO 登录")}
     >
       <User size={12} /> {t("登录")}
@@ -901,7 +903,7 @@ export function App() {
         {/* 品牌行：说明/RSS/GitHub/导出/刷新 全部收进这一行，省掉整条第二栏 */}
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent-solid" aria-hidden="true" />
             <h1 className="shrink-0 whitespace-nowrap text-[14px] font-semibold tracking-tight text-ink-950">{t("资源雷达")}</h1>
           </div>
           <span className="hidden font-mono text-[11px] tabular-nums text-ink-400 lg:inline">
@@ -911,6 +913,7 @@ export function App() {
             <button type="button" onClick={() => setWelcomeOpen(true)} className={ICON_BTN} title={t("站点说明与使用提示")}>
               <BookOpen size={14} />
             </button>
+            {themeNode}
             {langNode}
             <details className="feed-more">
               <summary aria-label={t("更多工具")} title={t("更多工具")}><MoreHorizontal size={16} aria-hidden="true" /></summary>
@@ -930,6 +933,7 @@ export function App() {
         <div className="mt-2 hidden items-center gap-1 px-1 lg:mt-0 lg:flex">
           {helpRssNode}
           {githubNode}
+          {themeNode}
           {langNode}
           <div className="ml-auto min-w-0">{accountNode}</div>
         </div>
@@ -1171,7 +1175,7 @@ export function App() {
           {tab === "feed" && (
             <>
               {firstVisitNotice && bootData && <section className="first-visit-notice" aria-label={t("站点公告")}>
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-solid" aria-hidden="true" />
                 <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold text-ink-700">{t(bootData.onboarding.title)}</h2>
                 <button type="button" className="scope-link shrink-0" onClick={() => setWelcomeOpen(true)}>{t("查看说明")}</button>
                 <button type="button" className="notice-dismiss" aria-label={t("收起站点公告")} onClick={closeWelcome}><X size={15} /></button>
@@ -1214,7 +1218,7 @@ export function App() {
                   >
                     <SlidersHorizontal size={14} />
                     {activeFilterCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 font-mono text-[11px] leading-none text-white">
+                      <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent-solid px-0.5 font-mono text-[11px] leading-none text-on-solid">
                         {activeFilterCount}
                       </span>
                     )}
@@ -1416,7 +1420,7 @@ export function App() {
                   </select>}
                   <button type="button" aria-label={advancedFilters ? t("收起高级筛选") : t("高级筛选")} aria-expanded={advancedFilters} onClick={() => setAdvancedFilters((v) => !v)} className="inline-flex items-center gap-1 rounded-md px-2 text-[12px] font-medium text-accent hover:bg-brand-subtle">
                     <SlidersHorizontal size={12} /> {advancedFilters ? t("收起高级筛选") : t("高级筛选")}
-                    {(kindFilter !== "auto" || obtain !== "auto" || minScore !== "all") && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-label={t("高级条件已生效")} />}
+                    {(kindFilter !== "auto" || obtain !== "auto" || minScore !== "all") && <span className="h-1.5 w-1.5 rounded-full bg-accent-solid" aria-label={t("高级条件已生效")} />}
                   </button>
 
                   <select
@@ -1560,7 +1564,7 @@ export function App() {
                   {preset === "pan" && isPublicSite && <p className="max-w-md text-[12px] leading-relaxed text-ink-500">{t("网盘与网课条目的可见范围由站点访问策略决定；第三方分享请核对来源与版权。")}</p>}
                   <div className="flex gap-2">
                     {activeFilterCount > 0 && <button type="button" onClick={resetFilters} className="rounded-md border border-ink-200 px-4 py-2 text-[12px] font-medium text-ink-700 hover:bg-ink-100">{t("清除当前条件")}</button>}
-                    <button type="button" onClick={() => { resetFilters(); setPreset("all"); }} className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover">{t("浏览全部收录")}</button>
+                    <button type="button" onClick={() => { resetFilters(); setPreset("all"); }} className="rounded-md bg-solid px-4 py-2 text-[12px] font-medium text-on-solid hover:bg-solid-hover">{t("浏览全部收录")}</button>
                   </div>
                 </div>
               )}
@@ -1777,7 +1781,7 @@ export function App() {
           {tab === "me" && !me && bootData && <div className="space-y-3 py-10">
             <h2 className="text-[17px] font-semibold text-ink-950">{t("登录后查看账号与通知")}</h2>
             <p className="text-[13px] text-ink-500">{t("未登录时，收藏和屏蔽保存在当前浏览器中。")}</p>
-            {bootData.loginEnabled && <button type="button" className="rounded-md bg-brand px-4 py-2 text-[13px] text-white" onClick={() => { setAuthHash(null); setAuthOpen(true); }}>{t("登录")}</button>}
+            {bootData.loginEnabled && <button type="button" className="rounded-md bg-solid px-4 py-2 text-[13px] text-on-solid" onClick={() => { setAuthHash(null); setAuthOpen(true); }}>{t("登录")}</button>}
             <button type="button" className="scope-link ml-3" onClick={() => handleTab("feed")}>{t("回到资源流")}</button>
           </div>}
           {me && tab === "me" && bootData && <UserPushPanel key={me.id} boot={bootData} />}

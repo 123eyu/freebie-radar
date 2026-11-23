@@ -62,7 +62,7 @@ const REJECTION_LABEL: Record<string, string> = {
 function Toast2({ msg }: { msg: string | null }) {
   if (!msg) return null;
   return (
-    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-white">
+    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-on-solid">
       {msg}
     </div>
   );
@@ -201,13 +201,13 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
             onClick={async () => { if (await save({ enabled: !cfg.enabled })) notify(cfg.enabled ? t("个人推送已关闭") : t("个人推送已开启")); }}
             className={
               "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors " +
-              (cfg.enabled ? "bg-brand" : "bg-ink-300") + " disabled:opacity-40"
+              (cfg.enabled ? "bg-solid" : "bg-ink-300") + " disabled:opacity-40"
             }
             title={cfg.enabled ? t("点击关闭个人推送") : t("点击开启个人推送")}
           >
             <span
               className={
-                "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform " +
+                "inline-block h-3.5 w-3.5 transform rounded-full bg-knob shadow-sm transition-transform " +
                 (cfg.enabled ? "translate-x-4.5" : "translate-x-0.5")
               }
             />
@@ -304,7 +304,7 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
                 if (await save({ webhookUrl: webhookInput.trim(), webhookSecret: secretInput.trim() })) {
                   setWebhookInput(webhookInput.trim()); setSecretInput(secretInput.trim()); notify(t("Webhook 凭据已保存"));
                 }
-              }} className="rounded-lg bg-ink-950 px-3 py-1.5 text-[12px] font-medium text-white">{t("保存 Webhook")}</button>
+              }} className="rounded-lg bg-ink-950 px-3 py-1.5 text-[12px] font-medium text-on-solid">{t("保存 Webhook")}</button>
             </>
           ) : null}
           {!viaWebhook && <>
@@ -339,7 +339,7 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
                 }
               }}
               disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-3 py-1.5 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-60"
             >
               {busy === "token" ? <Loader2 size={12} className="animate-spin" /> : null}
               {t("保存 Token")}
@@ -549,7 +549,7 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
                 type="checkbox"
                 checked={bool(s.quietEnabled, true)}
                 onChange={(e) => void save({ quietEnabled: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#111318]"
+                className="h-3.5 w-3.5 accent-[var(--color-accent)]"
               />
             </label>
             <label className="flex items-center justify-between gap-2 text-[12px] text-ink-700">
@@ -581,7 +581,7 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
                 type="checkbox"
                 checked={cfg.useGlobalBlocks}
                 onChange={(e) => void save({ useGlobalBlocks: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#111318]"
+                className="h-3.5 w-3.5 accent-[var(--color-accent)]"
               />
               {t("继承全站噪音屏蔽词")}
             </label>
@@ -590,7 +590,7 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
                 type="checkbox"
                 checked={cfg.dailyEnabled}
                 onChange={(e) => void save({ dailyEnabled: e.target.checked })}
-                className="h-3.5 w-3.5 accent-[#111318]"
+                className="h-3.5 w-3.5 accent-[var(--color-accent)]"
               />
               {t("每天发一份个人日报")}
             </label>
@@ -622,7 +622,7 @@ export function UserPushPanel({ boot }: { boot: Bootstrap }) {
               }
             }}
             disabled={busy !== null || credentialsDirty}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-on-solid hover:bg-solid-hover disabled:opacity-50"
           >
             {busy === "preview" ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} {t("试算")}
           </button>
