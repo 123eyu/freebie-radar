@@ -88,10 +88,18 @@ export function readEvidence(ctx: KindContext): Evidence {
   const signals = contentSignals(ctx.title, ctx.summary ?? "");
   const text = `${ctx.title} ${ctx.summary ?? ""}`.slice(0, 400);
 
-  // 价格可能只写在标题里（年付 79 元、$10.99/年、拼车 35元/月）；
-  // 但「价值 $99，现免费领取」不是售价，所以：有免费声明就不算付费。
-  const freeClaimed = /免费|限免|白嫖|喜加一|零元|(?<![\d.])0\s*元/.test(ctx.title);
-  const paid = !freeClaimed && (ctx.obtain === "paid" || (typeof ctx.price === "number" && ctx.price > 0) || TRANSACTION.test(text));
+  // 付费 = 「真的要掏钱」。分两步，避免两类误判：
+  //   「下单赠送礼包，年付 79 元」有购买动作 → 付费（促销赠品不等于白嫖）
+  //   「移动领 1-9 元话费福利」「价值 $99 现免费领取」有领取/免费声明 → 不算付费
+  const purchase = /下单|购买|入手|订购|续费|充值/.test(text);
+  const receiving = /免费|限免|白嫖|喜加一|零元|领取|福利|白给|(?<![\d.])0\s*元/.test(ctx.title);
+  const priceish =
+    ctx.obtain === "paid" ||
+    (typeof ctx.price === "number" && ctx.price > 0) ||
+    // 只认带货币符号/外币单位的价格：「100 元到账」「16 元券」是福利金额，不是售价
+    /[\$¥￥]\s*\d|\d+\s*(?:港币|美元|刀)\b|\d\s*(?:\/|每)\s*(?:月|年|季)/i.test(text) ||
+    TRANSACTION.test(text);
+  const paid = purchase || (priceish && !receiving);
 
   return {
     claim: signals.claim,

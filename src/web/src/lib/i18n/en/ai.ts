@@ -34,7 +34,7 @@ export const EN_AI: Record<string, string> = {
   "200 条": "200 items",
   "500 条": "500 items",
   "立即执行": "Run now",
-  "按最新关键词规则零 Token 重算历史「其它」分类": "Recompute past \"Other\" categories with the latest keyword rules, zero tokens",
+  "补判未审条目、修硬矛盾（价格/撤销/交易），不改动 AI 已判的语义结论": "Fill in unreviewed items and fix hard contradictions (price/revoked/trade); AI-decided kinds stay untouched",
   "重整分类 (0 Token)": "Reclassify (0 tokens)",
   "连通正常": "Connection OK",
   "调用失败": "Call failed",

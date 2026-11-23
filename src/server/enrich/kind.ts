@@ -215,51 +215,78 @@ export function alignKindWithCategory(
   return paidish || signals.promotion ? "deal" : kind;
 }
 
-/** 结合 AI 输出与规则上下文归一化最终 kind。 */
+/**
+ * 最终形态。**AI 是基准，规则只做初筛与兜底**：
+ * - AI 已给出合法形态且未判噪音 → 直接采用，只有「硬矛盾」才纠正
+ * - AI 未给结论（未启用 / 未审 / 返回空）→ 规则兜底：结构化证据优先，其次词法
+ */
 export function resolveKind(
   aiKind: unknown,
   aiKeep: boolean | null | undefined,
   fallbackInput: Parameters<typeof guessKind>[0],
 ): ContentKind {
-  return alignKindWithCategory(resolveKindRaw(aiKind, aiKeep, fallbackInput), fallbackInput);
+  if (aiKeep === false) return "noise";
+  // 只有「AI 真的判过」（aiKeep === true）才采信它的形态；未审条目的 aiKind 可能是旧规则值
+  if (aiKeep === true && isContentKind(aiKind) && aiKind !== "noise") {
+    if (fallbackInput.guardEnabled === false) return aiKind;
+    return hardContradiction(aiKind, fallbackInput) ?? aiKind;
+  }
+  const ctx = { ...fallbackInput, authoritativeNews: isAuthoritativeNewsSource(fallbackInput.sourceId, fallbackInput.kindHint) };
+  const structural = structuralKind(ctx);
+  if (structural) return structural.kind;
+  if (aiKeep === true && fallbackInput.category === "opensource") return "opensource";
+  const guessed = guessKind(fallbackInput);
+  if (guessed === "noise" && aiKeep === true) return "freebie";
+  return alignKindWithCategory(guessed, fallbackInput);
 }
 
-function resolveKindRaw(
-  aiKind: unknown,
-  aiKeep: boolean | null | undefined,
-  fallbackInput: Parameters<typeof guessKind>[0],
-): ContentKind {
-  if (aiKeep === false) return "noise";
-  if (isContentKind(aiKind)) {
-    if (fallbackInput.guardEnabled !== false) {
-      const signals = contentSignals(fallbackInput.title, fallbackInput.summary);
-      // 未命中关键词是未知；只有实际 AI 肯定提案可补语义，旧的规则 kind 不能冒充 AI。
-      const contradictedByEvidence = signals.revoked ||
-        ((signals.editorial || signals.question) && !signals.claim) || fallbackInput.obtain === "paid" || guessObtain(fallbackInput.title, fallbackInput.summary) === "paid" ||
-        (!fallbackInput.isFree && typeof fallbackInput.price === "number" && fallbackInput.price > 0);
-      if ((aiKind === "deal" && !signals.promotion) ||
-          (aiKind === "freebie" && (contradictedByEvidence || (!signals.claim && aiKeep !== true && !fallbackInput.freebieOnlySource))) ||
-          (aiKind === "opensource" && !signals.repository)) return coerceNonNewsKind(fallbackInput);
+/**
+ * 硬矛盾：只有「证据在物理上不允许这个形态」时才推翻 AI。
+ * 语义偏好（「我觉得这更像资讯」）不作为推翻理由——那是模型该判的事。
+ */
+function hardContradiction(aiKind: ContentKind, input: Parameters<typeof guessKind>[0]): ContentKind | null {
+  const ev = readEvidence({ ...input, authoritativeNews: isAuthoritativeNewsSource(input.sourceId, input.kindHint) });
+  // 交易/拼车分类 + 交易证据：业务上就是一条成交/发车信息，任何语义形态都让位给 deal
+  if (aiKind !== "deal" && (input.category === "trade" || input.category === "carpool") && (ev.titleDeal || ev.paid)) return "deal";
+  switch (aiKind) {
+    case "freebie": {
+      // 1. 已撤销/已到期 → 不再是福利
+      if (ev.revoked) return "info";
+      // 2. 维权/风险提示文（领积分反被扣费、会员卡关店）
+      if (ev.warning) return "info";
+      // 3. 提问/报道体裁且没有任何可领取对象 → 资讯（权威新闻源给 news）
+      if ((ev.question || ev.editorial) && !ev.claim && !ev.giveaway && !ev.hasCodes && !ev.entitlement) {
+        return isAuthoritativeNewsSource(input.sourceId, input.kindHint) ? "news" : "info";
+      }
+      // 4. 明确价格/交易动作（含标题里的 年付/$99）→ 好价
+      if (ev.paid) return "deal";
+      // 5. 只介绍项目、没有任何可领取对象 → 开源项目，不是福利
+      if (ev.project && !ev.claim && !ev.giveaway && !ev.hasCodes && !ev.entitlement) return "opensource";
+      return null;
     }
-    if (fallbackInput.guardEnabled !== false && aiKind === "noise" && aiKeep === true) return coerceNonNewsKind(fallbackInput);
-    if (aiKind === "noise" && aiKeep === true) return guessKind(fallbackInput);
-    if (aiKind === "opensource" && (fallbackInput.category === "headline" || fallbackInput.category === "world" || fallbackInput.category === "stock")) {
-      return guessKind(fallbackInput);
-    }
-    // 重要新闻严格限定于权威新闻源，禁止导购/购物/普通社区（如什么值得买、IT之家等）混入「重要新闻」
-    if (aiKind === "news" && !isAuthoritativeNewsSource(fallbackInput.sourceId, fallbackInput.kindHint)) {
-      return coerceNonNewsKind(fallbackInput);
-    }
-    return aiKind;
+    case "deal":
+      // 交易/拼车分类本身已确认有交易对象，AI 判 deal 直接成立
+      if (input.category === "trade" || input.category === "carpool") return null;
+      // 好价必须有可参与的价格、促销或交易动作；新闻事件里的金额不是售价
+      if (ev.editorial && !ev.titleDeal) return isAuthoritativeNewsSource(input.sourceId, input.kindHint) ? "news" : "info";
+      if (ev.titleDeal || ev.paid) return null;
+      return ev.claim ? "freebie" : "info";
+    case "news":
+      // 重要新闻只收权威新闻源
+      if (isAuthoritativeNewsSource(input.sourceId, input.kindHint)) return null;
+      // 交易类分类且带交易证据时，业务上就是好价，不能落资讯
+      return (input.category === "trade" || input.category === "carpool") && (ev.titleDeal || ev.paid) ? "deal" : "info";
+    case "opensource":
+      // 说是开源项目却没有任何项目证据、且确实在发东西 → 那就是福利
+      // 没有任何项目证据（仓库链接/开源词/自荐文体）却说是开源 → 模型幻觉，按证据落位
+      if (!ev.project) return ev.claim && !ev.paid ? "freebie" : "info";
+      return null;
+    case "info":
+      // 证明确实在发权益：「会员 7 天×3」不该被当成行业资讯
+      if (ev.entitlement && !ev.paid) return "freebie";
+      // 交易/拼车分类，且有交易证据（价格、促销或撮合动作）→ 好价；只挂个分类不算证据
+      return (input.category === "trade" || input.category === "carpool") && (ev.titleDeal || ev.paid) ? "deal" : null;
+    default:
+      return null;
   }
-  if (aiKeep === true) {
-    if (fallbackInput.guardEnabled !== false) return coerceNonNewsKind(fallbackInput);
-    if (fallbackInput.category === "opensource") return "opensource";
-    if (fallbackInput.obtain === "paid" || (!fallbackInput.isFree && typeof fallbackInput.price === "number" && fallbackInput.price > 0)) {
-      return "deal";
-    }
-    const guessed = guessKind(fallbackInput);
-    return guessed === "noise" ? "freebie" : guessed;
-  }
-  return guessKind(fallbackInput);
 }

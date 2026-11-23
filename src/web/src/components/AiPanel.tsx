@@ -438,7 +438,7 @@ export function AiPanel({
               type="button"
               onClick={runReclassify}
               disabled={reclassifying}
-              title={t("按最新关键词规则零 Token 重算历史「其它」分类")}
+              title={t("补判未审条目、修硬矛盾（价格/撤销/交易），不改动 AI 已判的语义结论")}
               className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100 disabled:opacity-50"
             >
               {reclassifying ? <Loader2 size={12} className="animate-spin" /> : null}

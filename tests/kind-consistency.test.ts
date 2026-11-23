@@ -53,9 +53,10 @@ test("无矛盾：分类 × 形态的每个组合都不会产生自相矛盾的�
       const ctx = form("示例条目", { category });
       const out = resolveKind(kind, kind === "noise" ? false : true, ctx);
       assert.ok(KINDS.includes(out), `${category}/${kind} → 非法形态 ${out}`);
-      // 交易类分类不允许落成「资讯」：二手/拼车/实物已经确认是可交易对象
+      // 交易类分类 + 交易证据（价格/撮合动作）时，不允许落成「资讯」
       if (category === "trade" || category === "carpool") {
-        assert.notEqual(out, "info", `${category} 被判成 info`);
+        const priced = resolveKind(kind, kind === "noise" ? false : true, form("出 一台小鸡 溢价 50 元", { category, price: 50, isFree: false }));
+        assert.notEqual(priced, "info", `${category} 有价格仍被判成 info`);
       }
     }
   }
@@ -107,4 +108,23 @@ test("真实回归锚点：真实库跑出来的反例都守住了", () => {
   assert.equal(resolveKind("freebie", true, form("周一了，继续来送一个邀请码")), "freebie");
   // 无结构证据时不擅自改判，交给词法层与 AI
   assert.equal(structuralKind(form("某某面板 v2.0 发布", { category: "other" })), null);
+});
+
+test("AI 是基准：规则不因语义偏好推翻已判结论，只修硬矛盾", () => {
+  const keep = (aiKind: string, title: string, extra: Record<string, unknown> = {}) =>
+    resolveKind(aiKind, true, form(title, extra));
+
+  // 语义分歧不算矛盾：AI 说资讯，规则觉得「像福利」，但没有任何领取证据 → 保留 AI
+  assert.equal(keep("info", "聊聊最近几个限时免费的思路"), "info");
+  // AI 说开源，且有项目证据 → 保留
+  // AI 说开源，且有项目证据（「开源」/仓库/自荐文体）→ 保留
+  assert.equal(keep("opensource", "轻舟文件：开源的 Mac 文件管理器"), "opensource");
+  // 没有任何项目证据却说是开源 → 模型幻觉，按证据回落资讯
+  assert.equal(keep("opensource", "聊聊最近的内容管理"), "info");
+  // 硬矛盾才纠正：AI 说免费但标题明确标价
+  assert.equal(keep("freebie", "Only $9.99 付费套餐"), "deal");
+  // 硬矛盾：AI 说好价但标题没有任何价格/促销/交易动作
+  assert.equal(keep("deal", "聊聊最近的开源项目"), "info");
+  // 未审（aiKeep 为 null）不视为 AI 结论，走规则兜底
+  assert.notEqual(resolveKind("freebie", null, form("某条目的旧 kind")), "freebie");
 });
