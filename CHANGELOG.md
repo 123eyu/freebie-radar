@@ -1,5 +1,57 @@
 # 变更记录
 
+## 2026-11-23 · v1.1.0
+
+### 工作台 v2：URL 即状态、列表优先、移动端一屏可用
+
+- **页面从「一长串堆叠面板」改成双栏工作台**：左侧固定轨道（快捷视图 + 数据源树 + 分组计数），右侧单列内容区。此前所有筛选、统计、来源、分类胶囊、说明卡全叠在内容上方，首屏 60% 是 chrome，431 条列表要滚很久才看到第三条；现在首屏全部让给条目
+- **URL 即筛选状态**：`src/web/src/lib/feedQuery.ts` 统一读写 `preset / q / source / category / filterLang / sort / range / price / score / obtain / kind / unread`，`writeFeedSearch` 只增删自己拥有的键，保留 `login_*`、`lang`、`workspace` 等外部参数。显式导航（切页、切作用域）走 `pushState`，同步筛选走 `replaceState`，筛选可直链分享且不堆历史
+- **频道口径收口到 `src/shared/channel-query.ts`**：`applyChannelQuery` 前后端共用——网页、导出、RSS、`cli diagnose` 不再各抄一份默认值；`feedPolicyLabels` 按实际生效参数生成说明（「审核保留 / 未过期 / 近 7 天 / 直接或有条件领取」），不再把「审核保留」说成「免费」
+- **列表行重做**：来源改为恒定色条（同一来源永远同色，长列表靠它做视觉锚点）+ 来源名 + 分类 + 截止时间在一条 12px 副行里；兑换码胶囊、快捷操作（打开 / 收藏 / 屏蔽 / 忽略）收进行尾并按需 hover 显示；跨源同福利折叠成「N 个来源」可展开
+- **三档视图**：列表 / 2 列 / 3 列，`< 768px` 自动收成「列表 / 卡片」两档并隐藏三列（此前 390px 宽下三个按钮全渲染，点了直接横向溢出，`scrollWidth 414 > 390`）
+- **移动端触控与布局**：筛选条、视图切换、更多菜单统一 44px 最小触控高度，行内操作按钮 36px；数据源树与快捷视图折进「筛选」抽屉；筛选条与工具栏合并为一整行，移动端首屏顶栏高度 −37%
+- **详情抽屉**：抽屉加 `outline-none` 与明确的焦点落点，键盘可关闭，长正文改 `max-h` + 渐隐 + 「展开全文」，不再一屏塞满整篇摘要
+- **“其它 / 其它资讯”不再挂在每一行上**：兜底分类是噪音，只在确实非默认时才显示；分类徽章改为按 `rawCategoryLabel` 判空，英文界面下不再因为翻译后的字面量不等于「其它」而误显示
+
+### 分类证据校验与人工纠正优先级
+
+- **新增 `enforceFreebieEvidence` 单一收口**（`src/server/enrich/evidence.ts`）：采集/重采、同步与异步审核、历史补审、零 Token 重整、`cli reclassify/obtain` 全部复用它。此前各路径各判一次的后果是——付费预告、更新公告、"某游戏免费更新了新地图"这类条目在网页上被标成白嫖
+- **优先级固定为：人工纠正 > 来源固定分类 > 证据校验 > 规则 / AI**：新增 `item_classification_overrides` 表（Schema v31），并用 SQLite 触发器兜住 CLI、后台重审等所有写入路径，人工改过的 `category`/`kind` 不会再被任何自动流程覆盖
+- **人工纠正只锁分类与形态**：`ai_keep=false`（模型判为不保留）不会被人工分类取消；来源 `fixedCategory` 是领域路由约束，不是「免费」或「审核通过」的凭证
+- **Schema v32**：清理中性分类里被误判进真福利的消费测评文，以及把 `freebie` 落进资讯类分类的历史条目一律降级为 `info`
+
+### AI 语义去重与多路由推送
+
+- **AI 语义去重（`enrich/ai-dedup.ts`）**：审核落库与后台补审后各跑一次 `dedupeKeptItemsWithAi`，跨源同一事件（Epic 一条福利被四个人转发、B 站会员三个不同措辞）合并成一行；设置页可开关并配置对比窗口（6–168h）。此前按标题精确匹配去重，同一福利换个措辞就活成两行
+- **多路由推送重构**：全局策略 + `routes[]` 专题路由，每条独立设形态 / 分类 / 获取方式 / 关键词 / 最高价 / 最低分 / 即时或攒批 / 消息头前缀；新增 `pushTiming`（先审后推 / 抢码优先）与 `aiFallbackMode`（`strict` / `rule_fallback` / `ignore_ai`）
+- **攒批发出前二次回查数据库**：入队时合格、发出前已被屏蔽 / 改分类 / 过期 / 命中新增屏蔽词的条目不再误推
+- **静默时段按时区算**：`inQuietHoursZoned()` 用 `Intl.DateTimeFormat(..., { timeZone })`，容器 UTC 不再把北京时间白天静音
+
+### 文档站与三语 README
+
+- **VitePress 文档站**（`docs/`，GitHub Actions 发布到 Pages）：导航重组为「上手与运维 / 分类与治理 / 采集与推送 / 界面与架构」，`push.md` 从早期重构记录升级为当前多路由推送的完整说明，`ai.md` 补齐 `kind` 契约、语义去重与证据校验，`deploy.md` / `accounts.md` / `ai-deploy.md` 的入口路径同步为「数据源运维」「站点设置」
+- **三语 README**（`README.md` / `README.en.md` / `README.ja.md`）：数字全部按源码重新核对——116 个内置源（默认启用 67）、28 个分类、Schema v32、14 路封面图提取；补 `src/shared` 目录、完整 CLI 清单与 `docs/` 索引
+- **截图重拍**：`docs/ui-public.png` / `ui-grid.png` / `ui-push-panel.png` / `ui-ai-panel.png` / `ui-mobile.png` 全部换成当前界面（含新增移动端视图），拍摄于临时空库 + 合成样例数据，不含真实账号与个人数据
+
+### 实测
+
+`pnpm test` 208/208、`pnpm typecheck` 干净、`pnpm build` 通过、`pnpm docs:build` 通过、`pnpm i18n:check` 1304 条中文文案已进词典 1300 条（剩 4 条刻意不翻：语言自称、dev 缺词告警、分类抽样样例标题、推送预设关键词「年付」）。Playwright 逐档截图核验 1440 / 1024 / 390 三档无横向溢出，桌面列表 / 2 列 / 3 列与移动端列表 / 卡片均可正常渲染。
+
+## 2026-11-22
+
+### 中英双语界面、三语 README 与「交给 AI 部署」
+
+- **零依赖 i18n（`src/web/src/lib/i18n.ts`）**：约定「中文原文即词典 key」——`t("真福利精选")` 在中文下原样返回，英文下查 `lib/i18n/en/*.ts` 分片词典，查不到回落中文并在 dev 下告警缺词。不引 i18next 之类的运行时：2100+ 条文案若改语义 key，要先发明 2100 个名字，改造量与出错面都翻倍，而中文当 key 让源码始终可读、漏翻只退化成中文而不是白屏
+- **带变量用 `{name}` 占位**：模板字符串 `共 ${n} 条` → `t("共 {n} 条", { n })`；中文侧同样替换占位，中英只有一套拼接逻辑
+- **切换语言走整页重载**：`setLang()` 只写 `localStorage` + `location.reload()`。频道表、分类表、页签表这些常量在模块导入时求值，重载是唯一不引入订阅机制就能让它们换语言的做法（切换极低频，代价可忽略）
+- **入口与默认值**：桌面侧栏第二行与移动端品牌行各一个 `中/EN` 按钮；`?lang=en` 可直接进英文界面并记住选择；`<html lang>`、`document.title` 跟着切；非中文浏览器首次访问默认英文
+- **全量覆盖 18 个前端模块**：App / ItemView / PushPanel / OpsPanel / AiPanel / UserPushPanel / SiteAdminPanel / RulesPanel / ClassificationPanel / ItemClassificationEditor / AuthModal / RssModal / WelcomeModal / HotPanel / DigestPanel / AdminGate / lib/sources / lib/session，外加 `shared/taxonomy.ts` 的 28 个分类 + 分类说明、6 形态、6 获取方式、8 频道、5 分组、20 个资讯栏目名，以及后台可编辑的入站公告（`ob.title` / `ob.content` 在渲染处过 `t()`）
+- **不翻译的边界**：参与 `===` / `includes` / 正则 的字符串（推送预设关键词「黑五」「年付」、分类 key、来源 id、API 路径、localStorage key）保留中文原文；被遮蔽的 `t` 局部变量（`.map((t) => …)`、`const t = setInterval`、`const t = new Date()`）机械改名。**数据源名称与条目标题/摘要属于采集内容，保持原语言**——聚合内容的语言不该被 UI 语言篡改
+- **验收工具 `pnpm i18n:check`**（`scripts/i18n-check.mjs`）：扫 JSX 文本节点与字符串字面量，和词典 key 比对，输出逐文件未翻译清单与覆盖率
+- **README 三语**：`README.md` / `README.en.md` / 新增 `README.ja.md`，顶部语言切换互链；英文版补齐 `SITE_MODE` 双形态对照、外部工具（Epic 领取器）、登录态采集、文档索引与免责声明等此前缺失章节
+- **交给 AI 部署**：新增 `docs/ai-deploy.md`（中英双语可复制 Prompt + 6 条可自动验证的验收清单 + 常见失败对策 + 部署后备份升级说明），三语 README 与文档站首页同步入口
+- 实测：`pnpm typecheck` 干净、`pnpm build` 通过（首屏 `index` 218KB / gzip 76KB）、`pnpm test` 130/130、`pnpm docs:build` 通过；`pnpm i18n:check` 1276 条中文文案已进词典 1272 条（**剩 4 条刻意不翻**：语言自称「简体中文」、dev 缺词告警、分类抽样样例标题、推送预设关键词「年付」）；Playwright 对比 `/?lang=en` 与 `/?lang=zh`：`<html lang>`、标题、频道/侧栏/筛选项/分类胶囊全部随语言切换，`push`/`ops`/`ai` 三个管理面板英文下无 page error
+
 ## 2026-11-16
 
 ### 实地福利收紧：先得是福利，再谈实地
