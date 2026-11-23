@@ -8,6 +8,7 @@ import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 import { getSourceHints, applyManualClassification } from "../source-settings.ts";
 import { categoryForSource } from "../../shared/source-classification.ts";
 import { isSharedResource } from "./evidence.ts";
+import { extractPrice } from "./pricing.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
 
@@ -105,6 +106,7 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       itemId,
     );
     if (!cur) return null;
+    const priceInfo = extractPrice(cur.title, cur.summary);
     const hints = getSourceHints(cur.source_id);
     const rawCategory = categoryForSource(cur.source_id, isSharedResource(cur.title, cur.summary ?? "", cur.content ?? "", cur.url) ? "pan" : nextCategory ?? cur.category ?? null, hints);
     const effectiveObtain = nextObtain ?? cur?.obtain ?? null;
@@ -114,28 +116,32 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       sourceId: cur?.source_id,
       category: rawCategory,
       obtain: effectiveObtain,
-      isFree: cur?.is_free === 1,
-      price: cur?.price ?? null,
+      isFree: priceInfo.isFree,
+      price: priceInfo.price,
       freebieOnlySource: Boolean(cur?.source_id && FREEBIE_ONLY_SOURCES.has(cur.source_id)),
       kindHint: hints.kindHint,
       guardEnabled: hints.guardEnabled,
     });
     // 白嫖证据校验：抽奖 → lottery，明确标价 → deal
-    const evidenced = enforceFreebieEvidence(autoKind, effectiveObtain, cur?.title ?? "", rawCategory);
+    const evidenced = enforceFreebieEvidence(autoKind, effectiveObtain, cur?.title ?? "", rawCategory, {
+      summary: cur?.summary ?? "",
+      price: priceInfo.price,
+      isFree: priceInfo.isFree,
+    });
     const finalKind = evidenced.kind;
     const finalObtain = evidenced.obtain ?? effectiveObtain;
     const finalCategoryHint = evidenced.category ?? rawCategory;
     // 资讯/水帖不许落进实物福利：AI 标错时统一降级到兜底分类
-    const autoCategory = demoteEditorialGoods(
+    const autoCategory = categoryForSource(cur.source_id, demoteEditorialGoods(
       demoteOfflineCategory(
         finalCategoryHint,
-        autoKind,
+        finalKind,
         cur?.title ?? "",
         cur?.summary ?? "",
       ),
       finalKind,
       { title: cur?.title ?? "", summary: cur?.summary ?? "", obtain: finalObtain, price: cur?.price ?? null },
-    );
+    ), hints);
     const { kind: effectiveKind, category: effectiveCategory } = applyManualClassification(itemId, autoCategory, finalKind);
     const effectiveKeep = finalKind === "noise" ? false : verdict.keep;
     const keep = effectiveKeep ? 1 : 0;
@@ -152,7 +158,7 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
             publishedAt: cur.published_at ?? null,
             sourceId: cur.source_id,
 codes: parseCodes(cur.codes),
-            price: cur.price ?? null,
+            price: priceInfo.price,
           },
         )
       : 0;
@@ -165,15 +171,19 @@ codes: parseCodes(cur.codes),
               obtain = COALESCE(?, obtain),
               category = COALESCE(?, category),
               score = ?,
+              price = ?,
+              is_free = ?,
               ai_reviewed_at = ?
         WHERE id = ?`,
-      JSON.stringify({ ...verdict, keep: effectiveKeep, kind: finalKind, category: autoCategory }),
+      JSON.stringify({ ...verdict, keep: effectiveKeep, kind: finalKind, category: autoCategory, obtain: finalObtain }),
       keep,
       effectiveKind,
       nextQuality,
       finalObtain,
       effectiveCategory,
       nextScore,
+      priceInfo.price,
+      priceInfo.isFree ? 1 : 0,
       new Date().toISOString(),
       itemId,
     );
@@ -200,6 +210,7 @@ export async function reviewFreshNow(items: AiQueueJob[]): Promise<Map<number, A
     url: j.url,
     title: j.title,
     summary: j.summary,
+    content: j.content ?? null,
   })) as RawItem[];
   const srcId = items[0]?.sourceId;
   const jobId = startAiJob({

@@ -4,11 +4,11 @@ import { extractCodes } from "./codes.ts";
 import { extractPrice } from "./pricing.ts";
 
 import { OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
-import { guessObtain } from "./obtain.ts";
+import { guessObtain, type ObtainMode } from "./obtain.ts";
 import { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind } from "./kind.ts";
 import { CATEGORY_LABEL, isCategory, type Category } from "../../shared/taxonomy.ts";
 import { categoryForSource, type SourceHints } from "../../shared/source-classification.ts";
-import { contentSignals, isSharedResource } from "./evidence.ts";
+import { contentSignals, isSharedResource, REVOKED_FREE } from "./evidence.ts";
 
 export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type { Category };
@@ -250,6 +250,7 @@ export type EnrichedItem = RawItem & {
   expiresAt: string | null;
   imageUrl: string | null;
   kind: ContentKind;
+  obtain: ObtainMode;
   keep: boolean;
   reason: string;
 };
@@ -343,34 +344,33 @@ export function demoteEditorialGoods(
 /** 资讯类分类：这些分类的内容是报道，不可能是「白拿福利」，AI 判成 freebie 一律降级为 info。 */
 const EDITORIAL_CATEGORIES = new Set(["headline", "world", "finance", "stock", "news"]);
 
-/** 抽奖：免费参与但不确定能拿到，obtain 记 lottery，不进「真福利」。Giveaway 不算（Steam/Epic 送游戏常用它）。 */
-const LOTTERY_TITLE_RE = /sweepstakes|\bwinners?\b|抽奖|抽选|抽签|摇号|赢取/i;
 /** 明确标价的不是白嫖：「Only $9.99」「仅售」「到手价」。 */
-const PRICED_TITLE_RE = /only\s*\$|仅售|到手价|售价\s*[$￥¥]?\s*\d|现价\s*[$￥¥]?\s*\d/i;
+const PRICED_TITLE_RE = /(?:only\s*\$|(?:仅售|到手价|售价|现价)\s*[$￥¥]?)\s*(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*)/i;
 
 /**
- * 白嫖证据校验（只做否定，不做确认）：
- * - 抽奖类：免费参与但结果不确定 → obtain=lottery，从「真福利」频道排除
- * - 明确标价：不是白嫖 → kind 降为 deal
- * 不判断「是不是福利」，只排除「肯定不是确定福利」的两种情形。
+ * 最终证据约束：补齐获取限制，但不替 AI 确认福利。
+ * 抽奖保持不确定性，明确收费与撤销免费不能变成直接白拿。
+ * 来源固定领域和人工字段覆盖由调用方最后应用。
  */
 export function enforceFreebieEvidence(
   kind: ContentKind,
   obtain: string | null,
   title: string,
   category?: string | null,
+  extra?: { summary?: string | null; price?: number | null; isFree?: boolean },
 ): { kind: ContentKind; obtain: string | null; category?: string | null } {
+  const ruleObtain = guessObtain(title, extra?.summary ?? "", extra ? { price: extra.price ?? null, isFree: extra.isFree ?? false } : undefined);
+  const revoked = REVOKED_FREE.test(`${title} ${extra?.summary ?? ""}`);
+  const paidPrice = typeof extra?.price === "number" && extra.price > 0 && extra.isFree !== true;
+  // AI 缺省/判 free 时补回明确的条件，不能把未识别当成直接白拿。
+  if (!obtain || obtain === "free") obtain = ruleObtain;
+  if (revoked) return { kind: kind === "freebie" ? "info" : kind, obtain: "paid", category };
   if (kind !== "freebie") return { kind, obtain, category };
-  if (LOTTERY_TITLE_RE.test(title)) return { kind, obtain: "lottery", category: "lottery" };
-  if (PRICED_TITLE_RE.test(title)) {
-    return { kind: "deal", obtain: obtain === "free" || !obtain ? "paid" : obtain, category };
+  if (ruleObtain === "lottery" || obtain === "lottery") return { kind, obtain: "lottery", category: "lottery" };
+  if (PRICED_TITLE_RE.test(title) || paidPrice || obtain === "paid") {
+    return { kind: "deal", obtain: obtain === "free" ? "paid" : obtain, category };
   }
-  // 资讯类分类下不可能有「白拿福利」：AI 偶尔把民生新政、行业新闻判成 freebie
-  // （如「新能源车险条款过审，你的保费开始按车型连坐」被判 freebie + 82 分进真福利频道）。
-  // 分类已经明确是资讯，kind 就不能是 freebie。
-  if (category && EDITORIAL_CATEGORIES.has(category)) {
-    return { kind: "info", obtain: null, category };
-  }
+  if (category && EDITORIAL_CATEGORIES.has(category)) return { kind: "info", obtain: null, category };
   return { kind, obtain, category };
 }
 
@@ -531,7 +531,7 @@ export function enrichItem(
   const codes = extractCodes(title, raw.content ?? raw.summary ?? "");
   const priceInfo = extractPrice(title, summary);
   const expiresAt = raw.expiresAt ?? guessExpiry(`${title} ${summary}`);
-  const obtain = guessObtain(title, summary);
+  let obtain = guessObtain(title, summary, priceInfo);
   const kindInput = {
     title,
     summary,
@@ -553,6 +553,15 @@ export function enrichItem(
     tags = again.tags;
     kind = guessKind({ ...kindInput, category });
   }
+  // 白嫖证据校验（看摘要与价格）：抽奖、已取消免费、明确标价都不能算福利
+  const evidenced = enforceFreebieEvidence(kind, obtain, title, category, {
+    summary,
+    price: priceInfo.price,
+    isFree: priceInfo.isFree,
+  });
+  kind = evidenced.kind;
+  obtain = (evidenced.obtain ?? obtain) as ObtainMode;
+  category = categoryForSource(sourceId, (evidenced.category ?? category) as Category, hints);
   const { score, reason } = scoreItem({
     title,
     summary,
@@ -585,6 +594,7 @@ export function enrichItem(
     score,
     imageUrl: sanitizeImageUrl(raw.imageUrl, url),
     kind,
+    obtain,
     keep: !expired,
     reason,
   };

@@ -74,6 +74,7 @@ export function startIntervalScheduler(task: {
           log(`[cron] ${id} 失败: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+      // Epic 自动领取：内部自带「间隔到了才跑」的闸门与并发锁，不阻塞采集主循环
     } catch (err) {
       log(`[cron] 调度异常: ${err instanceof Error ? err.message : String(err)}`);
     } finally {

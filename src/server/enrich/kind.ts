@@ -1,6 +1,7 @@
 import { DEAL_HINT, isNoiseTitle, OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
 import { KIND_LABEL, KIND_SET, isContentKind, type ContentKind } from "../../shared/taxonomy.ts";
 import { contentSignals } from "./evidence.ts";
+import { guessObtain } from "./obtain.ts";
 
 export type { ContentKind };
 export { KIND_LABEL, isContentKind };
@@ -88,7 +89,11 @@ export function guessKind(input: {
   const guard = input.guardEnabled !== false;
   const signals = contentSignals(title, input.summary);
   if (isNoiseTitle(title)) return "noise";
-  if (input.freebieOnlySource) return "freebie";
+  if (input.freebieOnlySource) {
+    if (signals.revoked || (guard && signals.editorial)) return isAuthoritativeNewsSource(input.sourceId, input.kindHint) ? "news" : "info";
+    if (input.obtain === "paid" || (!input.isFree && typeof input.price === "number" && input.price > 0) || guessObtain(title, input.summary) === "paid") return "deal";
+    return "freebie";
+  }
   if (input.kindHint && isContentKind(input.kindHint) && input.kindHint !== "noise") {
     if (!guard || !["freebie", "deal", "opensource"].includes(input.kindHint) ||
         (input.kindHint === "freebie" && signals.claim) || (input.kindHint === "deal" && signals.promotion) ||
@@ -209,8 +214,12 @@ function resolveKindRaw(
   if (isContentKind(aiKind)) {
     if (fallbackInput.guardEnabled !== false) {
       const signals = contentSignals(fallbackInput.title, fallbackInput.summary);
+      // 未命中关键词是未知；只有实际 AI 肯定提案可补语义，旧的规则 kind 不能冒充 AI。
+      const contradictedByEvidence = signals.revoked ||
+        ((signals.editorial || signals.question) && !signals.claim) || fallbackInput.obtain === "paid" || guessObtain(fallbackInput.title, fallbackInput.summary) === "paid" ||
+        (!fallbackInput.isFree && typeof fallbackInput.price === "number" && fallbackInput.price > 0);
       if ((aiKind === "deal" && !signals.promotion) ||
-          (aiKind === "freebie" && !signals.claim && !fallbackInput.freebieOnlySource) ||
+          (aiKind === "freebie" && (contradictedByEvidence || (!signals.claim && aiKeep !== true && !fallbackInput.freebieOnlySource))) ||
           (aiKind === "opensource" && !signals.repository)) return coerceNonNewsKind(fallbackInput);
     }
     if (fallbackInput.guardEnabled !== false && aiKind === "noise" && aiKeep === true) return coerceNonNewsKind(fallbackInput);

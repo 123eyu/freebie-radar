@@ -3,6 +3,7 @@ import { calibrateScoreByObtain } from "./enrich/alias.ts";
 import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
 import { guessObtain } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
+import { extractPrice } from "./enrich/pricing.ts";
 import { aiQueueStats } from "./enrich/ai-queue.ts";
 import { getSourceHints, applyManualClassification, getManualClassification } from "./source-settings.ts";
 import { categoryForSource } from "../shared/source-classification.ts";
@@ -30,9 +31,11 @@ function updateAi(
   obtain: string,
   kind: string,
   quality: number | null,
+  price: number | null,
+  isFree: boolean,
 ): void {
   run(
-    "UPDATE items SET ai = ?, ai_keep = ?, score = ?, category = ?, obtain = ?, kind = ?, ai_quality = COALESCE(?, ai_quality), ai_reviewed_at = ? WHERE id = ?",
+    "UPDATE items SET ai = ?, ai_keep = ?, score = ?, category = ?, obtain = ?, kind = ?, ai_quality = COALESCE(?, ai_quality), ai_reviewed_at = ?, price = ?, is_free = ? WHERE id = ?",
     ai,
     keep,
     score,
@@ -41,6 +44,8 @@ function updateAi(
     kind,
     quality,
     new Date().toISOString(),
+    price,
+    isFree ? 1 : 0,
     id,
   );
 }
@@ -246,6 +251,7 @@ let rejected = 0;
 if (!v.keep) rejected += 1;
         else keptIds.push(row.id);
         const obtain = v.obtain ?? guessObtain(row.title, row.summary ?? "");
+        const priceInfo = extractPrice(row.title, row.summary);
         const hints = getSourceHints(row.source_id);
         // 重审时重算一次基础分再校准，避免多次叠加乘除失真
         const baseEnriched = enrichItem(
@@ -279,7 +285,11 @@ if (!v.keep) rejected += 1;
           guardEnabled: hints.guardEnabled,
         });
         // 白嫖证据校验：抽奖 → lottery，明确标价 → deal
-        const evidenced = enforceFreebieEvidence(kind, obtain, row.title, category);
+        const evidenced = enforceFreebieEvidence(kind, obtain, row.title, category, {
+          summary: row.summary ?? "",
+          price: baseEnriched?.price ?? null,
+          isFree: baseEnriched?.isFree ?? false,
+        });
         kind = evidenced.kind;
         const finalObtain = evidenced.obtain ?? obtain;
         const categoryHint = evidenced.category ?? category;
@@ -295,9 +305,10 @@ if (!v.keep) rejected += 1;
           kind,
           { title: row.title, summary: row.summary ?? "", obtain: finalObtain, price: baseEnriched?.price ?? null },
         );
+        finalCategory = categoryForSource(row.source_id, finalCategory, hints);
         const effectiveKeep = kind === "noise" ? false : v.keep;
         const keep = effectiveKeep ? 1 : 0;
-        const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind, category: finalCategory });
+        const ai = JSON.stringify({ ...v, keep: effectiveKeep, kind, category: finalCategory, obtain: finalObtain });
         ({ kind, category: finalCategory } = applyManualClassification(row.id, finalCategory, kind));
         const score = calibrateScoreByObtain(baseScore, finalObtain, effectiveKeep, quality, kind, {
           title: row.title,
@@ -307,7 +318,7 @@ if (!v.keep) rejected += 1;
           codes: baseEnriched?.codes ?? [],
           price: baseEnriched?.price ?? null,
         });
-        updateAi(row.id, ai, keep, score, finalCategory, finalObtain, kind, quality);
+        updateAi(row.id, ai, keep, score, finalCategory, finalObtain, kind, quality, priceInfo.price, priceInfo.isFree);
       }
     }
     finishAiJob(jobId, {
@@ -366,8 +377,10 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other", options:
     ai: string | null;
     score: number;
     base_score: number | null;
+    price: number | null;
+    is_free: number;
   }>(
-    `SELECT id, source_id, external_id, url, title, summary, SUBSTR(content,1,12000) AS content, category, kind, obtain, ai_keep, ai_quality, ai, score, base_score, published_at, expires_at
+    `SELECT id, source_id, external_id, url, title, summary, SUBSTR(content,1,12000) AS content, category, kind, obtain, ai_keep, ai_quality, ai, score, base_score, price, is_free, published_at, expires_at
        FROM items WHERE ${options.itemId ? "1=1" : cond}${options.sourceId ? " AND source_id = ?" : ""}${options.itemId ? " AND id = ?" : ""} ORDER BY id DESC LIMIT 6000`,
     ...(options.sourceId ? [options.sourceId] : []),
     ...(options.itemId ? [options.itemId] : []),
@@ -428,8 +441,18 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other", options:
         freebieOnlySource: FREEBIE_ONLY_SOURCES.has(r.source_id),
       });
     }
-    const fallbackObtain = guessObtain(r.title, r.summary ?? "");
-    const nextObtain = r.ai_keep === null ? fallbackObtain : (r.obtain ?? fallbackObtain);
+    let nextObtain = r.ai_keep === null ? e.obtain : r.obtain ?? e.obtain;
+    // 重整同样要过证据校验，否则抽奖/取消免费会被关键词重新洗成福利
+    {
+      const evidenced = enforceFreebieEvidence(nextKind as import("../shared/taxonomy.ts").ContentKind, nextObtain, r.title, nextCat, {
+        summary: r.summary ?? "",
+        price: e.price,
+        isFree: e.isFree,
+      });
+      nextKind = evidenced.kind;
+      nextObtain = evidenced.obtain ?? nextObtain;
+      nextCat = categoryForSource(r.source_id, evidenced.category ?? nextCat, hints);
+    }
     // 资讯/水帖不许落进实物福利
     nextCat = demoteOfflineCategory(nextCat, nextKind, r.title, r.summary ?? "", e.category) as typeof nextCat;
     ({ category: nextCat, kind: nextKind } = applyManualClassification(r.id, nextCat, nextKind as import("../shared/taxonomy.ts").ContentKind));
@@ -454,6 +477,8 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other", options:
       nextKind !== r.kind ||
       nextObtain !== r.obtain ||
       nextScore !== r.score ||
+      e.price !== r.price ||
+      Number(e.isFree) !== r.is_free ||
       e.baseScore !== (r.base_score ?? null)
     ) {
       if (nextCat !== r.category || nextKind !== r.kind) {
@@ -461,23 +486,25 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other", options:
         if (samples.length < 30) samples.push({ id: r.id, title: r.title, sourceId: r.source_id, fromKind: r.kind, toKind: nextKind, fromCategory: r.category, toCategory: nextCat });
       }
       let ai = r.ai;
-      if (ai && !getManualClassification(r.id) && (nextCat !== r.category || nextKind !== r.kind)) {
+      if (ai && !getManualClassification(r.id) && (nextCat !== r.category || nextKind !== r.kind || nextObtain !== r.obtain)) {
         try {
           const parsed: unknown = JSON.parse(ai);
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ai = JSON.stringify({
-            ...parsed, kind: nextKind, category: nextCat,
-            classificationCorrection: { previousKind: r.kind, previousCategory: r.category, reason: "来源固定分类或内容证据校验", at: new Date().toISOString() },
+            ...parsed, kind: nextKind, category: nextCat, obtain: nextObtain,
+            classificationCorrection: { previousKind: r.kind, previousCategory: r.category, previousObtain: r.obtain, reason: "来源固定分类或内容证据校验", at: new Date().toISOString() },
           });
         } catch { /* preserve malformed legacy AI */ }
       }
       if (!options.dryRun) run(
-        "UPDATE items SET category = ?, kind = ?, obtain = ?, base_score = ?, score = ?, ai = ? WHERE id = ?",
+        "UPDATE items SET category = ?, kind = ?, obtain = ?, base_score = ?, score = ?, ai = ?, price = ?, is_free = ? WHERE id = ?",
         nextCat,
         nextKind,
         nextObtain,
         e.baseScore,
         nextScore,
         ai,
+        e.price,
+        e.isFree ? 1 : 0,
         r.id,
       );
       updated += 1;

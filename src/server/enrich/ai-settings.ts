@@ -7,7 +7,7 @@ import type { ObtainMode } from "./obtain.ts";
 import { isContentKind, type ContentKind } from "./kind.ts";
 import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 
-import { CATEGORY_DESC, CATEGORY_KEYS } from "../../shared/taxonomy.ts";
+import { CATEGORY_DESC, CATEGORY_KEYS, isCategory, isObtainMode } from "../../shared/taxonomy.ts";
 import { CLASSIFICATION_PROMPT } from "./evidence.ts";
 
 export type AiVerdict = {
@@ -338,10 +338,24 @@ async function callOnce(
     const content = data.choices?.[0]?.message?.content ?? "";
     const jsonText = /\[[\s\S]*\]/.exec(content)?.[0];
     if (!jsonText) throw new Error("AI 未返回 JSON 数组");
-    const arr = JSON.parse(jsonText) as AiVerdict[];
+    const arr: unknown = JSON.parse(jsonText);
+    if (!Array.isArray(arr) || arr.length !== payload.length) throw new Error("AI 返回条数与送审条数不匹配");
+    const expectedIndexes = new Set(payload.map((item) => item.index));
     const map = new Map<number, AiVerdict>();
-    for (const v of arr) {
-      if (typeof v?.index === "number") map.set(v.index, v);
+    // 不信任 JSON 的类型和索引：字符串 false 会被当成通过，串批索引会覆盖其他资源。
+    for (const raw of arr) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("AI 结论必须是对象");
+      const v = raw as Partial<AiVerdict>;
+      if (typeof v.index !== "number" || !Number.isInteger(v.index) || !expectedIndexes.has(v.index) || map.has(v.index)) {
+        throw new Error("AI 结论索引缺失、重复或不属于当前批次");
+      }
+      if (typeof v.keep !== "boolean" || !isCategory(v.category) || typeof v.reason !== "string" ||
+          (v.kind !== undefined && !isContentKind(v.kind)) ||
+          (v.obtain !== undefined && !isObtainMode(v.obtain)) ||
+          (v.quality !== undefined && (typeof v.quality !== "number" || !Number.isFinite(v.quality) || v.quality < 1 || v.quality > 5))) {
+        throw new Error("AI 结论字段无效（keep/category/reason/kind/obtain/quality）");
+      }
+      map.set(v.index, v as AiVerdict);
     }
     return { map, ttfbMs: ttfb };
   } finally {

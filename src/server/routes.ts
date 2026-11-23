@@ -539,10 +539,12 @@ function buildItemsQuery(
   //  1) 保鲜期：源没给截止时间时按发布时间算，否则 28 天前的老帖会被当成现役福利
   //  2) 截止时间：源给了就按它判断
   if (q.unexpired === "1") {
-    const maxAgeDays = Math.min(Math.max(Number(q.maxAgeDays ?? 14), 1), 365);
+    if (q.maxAgeDays !== "all") {
+      const maxAgeDays = Math.min(Math.max(Number(q.maxAgeDays ?? 14), 1), 365);
+      where.push("COALESCE(published_at, first_seen_at) >= ?");
+      params.push(new Date(Date.now() - maxAgeDays * 86_400_000).toISOString());
+    }
     const now = new Date();
-    where.push("COALESCE(published_at, first_seen_at) >= ?");
-    params.push(new Date(now.getTime() - maxAgeDays * 86_400_000).toISOString());
     where.push("(expires_at IS NULL OR expires_at > ?)");
     params.push(now.toISOString());
   }
@@ -1239,6 +1241,12 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
       return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
+
+  /* ---- 外部工具入口（独立项目，雷达只做链接，不参与其逻辑） ---- */
+  app.get("/api/external-tools", (c) =>
+    c.json({ epicClaimer: config.epicClaimerUrl ? { url: config.epicClaimerUrl } : null }),
+  );
+
 
   app.get("/api/runs", (c) => {
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);

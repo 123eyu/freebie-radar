@@ -1,3 +1,8 @@
+/** 撤销/终止免费：出现即说明「已经不免了」，不能当作白嫖证据。 */
+export const REVOKED_FREE = /(?:取消|撤销|停止|终止|暂停|关闭|下线)(?:了|掉|原有|所有|其|的|提供|供应|开放|使用|支持|现有|原先|此前|全部|\s){0,4}(?:免费(?:额度|层|服务|试用|使用|访问)?|白嫖|限免|福利)|不再(?:提供|开放|支持|有|享受)?\s*(?:免费|白嫖|限免)|(?:免费(?:额度|层|服务|试用)|白嫖|限免)(?:已|已经)?\s*(?:取消|撤销|停止|结束|到期|下线|不再提供)|免费\s*(?:已|已经|被)\s*(?:取消|撤销|停止|结束|到期|下线)|free\s+(?:tier|credits?|quota|access|plan)\s+(?:(?:has|is|was)\s+)?(?:been\s+)?(?:cancelled|canceled|ended|discontinued|removed)/i;
+/** 疑问/讨论/求助：没有可领取的对象。 */
+export const QUESTION_TITLE = /够不够|值不值|好不好|吗[？?]?\s*$|到底|是否|怎么|如何|求助|有没有|请问|求推荐/;
+
 /** Evidence comes from the post, never from AI reason strings or the source's name. */
 export function contentSignals(title: string, summary = "") {
   const clean = (value: string) => value.replace(/https?:\/\/\S+/gi, " ").slice(0, 2000);
@@ -6,14 +11,19 @@ export function contentSignals(title: string, summary = "") {
   const sale = /特价|特惠|促销|折扣|史低|优惠券|优惠码|黑五|black\s*friday|cyber\s*monday|%\s*off|\b(?:sale|clearance)\b|\d+(?:\.\d+)?\s*折|年付|月付|元[\/每](?:月|年)|美元[\/每](?:月|年)|\d+(?:\.\d+)?\s*元(?:起|购|到手|包邮)|(?:仅需|只要|低至|现价)\s*\d+|[$¥￥]\s*\d|(?:拼车|合租|车位|发车|明盘|出鸡|转让|出个|出售)/i;
   const incident = /停飞|停航|航班.{0,8}(?:取消|延误)|空难|坠机|遇难|伤亡|地震|战争|爆炸|罢工|旅客.{0,8}(?:遭遇|遇到)|财报|营收|净利润|股价|通胀|降息|政策|新规|召回|事故|发布会|新闻|报道|记者|宣布涨价|套餐下架|机房动态|月度汇总|活动回顾|为什么|到底|实际遇到/;
   const specificFree = (value: string) => /\bfree\s+to\s+keep\b|(?:\bis\s+free\b.{0,20}(?:Epic|Steam|GOG)|(?:游戏|软件|授权|会员|模型).{0,10}免费)|免费.{0,10}(?:游戏|软件|授权|会员|模型)/i.test(value);
+
   const titleClaim = claim.test(t) || specificFree(t);
+  const revoked = REVOKED_FREE.test(text);
+  const question = QUESTION_TITLE.test(t);
   const titleSale = sale.test(t);
   const actionableSale = /特价|特惠|促销|折扣|史低|优惠券|优惠码|黑五|black\s*friday|%\s*off|抢购|低至|下单|购买|入手|到手价|拼车|合租|明盘|出鸡|出个|出售/i.test(t);
   const editorial = incident.test(t) && !titleClaim && !(titleSale && actionableSale);
   return {
-    claim: titleClaim || (!editorial && (claim.test(text) || specificFree(text))),
+    claim: !revoked && (titleClaim || (!editorial && (claim.test(text) || specificFree(text)))),
     promotion: !editorial && (titleSale || sale.test(text)),
     editorial,
+    revoked,
+    question,
     repository: /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|自托管|self-?host|源码|MIT\s*协议|Apache\s*协议/i.test(`${title} ${summary}`),
   };
 }

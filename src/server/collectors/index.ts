@@ -1,10 +1,9 @@
 import { aiEnabled, config, pushEnabled } from "../config.ts";
 import { all, get, run, tx } from "../db.ts";
-import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "../enrich/index.ts";
+import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type Category, type ContentKind } from "../enrich/index.ts";
 import { calibrateScoreByObtain, resolveDbMergeKey } from "../enrich/alias.ts";
 import { getAiSettings, matchesEntryNoise, shouldPassSourceToAi, shouldReview, type AiVerdict } from "../enrich/ai.ts";
 import { enqueueForAi, reviewFreshNow, setPostReviewHandler } from "../enrich/ai-queue.ts";
-import { guessObtain, type ObtainMode } from "../enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "../enrich/blocklist.ts";
 import { getRetention } from "../retention.ts";
 import { hasCookieConfiguredForSource } from "../cookie-store.ts";
@@ -285,29 +284,33 @@ async function dispatchFresh(
     if (aiSettings.skipFreebieSources && FREEBIE_ONLY_SOURCES.has(sourceId)) {
       const autoReason = "纯白嫖专源免审直通";
       const reviewedAt = new Date().toISOString();
+      const sourceHints = getSourceHints(sourceId);
       tx(() => {
         for (const f of nonNoise) {
-          const verdict = {
-            index: 0,
-            keep: true,
-            kind: "freebie" as const,
-            category: f.category ?? "other",
-            obtain: (f.obtain as ObtainMode | undefined) ?? "free",
-            quality: 4,
-            reason: autoReason,
-          };
-          f.aiKeep = true;
-          f.kind = "freebie";
-          f.aiReason = autoReason;
-          run(
-            "UPDATE items SET ai = ?, ai_keep = 1, kind = 'freebie', ai_quality = 4, obtain = COALESCE(obtain, 'free'), ai_reviewed_at = ? WHERE id = ? AND ai IS NULL",
-            JSON.stringify(verdict),
-            reviewedAt,
-            f.id,
+          // 免审只省模型调用，不省证据校验：抽奖/付费/取消免费不能因为来源「纯白嫖」就变福利
+          const guarded = enforceFreebieEvidence((f.kind ?? "freebie") as ContentKind, f.obtain ?? "free", f.title, f.category, {
+            summary: f.summary,
+            price: f.price,
+            isFree: f.isFree,
+          });
+          const autoKind = guarded.kind;
+          const autoObtain = guarded.obtain ?? f.obtain ?? "free";
+          const autoCategory = categoryForSource(sourceId, (guarded.category ?? f.category ?? "other") as Category, sourceHints);
+          const effective = applyManualClassification(f.id, autoCategory, autoKind);
+          f.kind = effective.kind;
+          f.category = effective.category as Category;
+          f.obtain = autoObtain;
+          // 付费、抽奖或试用不走免审通过，也不伪造模型拒绝；保留未审状态供显式复核。
+          if (autoKind !== "freebie" || (autoObtain !== "free" && autoObtain !== "conditional")) continue;
+          const verdict = { index: 0, keep: true, kind: autoKind, category: autoCategory, obtain: autoObtain, quality: 4, reason: autoReason };
+          const result = run(
+            "UPDATE items SET ai = ?, ai_keep = 1, kind = ?, category = ?, obtain = ?, ai_quality = 4, ai_reviewed_at = ? WHERE id = ? AND ai IS NULL",
+            JSON.stringify(verdict), autoKind, autoCategory, autoObtain, reviewedAt, f.id,
           );
+          if (result.changes) { f.aiKeep = true; f.aiReason = autoReason; }
         }
       });
-      log(`[${sourceId}] 白嫖专源免送 AI，${nonNoise.length} 条直接放行`);
+      log(`[${sourceId}] 白嫖专源免送 AI，${nonNoise.length} 条按规则复核放行`);
     }
     await pushInstant(sourceId, nonNoise);
     await dispatchUserPush(sourceId, nonNoise).catch((err) => {
@@ -555,10 +558,6 @@ export type FreshItem = {
   publishedAt?: string | null;
 };
 
-/** AI 给了 obtain 就用 AI 的，没给就用关键词兜底。 */
-function obtainOf(e: { title: string; summary?: string | null }, verdict?: AiVerdict | null): ObtainMode {
-  return verdict?.obtain ?? guessObtain(e.title, e.summary ?? "");
-}
 
 function persist(
   sourceId: string,
@@ -581,7 +580,7 @@ function persist(
       }
 
       const verdict = aiMap?.get(index) ?? null;
-      const effectiveObtainRaw = obtainOf(e, verdict);
+      const effectiveObtainRaw = verdict?.obtain ?? e.obtain;
       const effectiveKindRaw = verdict
         ? resolveKind(verdict.kind, verdict.keep, {
             title: e.title,
@@ -598,13 +597,13 @@ function persist(
         : e.kind;
       // 白嫖证据校验：抽奖 → lottery，明确标价 → deal（只做否定，不替 AI 确认福利）
       // 必须把分类传进去：资讯类分类（时政/国际/财经/股票）下的 freebie 判错误要在这里降级
-      const evidenced = enforceFreebieEvidence(effectiveKindRaw, effectiveObtainRaw, e.title, verdict?.category ?? e.category);
+      const evidenced = enforceFreebieEvidence(effectiveKindRaw, effectiveObtainRaw, e.title, verdict?.category ?? e.category, { summary: e.summary, price: e.price, isFree: e.isFree });
       const effectiveKind = evidenced.kind;
       const effectiveObtain = evidenced.obtain ?? effectiveObtainRaw;
       const kindCategory = evidenced.category ?? undefined;
       // AI 给出的分类优先于关键词规则（以前这里只用规则结果，AI 判对的分类被丢掉）；
       // 再统一收口：资讯/水帖不许落进实物福利
-      const effectiveCategory = demoteEditorialGoods(
+      const effectiveCategory = categoryForSource(sourceId, demoteEditorialGoods(
         demoteOfflineCategory(
           categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : kindCategory ?? (verdict?.category && isCategory(verdict.category) ? verdict.category : e.category), srcHints),
           effectiveKind,
@@ -614,7 +613,7 @@ function persist(
         ),
         effectiveKind,
         { title: e.title, summary: e.summary ?? "", obtain: effectiveObtain, price: e.price },
-      );
+      ), srcHints);
       const effectiveQuality =
         typeof verdict?.quality === "number" && Number.isFinite(verdict.quality)
           ? Math.min(5, Math.max(1, Math.round(verdict.quality)))
@@ -635,7 +634,7 @@ const scoreCtx = {
         effectiveKind,
         scoreCtx,
       );
-      const aiJson = verdict ? JSON.stringify({ ...verdict, kind: effectiveKind, category: effectiveCategory }) : null;
+      const aiJson = verdict ? JSON.stringify({ ...verdict, kind: effectiveKind, category: effectiveCategory, obtain: effectiveObtain }) : null;
       const status = e.keep ? "active" : "expired";
       const titleKey = resolveDbMergeKey(e.title);
 
@@ -684,28 +683,35 @@ const scoreCtx = {
           } catch { /* 保留旧值 */ }
         }
         const proposedCategory = verdict && isCategory(verdict.category) ? verdict.category : (storedAiCategory ?? e.category);
-        const baseCategory = demoteEditorialGoods(
-          demoteOfflineCategory(
-            categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : proposedCategory, srcHints),
-            verdict ? effectiveKind : existing.kind ?? e.kind,
-            e.title,
-            e.summary ?? "",
-            e.category,
-          ),
-          verdict ? effectiveKind : existing.kind ?? e.kind,
-          { title: e.title, summary: e.summary ?? "", obtain: existing.obtain, price: e.price },
-        );
-        const nextClassification = applyManualClassification(existing.id, baseCategory, verdict ? effectiveKind : resolveKind(existing.kind, existing.ai_keep === null ? null : existing.ai_keep === 1, {
-          title: e.title, summary: e.summary ?? "", sourceId, category: baseCategory, obtain: existing.obtain,
+        const baseCategory = categoryForSource(sourceId, isSharedResource(raw.title, raw.summary ?? "", raw.content ?? "", raw.url) ? "pan" : proposedCategory, srcHints);
+        const baseObtain = verdict ? effectiveObtain : existing.ai_keep === null ? e.obtain : existing.obtain ?? e.obtain;
+        const nextAutoKind = verdict ? effectiveKind : resolveKind(existing.kind, existing.ai_keep === null ? null : existing.ai_keep === 1, {
+          title: e.title, summary: e.summary ?? "", sourceId, category: baseCategory, obtain: baseObtain,
           isFree: e.isFree, price: e.price, kindHint: srcHints.kindHint, guardEnabled: srcHints.guardEnabled,
           freebieOnlySource: FREEBIE_ONLY_SOURCES.has(sourceId),
-        }));
+        });
+        const nextEvidence = enforceFreebieEvidence(nextAutoKind, baseObtain, e.title, baseCategory, { summary: e.summary, price: e.price, isFree: e.isFree });
+        const nextObtain = nextEvidence.obtain ?? baseObtain;
+        const nextAutoCategory = categoryForSource(sourceId, demoteEditorialGoods(
+          demoteOfflineCategory(nextEvidence.category ?? baseCategory, nextEvidence.kind, e.title, e.summary ?? "", e.category),
+          nextEvidence.kind, { title: e.title, summary: e.summary ?? "", obtain: nextObtain, price: e.price },
+        ), srcHints);
+        const nextClassification = applyManualClassification(existing.id, nextAutoCategory, nextEvidence.kind);
+        let nextAiJson = aiJson;
+        if (!verdict && existing.ai) {
+          try {
+            const parsed: unknown = JSON.parse(existing.ai);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) nextAiJson = JSON.stringify({
+              ...parsed, kind: nextEvidence.kind, category: nextAutoCategory, obtain: nextObtain,
+            });
+          } catch { /* preserve malformed legacy AI */ }
+        }
         const nextKind = nextClassification.kind;
         const nextScore = verdict && nextKind === effectiveKind
           ? score
           : calibrateScoreByObtain(
               e.baseScore,
-              existing.obtain,
+              nextObtain,
               existing.ai_keep === null ? null : existing.ai_keep === 1,
               existingQuality,
               nextKind,
@@ -740,8 +746,8 @@ const scoreCtx = {
           now,
           e.price,
           e.isFree ? 1 : 0,
-          aiJson,
-          verdict?.obtain ?? null,
+          nextAiJson,
+          nextObtain,
           verdict ? (verdict.keep ? 1 : 0) : null,
           nextKind,
           effectiveQuality,

@@ -91,6 +91,7 @@ export function registerSecurity(app: Hono): void {
     }
     for (const name of ["limit", "offset", "hours", "maxAgeDays", "minScore", "maxPrice"]) {
       const value = query[name];
+      if (name === "maxAgeDays" && value === "all") continue; // Explicit unlimited publish age; deadline filtering still applies.
       if (value !== undefined && (!value.trim() || !Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 1_000_000)) {
         return c.json({ error: `${name} 必须是有效的非负数` }, 400);
       }

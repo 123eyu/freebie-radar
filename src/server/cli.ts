@@ -1,11 +1,13 @@
 import { all, get, migrate, run } from "./db.ts";
-import { demoteOfflineCategory, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
+import { demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
 import { calibrateScoreByObtain, resolveDbMergeKey } from "./enrich/alias.ts";
 import { backfillAi } from "./ai-admin.ts";
 import { runAll, runSource, ensureSources } from "./collectors/index.ts";
 import { lastDigests, runDaily } from "./digest.ts";
 import { getPushSettings, passesPushFilters } from "./push.ts";
 import { guessObtain } from "./enrich/obtain.ts";
+import { isContentKind, isObtainMode } from "../shared/taxonomy.ts";
+import { extractPrice } from "./enrich/pricing.ts";
 import { getSourceHints, reconcileSourceCategory, applyManualClassification } from "./source-settings.ts";
 import { categoryForSource } from "../shared/source-classification.ts";
 const [cmd = "help", ...args] = process.argv.slice(2);
@@ -115,6 +117,14 @@ async function main() {
           kindHint: hints.kindHint,
           guardEnabled: hints.guardEnabled,
         });
+        const evidenced = enforceFreebieEvidence(finalKind, finalObtain, row.title, finalCategory, {
+          summary: row.summary ?? "",
+          price: e.price,
+          isFree: e.isFree,
+        });
+        finalKind = evidenced.kind;
+        finalObtain = evidenced.obtain ?? finalObtain;
+        finalCategory = categoryForSource(row.source_id, (evidenced.category ?? finalCategory) as typeof finalCategory, hints);
         // 资讯/水帖不许落进实物福利（AI 或旧规则标错的在这里降级）
         finalCategory = demoteOfflineCategory(
           finalCategory,
@@ -190,23 +200,29 @@ summary: e.summary ?? "",
     }
     case "obtain": {
       // 重新判定全库获取方式（AI 提示词更新后跑一次）
-      const rows = all<{ id: number; title: string; summary: string | null; ai: string | null }>(
-        "SELECT id, title, summary, ai FROM items WHERE obtain IS NULL OR ? = 1",
+      const rows = all<{ id: number; title: string; summary: string | null; ai: string | null; kind: string | null; category: string | null }>(
+        "SELECT id, title, summary, ai, kind, category FROM items WHERE obtain IS NULL OR ? = 1",
         args.includes("--all") ? 1 : 0,
       );
       const dist: Record<string, number> = {};
       for (const r of rows) {
         let fromAi: string | null = null;
+        let parsedAi: Record<string, unknown> | null = null;
         if (r.ai) {
           try {
-            fromAi = (JSON.parse(r.ai) as { obtain?: string }).obtain ?? null;
-          } catch {
-            fromAi = null;
-          }
+            const parsed: unknown = JSON.parse(r.ai);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              parsedAi = parsed as Record<string, unknown>;
+              if (isObtainMode(parsedAi.obtain)) fromAi = parsedAi.obtain;
+            }
+          } catch { /* preserve malformed legacy AI */ }
         }
-        const mode = fromAi ?? guessObtain(r.title, r.summary ?? "");
+        const price = extractPrice(r.title, r.summary);
+        const fallback = guessObtain(r.title, r.summary ?? "", price);
+        const mode = enforceFreebieEvidence(isContentKind(r.kind) ? r.kind : "info", fromAi ?? fallback, r.title, r.category, { summary: r.summary, ...price }).obtain ?? fallback;
+        const ai = parsedAi ? JSON.stringify({ ...parsedAi, obtain: mode }) : r.ai;
         dist[mode] = (dist[mode] ?? 0) + 1;
-        run("UPDATE items SET obtain = ? WHERE id = ?", mode, r.id);
+        run("UPDATE items SET obtain = ?, ai = ? WHERE id = ?", mode, ai, r.id);
       }
       console.log(`[obtain] ${rows.length} 条`, JSON.stringify(dist));
       break;
