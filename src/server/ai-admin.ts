@@ -1,6 +1,6 @@
 import { all, get, run } from "./db.ts";
 import { calibrateScoreByObtain } from "./enrich/alias.ts";
-import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind } from "./enrich/index.ts";
+import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, enrichItem, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "./enrich/index.ts";
 import { guessObtain } from "./enrich/obtain.ts";
 import { isBlocked, loadActiveBlockRules } from "./enrich/blocklist.ts";
 import { extractPrice } from "./enrich/pricing.ts";
@@ -28,7 +28,7 @@ function updateAi(
   keep: number,
   score: number,
   category: string | null,
-  obtain: string,
+  obtain: string | null,
   kind: string,
   quality: number | null,
   price: number | null,
@@ -289,9 +289,11 @@ if (!v.keep) rejected += 1;
           summary: row.summary ?? "",
           price: baseEnriched?.price ?? null,
           isFree: baseEnriched?.isFree ?? false,
+          codes: baseEnriched?.codes,
+          sourceId: row.source_id,
         });
         kind = evidenced.kind;
-        const finalObtain = evidenced.obtain ?? obtain;
+        const finalObtain = evidenced.obtain === undefined ? obtain : evidenced.obtain;
         const categoryHint = evidenced.category ?? category;
         // 资讯/水帖不许落进实物福利
         let finalCategory = demoteEditorialGoods(
@@ -441,16 +443,20 @@ export function reclassifyStoredItems(scope: "other" | "all" = "other", options:
         freebieOnlySource: FREEBIE_ONLY_SOURCES.has(r.source_id),
       });
     }
-    let nextObtain = r.ai_keep === null ? e.obtain : r.obtain ?? e.obtain;
-    // 重整同样要过证据校验，否则抽奖/取消免费会被关键词重新洗成福利
+    let nextObtain: string | null = r.ai_keep === null ? e.obtain : r.obtain ?? e.obtain;
+    // 重整同样要过证据校验，否则抽奖/取消免费会被关键词重新洗成福利；
+    // 资讯分类与无领取证据的价格文，点「修复」时也要能降级。
     {
       const evidenced = enforceFreebieEvidence(nextKind as import("../shared/taxonomy.ts").ContentKind, nextObtain, r.title, nextCat, {
         summary: r.summary ?? "",
         price: e.price,
         isFree: e.isFree,
+        codes: e.codes,
+        sourceId: r.source_id,
       });
       nextKind = evidenced.kind;
-      nextObtain = evidenced.obtain ?? nextObtain;
+      const decidedObtain = evidenced.obtain;
+      nextObtain = decidedObtain === undefined ? nextObtain : decidedObtain;
       nextCat = categoryForSource(r.source_id, evidenced.category ?? nextCat, hints);
     }
     // 资讯/水帖不许落进实物福利
