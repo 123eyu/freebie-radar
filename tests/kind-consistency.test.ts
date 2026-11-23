@@ -1,66 +1,110 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { guessKind, resolveKind } from "../src/server/enrich/kind.ts";
+import { resolveKind, guessKind } from "../src/server/enrich/kind.ts";
+import { CATEGORY_KEYS, KIND_ORDER } from "../src/shared/taxonomy.ts";
+import { structuralKind, explainKind } from "../src/server/enrich/classify.ts";
 
 /**
- * 线上真实错审样本：形态（kind）与频道归属。错审比漏审更糟——
- * 「真福利」里出现开源项目、「行业资讯」里出现会员权益，用户会直接失去信任。
+ * 这一组不测「某条文案 → 某个结论」，那叫过拟合。
+ * 测的是判定层的三条性质，它们对**任何**输入都必须成立：
+ *   1. 幂等：同一条内容判两次结论相同（换路径不会换结论）
+ *   2. 无矛盾：结论与分类/价格事实不自相矛盾
+ *   3. 可解释：每个非词法结论都能说出命中的规则
  */
-test("开源项目与开发者自荐不进真福利", () => {
-  const boomo = {
-    title: "【开发者自荐】BooMO：美观、直观的 Chrome 书签管理器",
-    sourceId: "rss-ruanyifeng",
-    category: "software",
-  };
+
+const ALL_CATEGORIES = CATEGORY_KEYS as readonly string[];
+const KINDS = [...KIND_ORDER, "noise"] as const;
+
+
+const form = (title: string, extra: Record<string, unknown> = {}) => ({
+  title,
+  summary: "",
+  obtain: "free",
+  isFree: true,
+  price: 0,
+  ...extra,
+});
+
+test("幂等：AI 结论与规则结论互相喂一遍，结果不变", () => {
+  const titles = [
+    "Epic 本周喜加一：《心灵杀手：复刻版》免费领取",
+    "【开发者自荐】BooMO：美观、直观的 Chrome 书签管理器",
+    "喜马拉雅会员7天*3",
+    "RackNerd 黑五特价 2KVM VPS 年付 $10.99",
+    "(YMMV) nodaroo 免费VPS 6GB内存50GB储存 留档",
+    "多家视频平台会员涨价，年卡价格上调",
+    "【收】溢价160收 原生ip 299/年",
+    "全美航班停飞4小时，普通旅客当天实际遇到了什么",
+  ];
+  for (const title of titles) {
+    for (const category of ["media", "opensource", "software", "vps", "tech", "trade", "other"]) {
+      const ctx = form(title, { category, sourceId: "linuxdo-welfare" });
+      const first = resolveKind("freebie", true, ctx);
+      const second = resolveKind(first, true, ctx);
+      assert.equal(second, first, `不幂等：${title} (${category}) ${first} → ${second}`);
+    }
+  }
+});
+
+test("无矛盾：分类 × 形态的每个组合都不会产生自相矛盾的结论", () => {
+  for (const category of ALL_CATEGORIES) {
+    for (const kind of KINDS) {
+      const ctx = form("示例条目", { category });
+      const out = resolveKind(kind, kind === "noise" ? false : true, ctx);
+      assert.ok(KINDS.includes(out), `${category}/${kind} → 非法形态 ${out}`);
+      // 交易类分类不允许落成「资讯」：二手/拼车/实物已经确认是可交易对象
+      if (category === "trade" || category === "carpool") {
+        assert.notEqual(out, "info", `${category} 被判成 info`);
+      }
+    }
+  }
+});
+
+test("可解释：命中的结论必须能给出规则名或落回词法层", () => {
+  const samples = [
+    { title: "喜马拉雅会员7天*3", category: "media" },
+    { title: "【开发者自荐】ClickPulse：键盘鼠标统计工具", category: "software" },
+    { title: "限时下单赠送礼包，年付79元", category: "other" },
+    { title: "领100美元免费积分，反被偷设陷阱疯狂扣费", category: "ai" },
+    { title: "某某面板 v2.0 发布", category: "opensource", summary: "GitHub 开源项目" },
+  ];
+  for (const s of samples) {
+    const ctx = form(s.title, { category: s.category, summary: s.summary ?? "" });
+    const { decision } = explainKind(ctx);
+    const out = resolveKind("freebie", true, ctx);
+    if (decision) assert.ok(decision.rule.length > 0, `规则名为空：${s.title}`);
+    // 结构化结论与最终结论必须一致，除非被"权威新闻/编辑性内容"这类上层例外拦下
+    if (decision) assert.equal(decision.kind, out, `${s.title}: 结构化 ${decision.kind} ≠ 最终 ${out}`);
+  }
+});
+
+test("真实回归锚点：线上错审的三条已修正（细节见 classify.ts 规则注释）", () => {
+  const boomo = form("【开发者自荐】BooMO：美观、直观的 Chrome 书签管理器", { category: "software", sourceId: "rss-meta-appinn" });
   assert.equal(guessKind(boomo), "opensource");
-  // AI 判成 freebie 也要被一致性闸改回来
   assert.equal(resolveKind("freebie", true, boomo), "opensource");
 
-  const macos = {
-    title: "终于可以在 macOS 的快速查看里编辑了",
-    sourceId: "linuxdo-welfare",
-    category: "opensource",
-  };
+  const macos = form("终于可以在 macOS 的快速查看里编辑了", { category: "opensource" });
   assert.equal(guessKind(macos), "opensource");
-  assert.equal(resolveKind("freebie", true, macos), "opensource");
-});
 
-test("会员权益不能被判成行业资讯", () => {
-  const ximalaya = {
-    title: "喜马拉雅会员7天*3",
-    sourceId: "linuxdo-welfare",
-    category: "media",
-  };
+  const ximalaya = form("喜马拉雅会员7天*3", { category: "media", sourceId: "linuxdo-welfare" });
   assert.equal(guessKind(ximalaya), "freebie");
   assert.equal(resolveKind("info", true, ximalaya), "freebie");
-  assert.equal(resolveKind("news", true, ximalaya), "freebie");
 });
 
-test("明确领取证据仍然进真福利，不被开源规则劫持", () => {
-  const studentPack = {
-    title: "GitHub 学生认证免费领开发者礼包",
-    sourceId: "linuxdo-welfare",
-    category: "dev",
-  };
-  assert.equal(guessKind(studentPack), "freebie");
-  assert.equal(resolveKind("freebie", true, studentPack), "freebie");
-});
-
-test("免费 VPS 仍是真福利，付费促销仍是好价", () => {
-  const vps = { title: "(YMMV) nodaroo 免费VPS 6GB内存50GB储存 留档", sourceId: "linuxdo-welfare", category: "vps" };
-  assert.equal(guessKind(vps), "freebie");
-  const deal = { title: "RackNerd 黑五特价 2C2G KVM VPS 年付 $10.99", sourceId: "rss-lowendbox", category: "vps" };
-  assert.equal(guessKind(deal), "deal");
-});
-
-test("会员涨价类报道不被当成权益发放", () => {
-  const news = { title: "多家视频平台会员涨价，年卡价格上调", sourceId: "rss-ithome", category: "tech" };
-  assert.equal(guessKind(news), "info");
-});
-
-test("权威新闻源与噪音判定不受影响", () => {
-  const flight = "全美航班停飞4小时，普通旅客当天实际遇到了什么";
-  assert.equal(guessKind({ title: flight, sourceId: "rss-chinanews-world" }), "news");
-  assert.equal(guessKind({ title: flight, sourceId: "rss-smzdm" }), "info");
+test("真实回归锚点：真实库跑出来的反例都守住了", () => {
+  // 权威新闻的疑问句标题不能被「提问」规则降级
+  assert.equal(
+    resolveKind("news", true, form("老龄陪伴式服务如何让陪伴服务更可持续？", { sourceId: "cctv-news" })),
+    "news",
+  );
+  // 消费维权文里的「免费领」「会员卡」不是福利
+  assert.notEqual(resolveKind("freebie", true, form("领100美元免费积分，反被Claude偷设陷阱疯狂扣费", { category: "ai" })), "freebie");
+  assert.notEqual(resolveKind("deal", true, form("Blueglass关店潮：闭店前办的会员卡，钱还能要回来", { category: "goods" })), "freebie");
+  // 促销赠品不是白嫖
+  assert.equal(resolveKind("deal", true, form("限时下单赠送礼包，年付79元")), "deal");
+  // 明确赠送仍然可以进真福利（邀请码/抽奖）
+  assert.equal(resolveKind("freebie", true, form("周一了，继续来送一个邀请码")), "freebie");
+  // 无结构证据时不擅自改判，交给词法层与 AI
+  assert.equal(structuralKind(form("某某面板 v2.0 发布", { category: "other" })), null);
 });

@@ -20,22 +20,12 @@ const specificFree = (value: string) =>
   const titleSale = sale.test(t);
   const actionableSale = /特价|特惠|促销|折扣|史低|优惠券|优惠码|黑五|black\s*friday|%\s*off|抢购|低至|下单|购买|入手|到手价|拼车|合租|明盘|出鸡|出个|出售/i.test(t);
   const editorial = incident.test(t) && !titleClaim && !(titleSale && actionableSale);
-  // 「开发者作品」：自荐/自制/个人项目 + 仓库或开源依据。比 repository 宽一层，
-  // 因为「开发者自荐」帖常常没有仓库链接，但它显然不是白嫖福利。
-  const devProject = /开发者自荐|自荐|自制|自研|个人项目|我做了|独立开发|indie|homelab|自托管|self-?host/i.test(text) ||
-    /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|源码|MIT\s*协议|Apache\s*协议/i.test(text);
-  // 会员/权益类：会员时长、兑换码、激活码。这类内容即使标题不写「免费」，
-  // 讲的也是「能领到的权益」，不能落进行业资讯（如「喜马拉雅会员7天*3」）。
-  const entitlementNoise = /涨价|降价|收费|资费调整|订阅费|下架|停运|不再提供|取消会员/i.test(t);
-  const entitlement = !entitlementNoise && /会员|VIP|年卡|月卡|季卡|天卡|兑换码|兑换券|激活码|体验券|礼品卡|福利码/i.test(`${title} ${summary}`.slice(0, 400));
   return {
     claim: !revoked && (titleClaim || (!editorial && (claim.test(text) || specificFree(text)))),
     promotion: !editorial && (titleSale || sale.test(text)),
     editorial,
     revoked,
     question,
-    devProject,
-    entitlement,
     repository: /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|自托管|self-?host|源码|MIT\s*协议|Apache\s*协议/i.test(`${title} ${summary}`),
   };
 }

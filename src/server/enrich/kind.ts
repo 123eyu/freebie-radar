@@ -1,4 +1,5 @@
 import { DEAL_HINT, isNoiseTitle, OPENSOURCE_HINT, PROMO_HINT } from "./noise.ts";
+import { readEvidence, structuralKind } from "./classify.ts";
 import { KIND_LABEL, KIND_SET, isContentKind, type ContentKind } from "../../shared/taxonomy.ts";
 import { contentSignals } from "./evidence.ts";
 import { guessObtain } from "./obtain.ts";
@@ -104,14 +105,21 @@ export function guessKind(input: {
   const hasDealWord = guard ? signals.claim : DEAL_HINT.test(title);
   const hasPromoWord = guard ? signals.promotion : PROMO_HINT.test(text);
   const hasOpenSource = guard ? signals.repository : input.category === "opensource" || OPENSOURCE_HINT.test(text);
-  const hasDevProject = guard ? signals.devProject : hasOpenSource;
-  const hasEntitlement = guard ? signals.entitlement : /会员|VIP|兑换码|激活码/.test(text);
-  const paidish = input.obtain === "paid" || (!input.isFree && typeof input.price === "number" && input.price > 0);
-
-  // 开源 / 开发者作品优先于「免费」：这类内容即使免费，归属也是「开源项目」频道，
-  // 不能落进真福利（此前 BooMO、macOS 快速查看这类自荐与开源帖全被 freebie 吞掉）。
-  if ((hasDevProject || input.category === "opensource") && !paidish && !signals.claim) return "opensource";
-  if (hasOpenSource && !hasDealWord && input.obtain !== "paid") return "opensource";
+  // 结构化裁决：价格 / 兑换码 / 仓库 URL / 来源性质 / 权益时效。顺序见 classify.ts 的 RULES。
+  const structural = structuralKind({
+    title,
+    summary: input.summary,
+    url: (input as { url?: string | null }).url ?? null,
+    sourceId: input.sourceId,
+    category: input.category,
+    obtain: input.obtain,
+    isFree: input.isFree,
+    price: input.price,
+    codeCount: (input as { codeCount?: number }).codeCount,
+    authoritativeNews: isAuthoritativeNewsSource(input.sourceId, input.kindHint),
+    freebieOnlySource: input.freebieOnlySource,
+  });
+  if (structural && !(guard && signals.editorial)) return structural.kind;
   if (input.sourceId && OPENSOURCE_SOURCES.has(input.sourceId) && !hasDealWord && (!guard || signals.repository)) {
     return "opensource";
   }
@@ -132,13 +140,10 @@ export function guessKind(input: {
     return "deal";
   }
 
-  // 会员/权益类：标题给的是会员时长、兑换码或激活码，讲的是「能领到的权益」，
-  // 不能因为没写「免费」两个字就落进行业资讯（如「喜马拉雅会员7天*3」）。
-  if (hasEntitlement && !signals.editorial && !paidish) return "freebie";
   if (input.sourceId && NEWS_SOURCES.has(input.sourceId)) return "news";
   if ((!guard && input.isFree) || hasDealWord) return "freebie";
   if (input.sourceId && INFO_SOURCES.has(input.sourceId)) return "info";
-  if (input.category === "opensource" && (!guard || signals.repository || hasDevProject)) return "opensource";
+  if (input.category === "opensource" && (!guard || signals.repository)) return "opensource";
   if (
     input.category === "headline" ||
     input.category === "world" ||
@@ -182,12 +187,14 @@ export function alignKindWithCategory(
   if (kind === "noise") return kind;
   const category = input.category;
   const signals = contentSignals(input.title, input.summary);
-  const paidish = input.obtain === "paid" || (typeof input.price === "number" && input.price > 0);
+  // 付费判断复用 classify 的口径（标题里的年付/$/年、交易动词都算），避免两套 paid 定义各说各话
+  const paidish = readEvidence({ ...input, authoritativeNews: isAuthoritativeNewsSource(input.sourceId, input.kindHint) }).paid;
   // 开源 / 开发者作品：即使免费也归「开源项目」，不该出现在真福利频道。
   // 明确领取证据（免费领、兑换码）优先，避免把「GitHub 学生包免费领」这类真福利改走。
-  if ((category === "opensource" || signals.devProject) && !signals.claim && !paidish && kind !== "news") return "opensource";
-  // 会员 / 权益：会员时长、兑换码、激活码讲的是能领到的东西，不能落成行业资讯。
-  if (signals.entitlement && !signals.editorial && !paidish && (kind === "info" || kind === "news")) return "freebie";
+  // 同一套结构化规则再跑一次：AI 的结论不能违反证据（开源项目不为「免费」让路，
+  // 会员权益也不因没写「免费」两个字变成资讯）。顺序见 classify.ts 的 RULES。
+  const structural = structuralKind({ ...input, authoritativeNews: isAuthoritativeNewsSource(input.sourceId, input.kindHint) });
+  if (structural && !signals.editorial) return structural.kind;
   if (kind === "news") return kind;
   if (!category || !TRADE_LIKE_CATEGORIES.has(category)) return kind;
   // 有明确领取/白送证据且不需要付费的实物福利归 freebie（如「免费送小鸡」「PDD 免费领」）；
