@@ -10,7 +10,9 @@ export function contentSignals(title: string, summary = "") {
   const claim = /免费(?:领|送|获|拿|使用|开放|下载|入库)|领取|报名领|白嫖|白送|白给|白拿|薅羊毛|羊毛线报|BOGO|零元|(?<![\d.])0\s*元|限免|喜加一|赠送|激活码|兑换码|公益额度|(?:领|送)\s*\d+(?:[-~至]\d+)?\s*(?:元|话费|积分|额度|tokens?)|(?:免费|赠|送|领).{0,16}(?:额度|积分|token|credits|授权|礼包|券)|(?:free\s+(?:trial|game|software|license|credits|tier|model)|giveaway|coupon|:free\b)/i;
   const sale = /特价|特惠|促销|折扣|史低|优惠券|优惠码|黑五|black\s*friday|cyber\s*monday|%\s*off|\b(?:sale|clearance)\b|\d+(?:\.\d+)?\s*折|年付|月付|元[\/每](?:月|年)|美元[\/每](?:月|年)|\d+(?:\.\d+)?\s*元(?:起|购|到手|包邮)|(?:仅需|只要|低至|现价)\s*\d+|[$¥￥]\s*\d|(?:拼车|合租|车位|发车|明盘|出鸡|转让|出个|出售)/i;
   const incident = /停飞|停航|航班.{0,8}(?:取消|延误)|空难|坠机|遇难|伤亡|地震|战争|爆炸|罢工|旅客.{0,8}(?:遭遇|遇到)|财报|营收|净利润|股价|通胀|降息|政策|新规|召回|事故|发布会|新闻|报道|记者|宣布涨价|套餐下架|机房动态|月度汇总|活动回顾|为什么|到底|实际遇到/;
-  const specificFree = (value: string) => /\bfree\s+to\s+keep\b|(?:\bis\s+free\b.{0,20}(?:Epic|Steam|GOG)|(?:游戏|软件|授权|会员|模型).{0,10}免费)|免费.{0,10}(?:游戏|软件|授权|会员|模型)/i.test(value);
+  // 注意：这里只认「免费 + 具体可领对象」。只写「免费」两个字（免费讨论、免费看）不算证据。
+const specificFree = (value: string) =>
+  /\bfree\s+to\s+keep\b|(?:\bis\s+free\b.{0,20}(?:Epic|Steam|GOG)|(?:游戏|软件|授权|会员|模型|vps|主机|服务器|域名|空间|流量|额度).{0,10}免费)|免费.{0,10}(?:游戏|软件|授权|会员|模型|vps|主机|服务器|域名|空间|流量|额度)/i.test(value);
 
   const titleClaim = claim.test(t) || specificFree(t);
   const revoked = REVOKED_FREE.test(text);
@@ -18,12 +20,22 @@ export function contentSignals(title: string, summary = "") {
   const titleSale = sale.test(t);
   const actionableSale = /特价|特惠|促销|折扣|史低|优惠券|优惠码|黑五|black\s*friday|%\s*off|抢购|低至|下单|购买|入手|到手价|拼车|合租|明盘|出鸡|出个|出售/i.test(t);
   const editorial = incident.test(t) && !titleClaim && !(titleSale && actionableSale);
+  // 「开发者作品」：自荐/自制/个人项目 + 仓库或开源依据。比 repository 宽一层，
+  // 因为「开发者自荐」帖常常没有仓库链接，但它显然不是白嫖福利。
+  const devProject = /开发者自荐|自荐|自制|自研|个人项目|我做了|独立开发|indie|homelab|自托管|self-?host/i.test(text) ||
+    /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|源码|MIT\s*协议|Apache\s*协议/i.test(text);
+  // 会员/权益类：会员时长、兑换码、激活码。这类内容即使标题不写「免费」，
+  // 讲的也是「能领到的权益」，不能落进行业资讯（如「喜马拉雅会员7天*3」）。
+  const entitlementNoise = /涨价|降价|收费|资费调整|订阅费|下架|停运|不再提供|取消会员/i.test(t);
+  const entitlement = !entitlementNoise && /会员|VIP|年卡|月卡|季卡|天卡|兑换码|兑换券|激活码|体验券|礼品卡|福利码/i.test(`${title} ${summary}`.slice(0, 400));
   return {
     claim: !revoked && (titleClaim || (!editorial && (claim.test(text) || specificFree(text)))),
     promotion: !editorial && (titleSale || sale.test(text)),
     editorial,
     revoked,
     question,
+    devProject,
+    entitlement,
     repository: /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|自托管|self-?host|源码|MIT\s*协议|Apache\s*协议/i.test(`${title} ${summary}`),
   };
 }

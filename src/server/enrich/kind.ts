@@ -104,10 +104,14 @@ export function guessKind(input: {
   const hasDealWord = guard ? signals.claim : DEAL_HINT.test(title);
   const hasPromoWord = guard ? signals.promotion : PROMO_HINT.test(text);
   const hasOpenSource = guard ? signals.repository : input.category === "opensource" || OPENSOURCE_HINT.test(text);
+  const hasDevProject = guard ? signals.devProject : hasOpenSource;
+  const hasEntitlement = guard ? signals.entitlement : /会员|VIP|兑换码|激活码/.test(text);
+  const paidish = input.obtain === "paid" || (!input.isFree && typeof input.price === "number" && input.price > 0);
 
-  if (hasOpenSource && !hasDealWord && input.obtain !== "paid") {
-    return "opensource";
-  }
+  // 开源 / 开发者作品优先于「免费」：这类内容即使免费，归属也是「开源项目」频道，
+  // 不能落进真福利（此前 BooMO、macOS 快速查看这类自荐与开源帖全被 freebie 吞掉）。
+  if ((hasDevProject || input.category === "opensource") && !paidish && !signals.claim) return "opensource";
+  if (hasOpenSource && !hasDealWord && input.obtain !== "paid") return "opensource";
   if (input.sourceId && OPENSOURCE_SOURCES.has(input.sourceId) && !hasDealWord && (!guard || signals.repository)) {
     return "opensource";
   }
@@ -128,10 +132,13 @@ export function guessKind(input: {
     return "deal";
   }
 
+  // 会员/权益类：标题给的是会员时长、兑换码或激活码，讲的是「能领到的权益」，
+  // 不能因为没写「免费」两个字就落进行业资讯（如「喜马拉雅会员7天*3」）。
+  if (hasEntitlement && !signals.editorial && !paidish) return "freebie";
   if (input.sourceId && NEWS_SOURCES.has(input.sourceId)) return "news";
   if ((!guard && input.isFree) || hasDealWord) return "freebie";
   if (input.sourceId && INFO_SOURCES.has(input.sourceId)) return "info";
-  if (input.category === "opensource" && (!guard || signals.repository)) return "opensource";
+  if (input.category === "opensource" && (!guard || signals.repository || hasDevProject)) return "opensource";
   if (
     input.category === "headline" ||
     input.category === "world" ||
@@ -172,12 +179,17 @@ export function alignKindWithCategory(
   kind: ContentKind,
   input: Parameters<typeof guessKind>[0],
 ): ContentKind {
-  if (kind === "noise" || kind === "news") return kind;
+  if (kind === "noise") return kind;
   const category = input.category;
-  if (!category || !TRADE_LIKE_CATEGORIES.has(category)) return kind;
-  if (input.freebieOnlySource) return kind;
   const signals = contentSignals(input.title, input.summary);
   const paidish = input.obtain === "paid" || (typeof input.price === "number" && input.price > 0);
+  // 开源 / 开发者作品：即使免费也归「开源项目」，不该出现在真福利频道。
+  // 明确领取证据（免费领、兑换码）优先，避免把「GitHub 学生包免费领」这类真福利改走。
+  if ((category === "opensource" || signals.devProject) && !signals.claim && !paidish && kind !== "news") return "opensource";
+  // 会员 / 权益：会员时长、兑换码、激活码讲的是能领到的东西，不能落成行业资讯。
+  if (signals.entitlement && !signals.editorial && !paidish && (kind === "info" || kind === "news")) return "freebie";
+  if (kind === "news") return kind;
+  if (!category || !TRADE_LIKE_CATEGORIES.has(category)) return kind;
   // 有明确领取/白送证据且不需要付费的实物福利归 freebie（如「免费送小鸡」「PDD 免费领」）；
   // 需要付费的「领取优惠券」仍是好价，不能因为出现「领取」就变福利
   if (signals.claim && !paidish) return "freebie";

@@ -1,5 +1,25 @@
 # 变更记录
 
+
+## 2026-11-23 · v1.1.5
+
+### 形态（kind）判错：错审比漏审更严重
+
+线上三例：`【开发者自荐】BooMO` 与 `终于可以在 macOS 的快速查看里编辑了` 躺在**真福利**里（应进开源），`喜马拉雅会员7天*3` 被判成**行业资讯**（明明是能领的会员权益）。三个根因都在形态判定层：
+
+- **「免费」压过「开源」**。`guessKind` 里 `hasOpenSource && !hasDealWord` 才判 opensource，而 `hasDealWord` 就是"有没有免费/领取词"——于是凡是免费的开源项目全被 freebie 吞掉。改为：**开发者作品/开源信号优先**（`signals.devProject`：开发者自荐、自制、自研、个人项目、仓库链接、开源、源码、MIT/Apache），只要没有明确「免费领/兑换码」证据且不涉及付费，就判 `opensource`
+- **「会员时长」不算领取证据**。`contentSignals().claim` 只认「免费领 / 兑换码 / 限免」这类词，「喜马拉雅会员7天*3」一个都不命中，就一路掉到 `return guard ? "info" : "freebie"`。新增 `entitlement` 信号（会员/VIP/年卡/月卡/兑换码/激活码/礼品卡），命中即 `freebie`；带「涨价/收费/下架/停运」的报道用 `entitlementNoise` 排除，避免把「会员涨价」当成发权益
+- **`specificFree` 对象词太窄**。「(YMMV) nodaroo 免费VPS 6GB内存50GB储存」只有「免费VPS」，`免费.{0,10}(游戏|软件|授权|会员|模型)` 匹配不到，规则层判成 info（全靠 AI 救回来）。补上 VPS / 主机 / 服务器 / 域名 / 空间 / 流量 / 额度
+- **一致性闸收口到 `alignKindWithCategory`**：新增两条与分类无关的裁决——开源/开发者作品（无领取证据）一律 `opensource`；会员权益类被 AI 判成 `info`/`news` 时改回 `freebie`。它已经被采集落库、AI 落库、补审、重新分类、CLI 五条路径共用，不再各判一套
+- **频道互斥**：`真福利` 排除 `opensource` 分类。真福利的定义是「能领到的东西」，开源项目属于「能用的项目」，归开源频道，不让同一条内容占两个频道
+
+### 存量数据要重跑一次
+
+规则只对**新条目**生效。已经误判的历史条目用零 Token 重整修：后台「数据源运维 → 重整分类」或 `pnpm tsx src/server/cli.ts reclassify`。它会重新走 `resolveKind` + `enforceFreebieEvidence`，把 `freebie` 的开源项目迁到 `opensource`、把 `info` 的会员权益迁回 `freebie`。
+
+### 实测
+
+新增 `tests/kind-consistency.test.ts` 钉住这六个真实样本（BooMO → opensource、macOS 快速查看 → opensource、喜马拉雅会员 → freebie、GitHub 学生包 → freebie 不被开源规则劫持、免费 VPS → freebie、黑五 VPS → deal，外加「会员涨价」→ info）。`pnpm test` 216/216、`pnpm typecheck` 干净、`pnpm build` 通过。
 ## 2026-11-23 · v1.1.4
 
 ### 深色模式
