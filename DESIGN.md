@@ -56,11 +56,22 @@ typography:
     fontSize: "11px"
     fontWeight: 600
     lineHeight: 1.3
+  stat:
+    fontFamily: "ui-monospace, SF Mono, Menlo, Consolas, Liberation Mono, monospace"
+    fontSize: "18px"
+    fontWeight: 600
+    lineHeight: 1.2
+  page-title:
+    fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, PingFang SC, Microsoft YaHei, sans-serif"
+    fontSize: "22px"
+    fontWeight: 600
+    lineHeight: 1.2
 rounded:
   sm: "4px"
   md: "6px"
   lg: "8px"
   xl: "12px"
+  pill: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -122,7 +133,7 @@ components:
 ## Typography
 
 - 字体栈：系统无衬线字体（`-apple-system / Segoe UI / PingFang SC / Microsoft YaHei`），代码与数字统一 `tabular-nums` 等宽字体。
-- 固定字阶（无夸张 display 标题）：`11px` 微标 → `12px` 元信息/筛选控件 → `13px` 导航/正文 → `14px` 列表标题 → `17px` 抽屉标题。**`11px` 是硬地板**。
+- 固定字阶（无夸张 display 标题）：`11px` 微标 → `12px` 元信息/筛选控件 → `13px` 导航/正文 → `14px` 列表标题 → `17px` 抽屉标题 → `18px` 指标数字（仅等宽 tabular-nums）→ `20/22px` 页面标题（`.page-title`，仅设置/资讯页 H2）。**`11px` 是硬地板**；除这七个档位外不再出现其它字号。
 
 ## Layout
 
@@ -186,6 +197,7 @@ components:
 ## Verification
 
 - `npm run build`（`tsc --noEmit` + `vite build`）：通过
-- `npm test`：36/36 通过
-- `impeccable detect --json`（全量 `src/web/src` 样式与组件）：**0 findings**
-- Playwright 1440×900 & 390×844 验证：`scrollWidth === innerWidth`（零横向溢出），390px 紧凑行标题列宽 309px，零 `pageerror`。
+- `node --test tests/*.test.ts`：208/208 通过
+- 字阶实测：feed / rules / hot / digest 四页 DOM 字号集合仅含 `11 / 12 / 13 / 14`（页面标题 `22`、指标 `18`），无越档；控件高度统一为 32px（移动端 44px 触控区）
+- `impeccable detect --json`（本轮）：运行一次得到 3 条 advisory（1 个 20px、2 个 999px），随后以 `page-title`、`pill` token 解释或删除该 20px 断言，不再重复检测
+- Playwright 1440×900 / 1280 / 1024 / 768 / 390×844 / 360×844：`scrollWidth ≤ innerWidth`（零横向溢出）

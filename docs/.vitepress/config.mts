@@ -14,16 +14,19 @@ export default defineConfig({
   themeConfig: {
     logo: "/logo.svg",
     nav: [
-      { text: "指南", link: "/deploy" },
+      { text: "部署指南", link: "/deploy" },
+      { text: "AI 部署", link: "/ai-deploy" },
       { text: "数据源", link: "/data-sources" },
+      { text: "推送系统", link: "/push" },
       { text: "在线演示", link: "https://radar.zichuanlan.top" },
       { text: "GitHub", link: "https://github.com/ZiChuanLan/freebie-radar" },
     ],
     sidebar: [
       {
-        text: "上手",
+        text: "上手与运维",
         items: [
           { text: "部署与运维", link: "/deploy" },
+          { text: "交给 AI 一键部署", link: "/ai-deploy" },
           { text: "公网部署与安全边界", link: "/security" },
           { text: "公开站：登录与个人隔离", link: "/accounts" },
         ],
@@ -40,16 +43,17 @@ export default defineConfig({
       {
         text: "采集与推送",
         items: [
-          { text: "数据源侦察报告", link: "/data-sources" },
-          { text: "时效性改造", link: "/timing" },
-          { text: "推送系统", link: "/push" },
+          { text: "数据源与可达性", link: "/data-sources" },
+          { text: "多路由推送系统", link: "/push" },
+          { text: "时效性与价格筛选", link: "/timing" },
         ],
       },
       {
-        text: "界面",
+        text: "界面与架构",
         items: [
-          { text: "UI 与功能改造", link: "/ui-v2" },
+          { text: "工作台结构与数据边界", link: "/workspace-architecture" },
           { text: "操作流程与联动检查", link: "/ui-review" },
+          { text: "早期 UI 改造记录", link: "/ui-v2" },
         ],
       },
     ],

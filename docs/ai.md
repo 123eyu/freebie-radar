@@ -17,13 +17,14 @@
 
 - **模型连接**：填写任意 OpenAI 兼容端点（如 `https://api.openai.com/v1`、DeepSeek、OneAPI/NewAPI 等）、模型名与 API Key，并支持保存前先测试草稿连通性；
 - **规则初筛与送审范围**：
-  - 可独立开关「入口噪音预拦截」与自定义拦截词，先挡掉明显求助/拼车/二手帖，节省 Token；
-  - 支持「纯白嫖专源免送 AI 直通」（如 Epic / Steam / GamerPower / OpenRouter / itch.io 100% 限免等源直接标真福利）；
-  - 支持指定「全部源 / 排除指定源 / 仅审指定源」；
+  - 可独立开关「入口噪音预拦截」与自定义拦截词（与「订阅与屏蔽」合并为统一规则），先挡掉明显求助/拼车/二手帖，节省 Token；
+  - 支持「纯白嫖专源免送 AI 直通」（Epic / Steam / GamerPower / CheapShark / ITAD / SharewareOnSale 等源经 `enforceFreebieEvidence` 复核后直接标真福利）；
+  - 支持「AI 语义去重（自动）」与对比窗口小时数（6–168h），在入库审核后与推送前对跨源同事件做聚类合并；
+  - 支持指定「全部启用源 / 排除指定源 / 仅审指定源」；
 - **审核补充规则与偏好学习**：
   - 通过 `extraPrompt` 追加个人过滤偏好（保留内置 JSON 结构化输出口径）；
   - 支持从「我的收藏（正样本）」与「已关闭/忽略（负样本）」自动采样，让 AI 越用越懂你的口味；
-- **历史库补审 / 重审**：调整提示词后可一键选择 `pending`（仅未审）、`recent`（最近条目重审）或 `rejected`（复核误杀条目）。
+- **历史库补审与零 Token 重整**：调整规则或提示词后可一键选择 `pending`（仅未审）、`recent`（最近条目重审）或 `rejected`（复核误杀条目），也可直接点击 **「重整分类 (0 Token)」** 零成本重跑规则与证据校验。
 
 ## 返回契约
 
@@ -33,6 +34,7 @@ AI 输出严格 JSON 数组，每条包含：
 {
   "index": 0,
   "keep": true,
+  "kind": "freebie",
   "category": "cloud",
   "obtain": "conditional",
   "quality": 4,
@@ -40,5 +42,7 @@ AI 输出严格 JSON 数组，每条包含：
 }
 ```
 
-- `obtain` 六级分类：`free`（直接白嫖）、`conditional`（需注册/实名/签到/填表）、`lottery`（抽奖）、`trial`（短期试用）、`promo`（推广引流）、`paid`（需付费）；
-- `quality`（1–5 分）会自动参与最终综合评分校准。
+- `kind` 五类有效形态：`freebie`（白嫖福利）、`deal`（特价好价/拼车/二手）、`opensource`（开源项目）、`news`（重要新闻）、`info`（行业资讯），以及拦截形态 `noise`；
+- `obtain` 六级获取方式：`free`（直接白嫖）、`conditional`（需注册/实名/签到/填表）、`lottery`（抽奖）、`trial`（短期试用）、`promo`（推广引流）、`paid`（需付费）；
+- `quality`（1–5 分）会自动参与最终综合评分校准；
+- 返回结果还会经过 `enforceFreebieEvidence` 证据校验与来源固定分类收口，且不会覆盖管理员的单条人工纠正。详见 [分类设置与人工纠正](classification.md)。

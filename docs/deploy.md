@@ -4,7 +4,7 @@
 
 ## Docker Compose 一键部署（推荐）
 
-本项目使用 `node:24-alpine` 单容器运行（成品镜像 ~340 MB），内置 Node.js 原生 `node:sqlite`（WAL 模式），无需外接 PostgreSQL / Redis，且设置了 V8 堆与 SQLite 缓存限制，主服务容器实测常驻内存约 **80–100 MiB**。
+本项目使用 `node:24-alpine` 单容器运行（成品镜像 ~340 MB），内置 Node.js 原生 `node:sqlite`（WAL 模式，自动增量迁移至 Schema v32），无需外接 PostgreSQL / Redis，且设置了 V8 堆与 SQLite 缓存限制，主服务容器实测常驻内存约 **80–100 MiB**。
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -77,3 +77,8 @@ docker compose up -d --build
    ```
 2. 打开雷达网页「数据源运维」，点击对应源的 **「扫码登录」** 按钮：会跳往本地 `http://127.0.0.1:18789/login` 弹窗扫码；登录成功后自动采集一轮公开帖子推入 `/api/ingest`，**立即关闭浏览器释放全部内存并跳回雷达页面**。
 3. 不想安装 Node / Playwright 的用户，也可在「数据源运维 → 登录态接入」中一键复制 **Tampermonkey 油猴脚本**，直接在日常浏览器里触发回传。
+
+## 站点形态与外部工具入口
+
+- **单人自建 vs 公开站（`SITE_MODE`）**：默认 `auto`（配齐 LINUX DO / GitHub OAuth 凭据即按公开站运行，否则按单人自建）。公开站账号隔离、邀请码与个人 Bot/RSS 详见 [公开站：登录与个人隔离](accounts.md)。
+- **外部工具（`EPIC_CLAIMER_URL`）**：若单独部署了 Epic 喜加一领取器，在 `.env` 配置 `EPIC_CLAIMER_URL=https://你的领取器地址` 后，会在「数据源运维 → 外部工具」显示快捷入口卡片；未配置时不渲染。
