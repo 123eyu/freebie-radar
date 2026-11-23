@@ -1,0 +1,83 @@
+name: Docker
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    # 只在自家仓库推送镜像，fork 不跑（避免误用别人的 secrets）
+    if: github.repository == 'ZiChuanLan/freebie-radar'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 没配 Docker Hub 凭据时整条流水线保持绿色跳过，而不是每次推主干都红一次
+      - name: Check Docker Hub credentials
+        id: guard
+        env:
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN，跳过镜像发布"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.guard.outputs.ok == 'true'
+
+      - name: Login to Docker Hub
+        if: steps.guard.outputs.ok == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        if: steps.guard.outputs.ok == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: zichuanlan/freebie-radar
+          # latest 跟主干；tag 推送额外打 v1.1.1 与 42add37 这类短 SHA
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=sha,prefix=,format=short
+          labels: |
+            org.opencontainers.image.title=Resource Radar
+            org.opencontainers.image.description=自托管的福利雷达：采集 → 规则初筛 → AI 定级 → 分频道呈现 → 多路由推送
+
+      - name: Build and push
+        if: steps.guard.outputs.ok == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: steps.guard.outputs.ok == 'true'
+        run: |
+          echo "### 已推送镜像" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
