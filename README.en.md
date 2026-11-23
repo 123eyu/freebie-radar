@@ -96,7 +96,7 @@ docker run -d --name radar --restart unless-stopped \
   zichuanlan/freebie-radar:latest
 ```
 
-Or pin a version through `RADAR_IMAGE` in `.env` (`latest` / `v1.1.0` / a git short SHA) so Compose pulls instead of building:
+Or pin a version through `RADAR_IMAGE` in `.env` (`latest` / `v1.1.3` / a git short SHA) so Compose pulls instead of building:
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -128,7 +128,7 @@ Verify health & logs:
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.0",...}
+# {"ok":true,"version":"1.1.3",...}
 docker compose logs -f --tail 50
 ```
 
@@ -137,8 +137,8 @@ docker compose logs -f --tail 50
 | Tag | Meaning |
 |---|---|
 | `latest` | Latest build |
-| `v1.1.0` | Matches the GitHub release / git tag — pin this in production |
-| `9191745` | The git short SHA at build time, for pinning or rolling back |
+| `v1.1.3` | Matches the GitHub release / git tag — pin this in production |
+| `19eb371` | The git short SHA at build time, for pinning or rolling back |
 
 The image is a multi-stage `node:24-alpine` build that keeps only production dependencies and `dist/web`; steady-state memory is roughly 80–100 MiB.
 

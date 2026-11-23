@@ -116,7 +116,7 @@ docker run -d --name radar --restart unless-stopped \
   zichuanlan/freebie-radar:latest
 ```
 
-`.env` の `RADAR_IMAGE` でバージョンを固定すれば（`latest` / `v1.1.0` / git 短縮 SHA）、Compose はビルドせず pull します：
+`.env` の `RADAR_IMAGE` でバージョンを固定すれば（`latest` / `v1.1.3` / git 短縮 SHA）、Compose はビルドせず pull します：
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -148,7 +148,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.0",...}
+# {"ok":true,"version":"1.1.3",...}
 
 docker compose logs -f --tail 50
 ```
@@ -158,8 +158,8 @@ docker compose logs -f --tail 50
 | タグ | 意味 |
 |---|---|
 | `latest` | 最新ビルド |
-| `v1.1.0` | GitHub Release / git tag に対応。本番はこのタグで固定するのがおすすめ |
-| `9191745` | ビルド時点の git 短縮 SHA。特定コミットへの固定・ロールバック用 |
+| `v1.1.3` | GitHub Release / git tag に対応。本番はこのタグで固定するのがおすすめ |
+| `19eb371` | ビルド時点の git 短縮 SHA。特定コミットへの固定・ロールバック用 |
 
 イメージは `node:24-alpine` のマルチステージビルドで、実行時は本番依存と `dist/web` のみを保持します。常駐メモリは約 80〜100 MiB です。
 

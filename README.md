@@ -119,7 +119,7 @@ docker run -d --name radar --restart unless-stopped \
   zichuanlan/freebie-radar:latest
 ```
 
-也可以在 `.env` 里用 `RADAR_IMAGE` 固定镜像版本（`latest` / `v1.1.0` / git 短 SHA），让 compose 直接拉取而不构建：
+也可以在 `.env` 里用 `RADAR_IMAGE` 固定镜像版本（`latest` / `v1.1.3` / git 短 SHA），让 compose 直接拉取而不构建：
 
 ```bash
 git clone https://github.com/ZiChuanLan/freebie-radar.git
@@ -151,7 +151,7 @@ docker compose up -d --build
 
 ```bash
 curl http://127.0.0.1:8788/health
-# {"ok":true,"version":"1.1.0",...}
+# {"ok":true,"version":"1.1.3",...}
 
 docker compose logs -f --tail 50
 ```
@@ -163,8 +163,8 @@ docker compose logs -f --tail 50
 | 标签 | 含义 |
 |---|---|
 | `latest` | 最新构建 |
-| `v1.1.0` | 对应 GitHub Release / git tag，生产环境建议固定到这种 |
-| `9191745` | 构建时的 git 短 SHA，可精确回滚到某次提交 |
+| `v1.1.3` | 对应 GitHub Release / git tag，生产环境建议固定到这种 |
+| `19eb371` | 构建时的 git 短 SHA，可精确回滚到某次提交 |
 
 镜像基于 `node:24-alpine` 多阶段构建，运行时只保留生产依赖与 `dist/web`，常驻内存约 80–100 MiB。
 
