@@ -50,7 +50,7 @@ export const CLASSIFICATION_PROMPT = [
   "一般新闻与旅客经历可归 info，重要新闻归 news；keep 只控制是否值得保留，不能为保留内容强行标 deal/freebie。",
   "交易类例外：标题含「N出 / 溢价N出 / 出 / 收 / 转让 / 过户 / 出号 / 车位 / 合租 / 拼团 / 独享车」等交易意图词，且带价格或付费方式时，kind 必须是 deal，不得因为「没有促销词」判成 info。",
   "测评类例外：测评、使用记录、使用感受、选购科普、榜单推荐、横评、抄作业清单不是 freebie（没有可领取的对象），也不是 goods 优惠，应标 kind=info；只有真能领到/免费拿到的东西才是 freebie。",
-  '反例：全美航班停飞4小时，普通旅客当天实际遇到了什么 → kind=info，category=world，obtain=free；不是促销。',
+  '反例：全美航班停飞4小时，普通旅客当天实际遇到了什么 → kind=info，category=news，obtain=free；不是促销。',
   '正例：航空公司限时特价机票，单程99元 → kind=deal；GitHub学生认证免费领开发者礼包 → kind=freebie。',
   '正例：50出zouter 老HK amd 9.9/月 → kind=deal，category=trade（「出」= 转让，不是资讯）；出租一个新加坡 google ultra 5x（独享车）→ kind=deal，category=carpool。',
 ].join("\n");

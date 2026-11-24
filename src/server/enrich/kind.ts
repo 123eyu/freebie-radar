@@ -145,8 +145,6 @@ export function guessKind(input: {
   if (input.sourceId && INFO_SOURCES.has(input.sourceId)) return "info";
   if (input.category === "opensource" && (!guard || signals.repository)) return "opensource";
   if (
-    input.category === "headline" ||
-    input.category === "world" ||
     input.category === "stock" ||
     input.category === "finance" ||
     input.category === "tech" ||

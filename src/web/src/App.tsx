@@ -1587,7 +1587,7 @@ export function App() {
               onSearchWord={(w) => handleTab("feed", { ...DEFAULT_FEED_STATE, search: w, preset: hotScope === "news" ? "news" : hotScope === "info" ? "info" : hotScope === "deals" ? "verified" : "all" })}
               onJumpCategory={(cat) => {
                 const targetPreset =
-                  hotScope === "news" || cat === "headline" || cat === "world"
+                  hotScope === "news" || cat === "news"
                     ? "news"
                     : hotScope === "info" || cat === "stock" || cat === "tech" || cat === "finance"
                       ? "info"
