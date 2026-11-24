@@ -26,7 +26,9 @@ const specificFree = (value: string) =>
     editorial,
     revoked,
     question,
-    repository: /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|自托管|self-?host|源码|MIT\s*协议|Apache\s*协议/i.test(`${title} ${summary}`),
+    // 裸「源码」不算项目证据：「XX 实战课程 含源码」「资源包含源码」是资源描述，
+    // 以前把这类课程/网盘包判成 opensource，AI 理由却写着「网盘分享 4K 剧集」，自相矛盾。
+    repository: /github\.com\/[^/\s]+\/[^/\s]+|gitlab\.com\/[^/\s]+\/[^/\s]+|gitee\.com\/[^/\s]+\/[^/\s]+|开源|open[\s-]*source|自托管|self-?host|开源源码|源码仓库|源码发布|MIT\s*协议|Apache\s*协议/i.test(`${title} ${summary}`),
   };
 }
 
@@ -43,7 +45,7 @@ export const CLASSIFICATION_PROMPT = [
   "kind 依据正文的主要目的，不依据网站名称。导购网站也会发新闻，新闻网站也可能发明确促销。",
   "deal 必须有可参与的购买/促销/价格/优惠券/付费套餐/交易证据。航班停飞、旅客经历、事故、财报和涨价报道不是特价好价；新闻里出现经济损失金额也不是售价。",
   "freebie 必须有明确可领取或免费使用的对象。只出现免费、限时、额度、会员这些词，不等于有福利。空泛讨论、常规新闻不得归为 freebie。",
-  "opensource 必须有开源项目/源码/仓库依据；仅出现版本号不构成开源证据。",
+  "opensource 必须有开源仓库地址、开源声明或源码发布；仅出现版本号不构成开源证据。课程、资源包、网盘分享里写「含源码 / 附源码 / 带源码」只是资源描述，不构成开源项目证据。",
   "网盘分享中的影视、软件、AI课程优先标 category=pan；课程内容本体可标 course，不因标题出现软件/电影/AI就改到授权、影音会员或AI额度。",
   "一般新闻与旅客经历可归 info，重要新闻归 news；keep 只控制是否值得保留，不能为保留内容强行标 deal/freebie。",
   "交易类例外：标题含「N出 / 溢价N出 / 出 / 收 / 转让 / 过户 / 出号 / 车位 / 合租 / 拼团 / 独享车」等交易意图词，且带价格或付费方式时，kind 必须是 deal，不得因为「没有促销词」判成 info。",
