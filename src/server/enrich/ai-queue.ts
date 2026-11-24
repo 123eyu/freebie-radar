@@ -8,7 +8,8 @@ import { get, run } from "../db.ts";
 import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 import { getSourceHints, applyManualClassification } from "../source-settings.ts";
 import { categoryForSource } from "../../shared/source-classification.ts";
-import { isSharedResource, readEvidence } from "./evidence.ts";
+import { isSharedResource } from "./evidence.ts";
+import { readEvidence } from "./classify.ts";
 import { extractPrice } from "./pricing.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
