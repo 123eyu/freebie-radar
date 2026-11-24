@@ -162,6 +162,24 @@ const RULES: { id: string; kind: ContentKind; when: (ev: Evidence) => boolean }[
 ];
 
 /** 结构化裁决；null 表示没有结构性证据，交给调用方原有的词法逻辑。 */
+/**
+ * 是否需要人工复核：AI 判成福利，但证据里没有任何可领取对象。
+ * 这类内容既不该直接上站（可能是幻觉/软广），也不必直接丢，放 review 等一眼。
+ * 纯函数，方便单测；调用方负责查 override 与当前 status。
+ */
+export function shouldQueueForReview(input: {
+  keep: boolean;
+  kind: ContentKind;
+  status: string;
+  hasManualOverride: boolean;
+  evidence: Evidence;
+}): boolean {
+  if (!input.keep || input.kind !== "freebie") return false;
+  if (input.status !== "active" || input.hasManualOverride) return false;
+  const e = input.evidence;
+  return !(e.claim || e.giveaway || e.hasCodes || e.entitlement || e.project);
+}
+
 export function structuralKind(ctx: KindContext): KindDecision | null {
   const ev = readEvidence(ctx);
   for (const rule of RULES) {

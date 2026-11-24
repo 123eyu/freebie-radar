@@ -9,7 +9,7 @@ import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 import { getSourceHints, applyManualClassification } from "../source-settings.ts";
 import { categoryForSource } from "../../shared/source-classification.ts";
 import { isSharedResource } from "./evidence.ts";
-import { readEvidence } from "./classify.ts";
+import { readEvidence, shouldQueueForReview } from "./classify.ts";
 import { extractPrice } from "./pricing.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
@@ -164,10 +164,14 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       price: priceInfo.price,
       codeCount: parseCodes(cur.codes).length,
     });
-    const claimEvidence =
-      evidence.claim || evidence.giveaway || evidence.hasCodes || evidence.entitlement || evidence.project;
     const hasManualOverride = Boolean(get("SELECT 1 FROM item_classification_overrides WHERE item_id = ?", itemId));
-    const needsReview = effectiveKeep && effectiveKind === "freebie" && !claimEvidence && !hasManualOverride;
+    const needsReview = shouldQueueForReview({
+      keep: effectiveKeep,
+      kind: effectiveKind,
+      status: cur.status,
+      hasManualOverride,
+      evidence,
+    });
     let nextStatus = cur.status;
     if (cur.status === "active" && needsReview) nextStatus = "review";
     else if (cur.status === "review" && !needsReview) nextStatus = effectiveKeep ? "active" : "ignored";
