@@ -78,6 +78,8 @@ const DEFAULT_PROMPT = [
   "判 keep=true 的五类有效内容（同时标清 kind）：",
   "1. freebie（白嫖福利）：限免游戏/正版软件授权、兑换码/CDK/公益额度/送 Token、免费云主机/域名/GPU/算力/学生包、可照做领到手的白嫖攻略、OpenRouter 新上线 :free 免费模型。",
   "   反例：测评、使用记录、使用感受、选购科普、榜单推荐、横评、抄作业清单都不是 freebie（没有可领取的对象），应标 kind=info；只有真能领到/免费拿到的东西才是 freebie。",
+  "   反例补：讨论/抱怨/库存播报（「xx 死绝了吗」「xx 都没货了」「还有吗」「怎么过 xx 认证」）不是 freebie；标题没有链接、活动页或 App 内路径时不要判福利。reason 只能引自原文，原文没写的领取路径一律不许编。",
+  "   分类补：免费领实体物品（纪念章/周边/实体书/样品/礼盒/到店赠品）一律 category=offline，不要判 other/goods；绿色版/破解包/免安装版归 category=software，不是 opensource。",
   "2. deal（特价好价/拼车/出鸡）：明确的高性价比付费促销、史低折扣（如黑五/周年庆特价 VPS、年付小鸡、Steam 史低、正版软件买断大促），以及明确标价发车的合规拼车合租（如 ChatGPT/Claude/Netflix 家庭组车位）或明确标价出鸡/转让帖。不要因为需要付钱就拦掉好价与发车。",
   "   硬约束：标题出现「N出 / 溢价N出 / 出 / 收 / 转让 / 过户 / 出号 / 车位 / 合租 / 拼团 / 独享车」等交易意图词，且带价格或付费方式时，kind 必须是 deal，不得判 info（「50出zouter」= 50 元转让 zouter，是 deal 不是资讯）。",
   "3. opensource（开源项目）：必须有明确的 GitHub/GitLab 仓库、源码或可部署的自托管工具、MCP/Agent/Docker 项目发布或推荐。纯科技新闻（无开源仓库/源码发布）不得标为 opensource。",

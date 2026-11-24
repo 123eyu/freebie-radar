@@ -1,7 +1,7 @@
 /** 撤销/终止免费：出现即说明「已经不免了」，不能当作白嫖证据。 */
 export const REVOKED_FREE = /(?:取消|撤销|停止|终止|暂停|关闭|下线)(?:了|掉|原有|所有|其|的|提供|供应|开放|使用|支持|现有|原先|此前|全部|\s){0,4}(?:免费(?:额度|层|服务|试用|使用|访问)?|白嫖|限免|福利)|不再(?:提供|开放|支持|有|享受)?\s*(?:免费|白嫖|限免)|(?:免费(?:额度|层|服务|试用)|白嫖|限免)(?:已|已经)?\s*(?:取消|撤销|停止|结束|到期|下线|不再提供)|免费\s*(?:已|已经|被)\s*(?:取消|撤销|停止|结束|到期|下线)|free\s+(?:tier|credits?|quota|access|plan)\s+(?:(?:has|is|was)\s+)?(?:been\s+)?(?:cancelled|canceled|ended|discontinued|removed)/i;
 /** 疑问/讨论/求助：没有可领取的对象。 */
-export const QUESTION_TITLE = /够不够|值不值|好不好|吗[？?]?\s*$|到底|是否|怎么|如何|求助|有没有|请问|求推荐/;
+export const QUESTION_TITLE = /够不够|值不值|好不好|吗(?:[？?，,。\s]|$)|到底|是否|怎么|如何|求助|有没有|请问|求推荐|没货|无货|售罄|死绝|绝版|还有吗|用完了|已抢完|靠谱吗|有人知道/;
 
 /** Evidence comes from the post, never from AI reason strings or the source's name. */
 export function contentSignals(title: string, summary = "") {
