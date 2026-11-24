@@ -189,7 +189,7 @@ export const CHANNELS: { key: string; label: string; categories: Category[]; exc
   { key: "news", label: "重要新闻", categories: ["finance", "tech", "stock", "news", "security", "other"], exclude: ["pan", "course"] },
   { key: "opensource", label: "开源", categories: ["ai", "dev", "opensource", "security", "cloud", "vps", "software", "tech", "design", "hardware", "edu", "other"], exclude: ["pan", "course"] },
   { key: "deal", label: "好价", categories: ["vps", "carpool", "trade", "game", "software", "cloud", "domain", "ai", "media", "hardware", "goods", "design", "dev", "security", "edu", "other"], exclude: ["pan", "course"] },
-  { key: "info", label: "行业资讯", categories: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "edu", "news", "other"], exclude: ["pan", "course"] },
+  { key: "info", label: "行业资讯", categories: ["finance", "stock", "tech", "ai", "dev", "hardware", "security", "cloud", "software", "game", "opensource", "design", "edu", "news", "goods", "other"], exclude: ["pan", "course"] },
   { key: "pan", label: "网盘/网课", categories: ["pan", "course"] },
 ];
 
