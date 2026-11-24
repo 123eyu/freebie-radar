@@ -8,7 +8,7 @@ import { get, run } from "../db.ts";
 import { finishAiJob, recordAiBatch, startAiJob } from "./ai-telemetry.ts";
 import { getSourceHints, applyManualClassification } from "../source-settings.ts";
 import { categoryForSource } from "../../shared/source-classification.ts";
-import { isSharedResource } from "./evidence.ts";
+import { isSharedResource, readEvidence } from "./evidence.ts";
 import { extractPrice } from "./pricing.ts";
 
 const VALID_OBTAIN = new Set(["free", "conditional", "lottery", "trial", "promo", "paid"]);
@@ -103,8 +103,9 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       content: string | null;
       url: string;
       tags: string | null;
+      status: string;
     }>(
-      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes, content, url, tags FROM items WHERE id = ?",
+      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes, content, url, tags, status FROM items WHERE id = ?",
       itemId,
     );
     if (!cur) return null;
@@ -148,6 +149,27 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
     ), hints);
     const { kind: effectiveKind, category: effectiveCategory } = applyManualClassification(itemId, autoCategory, finalKind);
     const effectiveKeep = finalKind === "noise" ? false : verdict.keep;
+    // AI 说是福利、证据里却没有任何可领取对象（领取动作/赠送/兑换码/权益/项目）时不上公开站：
+    // 这正是「讨论帖判 freebie」那批幻觉的特征。进 review 等人工看一眼，不直接丢也不直接发。
+    // 已有人工分类的条目以人工为准，不进队列。
+    const evidence = readEvidence({
+      title: cur.title,
+      summary: cur.summary ?? "",
+      url: cur.url,
+      sourceId: cur.source_id,
+      category: effectiveCategory,
+      obtain: finalObtain,
+      isFree: priceInfo.isFree,
+      price: priceInfo.price,
+      codeCount: parseCodes(cur.codes).length,
+    });
+    const claimEvidence =
+      evidence.claim || evidence.giveaway || evidence.hasCodes || evidence.entitlement || evidence.project;
+    const hasManualOverride = Boolean(get("SELECT 1 FROM item_classification_overrides WHERE item_id = ?", itemId));
+    const needsReview = effectiveKeep && effectiveKind === "freebie" && !claimEvidence && !hasManualOverride;
+    let nextStatus = cur.status;
+    if (cur.status === "active" && needsReview) nextStatus = "review";
+    else if (cur.status === "review" && !needsReview) nextStatus = effectiveKeep ? "active" : "ignored";
     const keep = effectiveKeep ? 1 : 0;
     const nextScore = cur
       ? calibrateScoreByObtain(
@@ -186,6 +208,7 @@ codes: parseCodes(cur.codes),
               price = ?,
               is_free = ?,
               tags = ?,
+              status = ?,
               ai_reviewed_at = ?
         WHERE id = ?`,
       JSON.stringify({ ...verdict, keep: effectiveKeep, kind: finalKind, category: autoCategory, obtain: finalObtain }),
@@ -198,6 +221,7 @@ codes: parseCodes(cur.codes),
       priceInfo.price,
       priceInfo.isFree ? 1 : 0,
       mergedTags,
+      nextStatus,
       new Date().toISOString(),
       itemId,
     );

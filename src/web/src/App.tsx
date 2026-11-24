@@ -35,6 +35,7 @@ import {
   BookOpen,
   MoreHorizontal,
   LogOut,
+  Flag,
 } from "lucide-react";
 import { CompactRow, ItemCard, ItemDetailDrawer, QuickBlockModal } from "./components/ItemView.tsx";
 import { AdminGate } from "./components/AdminGate.tsx";
@@ -197,6 +198,8 @@ const SECONDARY_VIEWS: Preset[] = [
   { key: "starred", label: t("我的收藏"), icon: Check },
   { key: "all", label: t("全部收录"), icon: AlignJustify },
   { key: "hidden", label: t("已关闭"), icon: EyeOff },
+  // 待复核：AI 判成福利但证据里没有可领取对象，公开站看不到，只有管理员能处理
+  { key: "review", label: t("待复核"), icon: Flag },
 ];
 
 const PRESETS: Preset[] = [...PRIMARY_CHANNELS, ...SECONDARY_VIEWS];
@@ -883,7 +886,7 @@ export function App() {
   // 快捷视图 + 数据源树：桌面在侧栏常驻，移动端折进「筛选」面板里
   const sourcePanelNode = (
     <SourcePanel
-      views={SECONDARY_VIEWS}
+      views={SECONDARY_VIEWS.filter((view) => view.key !== "review" || adminReady)}
       preset={preset}
       onPickPreset={switchPreset}
       grouped={grouped}

@@ -17,6 +17,8 @@ export function applyChannelQuery(input: Record<string, string | undefined>): Re
     urgent: { expiring: "1" },
     starred: { starred: "1" },
     hidden: { status: "ignored" },
+    // 待复核：AI 说是福利但没有任何可领取证据的条目，公开站按 status='active' 自动隐藏
+    review: { status: "review" },
     all: { hideRejected: "1" },
   };
   for (const [key, value] of Object.entries(defaults[q.preset ?? ""] ?? {})) {
