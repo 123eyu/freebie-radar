@@ -81,6 +81,8 @@ export type Evidence = {
   question: boolean;
   warning: boolean;
   selfPromo: boolean;
+  /** 公告/发布/公测文体：讲的是「某个东西上线了」，不是「你能领什么」 */
+  announcement: boolean;
   editorial: boolean;
 };
 
@@ -126,6 +128,8 @@ export function readEvidence(ctx: KindContext): Evidence {
       !ctx.authoritativeNews,
     warning: CONSUMER_WARNING.test(text) && !ctx.authoritativeNews,
     selfPromo: SELF_PROMO.test(text),
+    // 公告文体只看标题：「开启公测」「上线」「发布 3.0」这类没有可领取对象
+    announcement: /公测|内测|上线|发布|首发|预告|开启|招募|发布会|新版本|正式推出/.test(ctx.title),
     editorial: signals.editorial,
   };
 }
@@ -143,7 +147,10 @@ const RULES: { id: string; kind: ContentKind; when: (ev: Evidence) => boolean }[
   // 提问/讨论：没有可领取对象
   { id: "question", kind: "info", when: (ev) => ev.question },
   // 开发者自荐：文体本身就是「这是我做的项目」，比标题里的「免费」更能说明它是什么
+  // 开发者自荐：文体本身就是「这是我做的项目」，比标题里的「免费」更能说明它是什么
   { id: "self-promo", kind: "opensource", when: (ev) => ev.selfPromo && !ev.paid },
+  // 公告/公测/上线：没有可领取对象，是资讯而不是福利
+  { id: "announcement", kind: "info", when: (ev) => ev.announcement && !ev.project && !ev.claim && !ev.hasCodes && !ev.giveaway && !ev.entitlement },
   // 确实在发东西：领取/兑换码字段/赠送抽奖。有价格时不成立（「下单赠礼包，年付 79」是促销）
   { id: "claim", kind: "freebie", when: (ev) => (ev.claim || ev.hasCodes || ev.giveaway) && !ev.paid },
   // 权益对象 + 时效（会员 7 天 × 3）：即使没写「免费」也是能领到的东西
