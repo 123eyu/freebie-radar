@@ -282,7 +282,10 @@ export function publicAiSettings(s = getAiSettings()) {
 }
 
 function buildSystemPrompt(s: AiSettings): string {
-  const parts: string[] = [s.systemPrompt.trim() || DEFAULT_PROMPT];
+  const custom = s.systemPrompt.trim();
+  const parts: string[] = [custom || DEFAULT_PROMPT];
+  // 自定义/云端 system prompt 也要补分类清单，否则模型不知道 category 能取哪些值
+  if (custom) parts.push("", CATEGORY_PROMPT_LINE, CATEGORY_DESC_LINE);
   if (s.extraPrompt.trim()) {
     parts.push("", "补充审核规则（务必优先遵守）：", s.extraPrompt.trim());
   }

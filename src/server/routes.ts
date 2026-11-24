@@ -80,6 +80,7 @@ type BackfillMode,
   aiDedupClusterStats,
   runAiDedupBackfill,
 } from "./ai-admin.ts";
+import { promptSyncConfigured, readSyncState, syncPromptsNow } from "./enrich/prompt-sync.ts";
 import {
   getRetention,
   itemCounts,
@@ -1410,6 +1411,17 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
   /* ---------------------------------------------------------------- *
    * AI 语义审核配置：开关/规则初筛/送审范围/连接与性能/提示词/测试/补审
    * ---------------------------------------------------------------- */
+
+  // 云端提示词：配置与最近一次同步状态；POST 立即拉取一次
+  app.get("/api/ai/prompt-sync", (c) =>
+    c.json({
+      configured: promptSyncConfigured(),
+      urls: { system: config.promptUrl ? "set" : "", extra: config.promptExtraUrl ? "set" : "" },
+      intervalMinutes: config.promptSyncMinutes,
+      state: readSyncState(),
+    }),
+  );
+  app.post("/api/ai/prompt-sync", async (c) => c.json(await syncPromptsNow()));
 
   app.get("/api/ai", (c) => {
     const aiS = getAiSettings();
