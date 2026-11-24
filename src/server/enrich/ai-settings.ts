@@ -21,6 +21,8 @@ export type AiVerdict = {
   obtain?: ObtainMode;
   /** 1-5 分质量评估：5=高价值必看/必抢，4=明确好内容，3=普通，2=鸡肋，1=噪音 */
   quality?: number;
+  /** 检索用短标签（品牌/平台/品类），不参与频道路由；缺省表示模型没给 */
+  tags?: string[];
 };
 
 export type AiSourceMode = "all" | "exclude" | "only";
@@ -178,6 +180,24 @@ function normalizeSettings(raw: Partial<AiSettings>, base: AiSettings): AiSettin
     aiDedupEnabled: typeof raw.aiDedupEnabled === "boolean" ? raw.aiDedupEnabled : base.aiDedupEnabled,
     aiDedupWindowHours: numOr(raw.aiDedupWindowHours, base.aiDedupWindowHours, 6, 168),
   };
+}
+
+/** AI 标签只做检索辅助：非法、超长、重复一律丢掉，绝不影响这条内容的分类判定。 */
+export const AI_TAG_MAX = 4;
+export const AI_TAG_MAX_LEN = 16;
+
+export function normalizeAiTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const tag = item.trim().replace(/^#+/, "").replace(/\s+/g, " ");
+    if (!tag || tag.length > AI_TAG_MAX_LEN) continue;
+    if (out.includes(tag)) continue;
+    out.push(tag);
+    if (out.length >= AI_TAG_MAX) break;
+  }
+  return out;
 }
 
 export function getAiSettings(): AiSettings {
@@ -368,6 +388,8 @@ async function callOnce(
         console.warn(`${tag} 丢弃无效结论 index=${v.index} category=${String(v.category)}`);
         continue;
       }
+      // tags 是辅助字段：非法就清空，不因为它把一条正确结论丢掉
+      (v as AiVerdict).tags = normalizeAiTags(v.tags);
       map.set(v.index, v as AiVerdict);
     }
     // 整批都没给出合法结论时仍当作失败，避免把「模型跑偏」记成「全部未审通过」

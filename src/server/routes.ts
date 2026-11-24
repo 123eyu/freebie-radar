@@ -532,6 +532,11 @@ function buildItemsQuery(
     where.push("(title LIKE ? ESCAPE '\\' OR COALESCE(summary,'') LIKE ? ESCAPE '\\')");
     params.push(likePattern(q.search), likePattern(q.search));
   }
+  // 标签筛选：tags 是 JSON 数组，用 json_each 精确匹配，不做 LIKE（避免 STEAM 命中 STEAM_KEY 之类）
+  if (q.tag) {
+    where.push("EXISTS (SELECT 1 FROM json_each(items.tags) WHERE json_each.value = ?)");
+    params.push(q.tag);
+  }
   if (q.since) {
     where.push("COALESCE(published_at, first_seen_at) >= ?");
     params.push(q.since);

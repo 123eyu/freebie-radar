@@ -1,4 +1,5 @@
 import { getAiSettings, reviewItems, type AiVerdict } from "./ai-settings.ts";
+import { normalizeAiTags } from "./ai-settings.ts";
 import { dedupeKeptItemsWithAi } from "./ai-dedup.ts";
 import { demoteEditorialGoods, demoteOfflineCategory, enforceFreebieEvidence, FREEBIE_ONLY_SOURCES, isCategory, resolveKind, type ContentKind } from "./index.ts";
 import { calibrateScoreByObtain } from "./alias.ts";
@@ -101,8 +102,9 @@ function applyVerdictToItem(itemId: number, verdict: AiVerdict): AppliedVerdict 
       codes: string | null;
       content: string | null;
       url: string;
+      tags: string | null;
     }>(
-      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes, content, url FROM items WHERE id = ?",
+      "SELECT score, base_score, ai_keep, obtain, category, title, summary, source_id, is_free, price, published_at, codes, content, url, tags FROM items WHERE id = ?",
       itemId,
     );
     if (!cur) return null;
@@ -164,6 +166,14 @@ codes: parseCodes(cur.codes),
           },
         )
       : 0;
+    // AI 语义标签放前面，历史关键词标签保留在后，去重后最多 8 个
+    let curTags: string[] = [];
+    try {
+      curTags = JSON.parse(cur.tags ?? "[]") as string[];
+    } catch {
+      curTags = [];
+    }
+    const mergedTags = JSON.stringify([...new Set([...normalizeAiTags(verdict.tags), ...(Array.isArray(curTags) ? curTags : [])])].slice(0, 8));
     run(
       `UPDATE items
           SET ai = ?,
@@ -175,6 +185,7 @@ codes: parseCodes(cur.codes),
               score = ?,
               price = ?,
               is_free = ?,
+              tags = ?,
               ai_reviewed_at = ?
         WHERE id = ?`,
       JSON.stringify({ ...verdict, keep: effectiveKeep, kind: finalKind, category: autoCategory, obtain: finalObtain }),
@@ -186,6 +197,7 @@ codes: parseCodes(cur.codes),
       nextScore,
       priceInfo.price,
       priceInfo.isFree ? 1 : 0,
+      mergedTags,
       new Date().toISOString(),
       itemId,
     );
