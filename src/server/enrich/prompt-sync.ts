@@ -8,7 +8,7 @@
  */
 import { config } from "../config.ts";
 import { get, run } from "../db.ts";
-import { saveAiSettings } from "./ai-settings.ts";
+import { getAiSettings, saveAiSettings } from "./ai-settings.ts";
 import { validatePromptText, validatePromptUrl, type PromptSlot } from "./prompt-source.ts";
 
 const STATE_KEY = "prompt_sync";
@@ -54,9 +54,11 @@ type Pulled =
   | { status: "not-modified" }
   | { status: "error"; message: string };
 
-async function pull(url: string, etag?: string): Promise<Pulled> {
-  const headers: Record<string, string> = { accept: "text/markdown, text/plain;q=0.9, */*;q=0.5" };
-  if (etag) headers["if-none-match"] = etag;
+async function pull(url: string): Promise<Pulled> {
+  // 不用 If-None-Match：raw.githubusercontent 的 ETag 并不随内容变化，
+  // 一旦缓存了旧 ETag 就会永远 304，云端改了提示词永远拉不到（实测踩过）。
+  // 文件只有几 KB，每轮全量拉、本地比内容，反而更可靠。
+  const headers: Record<string, string> = { accept: "text/markdown, text/plain;q=0.9, */*;q=0.5", "cache-control": "no-cache" };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), Math.min(config.fetchTimeoutMs, 15_000));
   try {
@@ -90,7 +92,7 @@ export async function syncPromptsNow(): Promise<PromptSyncResult> {
       lastError = `${slot}: ${urlError}`;
       continue;
     }
-    const res = await pull(url, state[slot]?.etag);
+    const res = await pull(url);
     if (res.status === "not-modified") {
       skipped.push(slot);
       continue;
@@ -107,6 +109,12 @@ export async function syncPromptsNow(): Promise<PromptSyncResult> {
       continue;
     }
     const text = res.text.trim();
+    const currentSettings = getAiSettings();
+    const current = (slot === "system" ? currentSettings.systemPrompt : currentSettings.extraPrompt).trim();
+    if (current === text) {
+      skipped.push(slot);
+      continue;
+    }
     saveAiSettings(slot === "system" ? { systemPrompt: text } : { extraPrompt: text });
     state[slot] = { url, etag: res.etag, syncedAt: new Date().toISOString(), chars: text.length };
     changed.push(slot);
