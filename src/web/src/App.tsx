@@ -171,7 +171,7 @@ function useApi<T>(url: string | null, scope = ""): { data: T | null; loading: b
 function Toast({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-800 bg-ink-950 px-3.5 py-2 text-[12px] font-medium text-on-solid shadow-lg">
+    <div role="status" aria-live="polite" className="toast-enter fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-ink-700 bg-solid px-3.5 py-2 text-[12px] font-medium text-on-solid shadow-lg">
       <Bell size={14} className="text-ink-300" />
       {message}
     </div>
@@ -873,7 +873,7 @@ export function App() {
         setAuthHash(null);
         setAuthOpen(true);
       }}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ink-950 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-on-solid hover:bg-solid-hover"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-solid px-2 py-1 text-[12px] font-medium whitespace-nowrap text-on-solid hover:bg-solid-hover"
       title={t("用 LINUX DO 登录")}
     >
       <User size={12} /> {t("登录")}

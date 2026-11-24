@@ -685,7 +685,7 @@ export function ItemDetailDrawer({
   }, [onClose, hasPrev, hasNext, onPrev, onNext]);
 
   return (
-    <div className="backdrop-enter fixed inset-0 z-50 flex justify-end bg-ink-950/25 backdrop-blur-[1px]" onClick={onClose}>
+    <div className="backdrop-enter fixed inset-0 z-50 flex justify-end bg-overlay backdrop-blur-[1px]" onClick={onClose}>
       <aside
         ref={dialogRef}
         role="dialog"
@@ -928,7 +928,7 @@ export function QuickBlockModal({
 
   return (
     <div
-      className="backdrop-enter fixed inset-0 z-50 flex items-end justify-center bg-ink-950/30 backdrop-blur-[1px] sm:items-center sm:p-4"
+      className="backdrop-enter fixed inset-0 z-50 flex items-end justify-center bg-overlay backdrop-blur-[1px] sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
