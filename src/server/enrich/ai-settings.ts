@@ -347,6 +347,7 @@ async function callOnce(
     if (!Array.isArray(arr) || arr.length !== payload.length) throw new Error("AI 返回条数与送审条数不匹配");
     const expectedIndexes = new Set(payload.map((item) => item.index));
     const map = new Map<number, AiVerdict>();
+    let invalidCount = 0;
     // 不信任 JSON 的类型和索引：字符串 false 会被当成通过，串批索引会覆盖其他资源。
     for (const raw of arr) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("AI 结论必须是对象");
@@ -354,14 +355,23 @@ async function callOnce(
       if (typeof v.index !== "number" || !Number.isInteger(v.index) || !expectedIndexes.has(v.index) || map.has(v.index)) {
         throw new Error("AI 结论索引缺失、重复或不属于当前批次");
       }
-      if (typeof v.keep !== "boolean" || !isCategory(v.category) || typeof v.reason !== "string" ||
-          (v.kind !== undefined && !isContentKind(v.kind)) ||
-          (v.obtain !== undefined && !isObtainMode(v.obtain)) ||
-          (v.quality !== undefined && (typeof v.quality !== "number" || !Number.isFinite(v.quality) || v.quality < 1 || v.quality > 5))) {
-        throw new Error("AI 结论字段无效（keep/category/reason/kind/obtain/quality）");
+      // 单条字段非法只丢这一条：整批重试会把另外 19 条正确结论一起作废，
+      // 而 category/kind 越界多半来自个别幻觉（模型给出枚举外的分类）。
+      // 索引错位仍然是整批失败——那会把结论张冠李戴到别的资源上。
+      const invalid =
+        typeof v.keep !== "boolean" || !isCategory(v.category) || typeof v.reason !== "string" ||
+        (v.kind !== undefined && !isContentKind(v.kind)) ||
+        (v.obtain !== undefined && !isObtainMode(v.obtain)) ||
+        (v.quality !== undefined && (typeof v.quality !== "number" || !Number.isFinite(v.quality) || v.quality < 1 || v.quality > 5));
+      if (invalid) {
+        invalidCount += 1;
+        console.warn(`${tag} 丢弃无效结论 index=${v.index} category=${String(v.category)}`);
+        continue;
       }
       map.set(v.index, v as AiVerdict);
     }
+    // 整批都没给出合法结论时仍当作失败，避免把「模型跑偏」记成「全部未审通过」
+    if (!map.size && payload.length > 0) throw new Error("AI 结论全部无效（keep/category/reason/kind/obtain/quality）");
     return { map, ttfbMs: ttfb };
   } finally {
     clearTimeout(timer);
