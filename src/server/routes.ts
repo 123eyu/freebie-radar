@@ -412,7 +412,7 @@ function createClusterScope(): (kind: string | null | undefined, category: strin
  * 必须用自包含 EXISTS 子查询过滤 —— merge=1 时的窗口函数子查询只查 items 单表，
  * 拿不到外层 JOIN 别名，写成 JOIN 会在 merge 模式下直接报错。
  */
-type QueryScope = { userId: number | null; publicMode: boolean };
+type QueryScope = { userId: number | null; publicMode: boolean; /** 管理员可在公开站查看 review/ignored 等非 active 状态 */ adminView?: boolean };
 
 function buildItemsQuery(
   input: Record<string, string | undefined>,
@@ -425,7 +425,9 @@ function buildItemsQuery(
   const params: SqlValue[] = [];
 
   const status = q.status ?? "active";
-  if (scope.publicMode) {
+  // 待复核/已关闭这类状态只对管理员开放：公开站访客与普通用户永远只看 active
+  const adminStatusView = Boolean(scope.adminView) && status !== "active";
+  if (scope.publicMode && !adminStatusView) {
     where.push("status = 'active'");
     // 公开站：ignored 等价于「我关掉了这条」，active 等价于「我没关」
     if (scope.userId !== null) {
@@ -728,7 +730,7 @@ export function registerApi(app: Hono) {
     const rules = id.siteMode === "public" && id.user
       ? loadUserBlockRules(id.user.id, getUserPushConfig(id.user.id).useGlobalBlocks)
       : loadActiveBlockRules();
-    const scope: QueryScope = { userId: id.user?.id ?? null, publicMode: id.siteMode === "public" };
+    const scope: QueryScope = { userId: id.user?.id ?? null, publicMode: id.siteMode === "public", adminView: id.isAdmin };
     // 公开站未登录访客：个人收藏/已关闭在 localStorage，前端带 ids 列表来查
     if (scope.publicMode && !scope.userId && q.ids) {
       const ids = q.ids.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0).slice(0, 100);
@@ -872,7 +874,7 @@ const fetchLimit = Math.min(Math.max(offset + limit * 3, 240), 600);
     const viewer = identityOf(c);
     const rules = viewer.siteMode === "public" && viewer.user
       ? loadUserBlockRules(viewer.user.id, getUserPushConfig(viewer.user.id).useGlobalBlocks) : loadActiveBlockRules();
-    const { where, params, subKeywords } = buildItemsQuery(q, rules, false, { userId: viewer.user?.id ?? null, publicMode: viewer.siteMode === "public" });
+    const { where, params, subKeywords } = buildItemsQuery(q, rules, false, { userId: viewer.user?.id ?? null, publicMode: viewer.siteMode === "public", adminView: viewer.isAdmin });
     const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = SORTS[q.sort ?? "newest"] ?? SORTS.newest;
     const rows = all<ItemRow>(`SELECT * FROM items ${clause} ORDER BY ${order} LIMIT 300`, ...params);
