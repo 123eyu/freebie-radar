@@ -8,7 +8,7 @@ import { guessObtain, type ObtainMode } from "./obtain.ts";
 import { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind } from "./kind.ts";
 import { CATEGORY_LABEL, isCategory, type Category } from "../../shared/taxonomy.ts";
 import { categoryForSource, type SourceHints } from "../../shared/source-classification.ts";
-import { contentSignals, isSharedResource, REVOKED_FREE } from "./evidence.ts";
+import { contentSignals, isSharedResource, QUESTION_TITLE, REVOKED_FREE } from "./evidence.ts";
 
 export { guessKind, isContentKind, KIND_LABEL, resolveKind, type ContentKind };
 export type { Category };
@@ -348,7 +348,12 @@ const EDITORIAL_CATEGORIES = new Set(["finance", "stock", "news"]);
 const CLAIM_NEEDED_CATEGORIES = new Set(["tech", "hardware", "other", "finance", "stock", "news"]);
 
 /** contentSignals().claim 没覆盖、但标题里一样算「真有东西可领」的说法。 */
-const TITLE_CLAIM_RE = /免费|可领|能领|领了|到账|\b(?:free|giveaway|coupon)\b/i;
+/** 新闻体裁：出现这些词说明是报道，不是发福利。 */
+const NEWS_VOICE_RE = /消息称|据悉|宣布|筹备|计划|或将|预计|报道|曝光|记者|官方表示|发布会|招聘|岗位|财报|数据显示/;
+
+// 只认「免费 + 动作/对象」：裸「免费」二字会把「以后在家刷短剧，还能免费吗？」
+// 这种新闻标题当成白嫖证据，进而让 tech 类新闻落进真福利。
+const TITLE_CLAIM_RE = /可领|能领|领了|到账|免费(?:领|送|获取|拿到|使用|开放|下载|入库)|giveaway|coupon/i;
 
 /** 价格/行情话术：正文出现它，说明讲的是「买得值不值/更划算」，不是「白拿」。 */
 const PRICE_TALK_RE =
@@ -409,8 +414,13 @@ export function enforceFreebieEvidence(
     !(extra.codes && extra.codes.length)
   ) {
     const hasClaim = contentSignals(title).claim || TITLE_CLAIM_RE.test(title);
+    const question = QUESTION_TITLE.test(title);
     const text = `${title} ${extra.summary ?? ""}`.slice(0, 3000);
-    if (!hasClaim && PRICE_TALK_RE.test(text)) return { kind: "info", obtain: null, category };
+    // 资讯类分类下，新闻体裁或疑问句标题且没有领取证据 → 不是白嫖。
+    // 原来要求「正文有价格讨论」才降级，于是「红果筹备电视端：还能免费吗？」
+    // 这种新闻靠标题里一个「免费」就落进了真福利频道。
+    // 只降「新闻腔/提问」，不动「送一个美国静态IP」「muse账号2个」这类社区直给帖。
+    if (!hasClaim && (question || NEWS_VOICE_RE.test(title))) return { kind: "info", obtain: null, category };
   }
   return { kind, obtain, category };
 }
