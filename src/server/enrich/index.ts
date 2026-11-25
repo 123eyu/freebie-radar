@@ -420,7 +420,9 @@ export function enforceFreebieEvidence(
     // 原来要求「正文有价格讨论」才降级，于是「红果筹备电视端：还能免费吗？」
     // 这种新闻靠标题里一个「免费」就落进了真福利频道。
     // 只降「新闻腔/提问」，不动「送一个美国静态IP」「muse账号2个」这类社区直给帖。
-    if (!hasClaim && (question || NEWS_VOICE_RE.test(title))) return { kind: "info", obtain: null, category };
+    if (!hasClaim && (question || NEWS_VOICE_RE.test(title) || PRICE_TALK_RE.test(`${title} ${extra.summary ?? ""}`))) {
+      return { kind: "info", obtain: null, category };
+    }
   }
   return { kind, obtain, category };
 }
