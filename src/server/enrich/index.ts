@@ -348,6 +348,9 @@ const EDITORIAL_CATEGORIES = new Set(["finance", "stock", "news"]);
 const CLAIM_NEEDED_CATEGORIES = new Set(["tech", "hardware", "other", "finance", "stock", "news"]);
 
 /** contentSignals().claim 没覆盖、但标题里一样算「真有东西可领」的说法。 */
+/** 重新打包的软件产物：绿色版 / 便携版 / 修改版 / 精简版 / 破解版。 */
+const PIRATED_BUILD_RE = /绿色版|便携版|修改版|精简版|破解版|免安装|汉化版|注册版|特别版/;
+
 /** 新闻体裁：出现这些词说明是报道，不是发福利。 */
 const NEWS_VOICE_RE = /消息称|据悉|宣布|筹备|计划|或将|预计|报道|曝光|记者|官方表示|发布会|招聘|岗位|财报|数据显示/;
 
@@ -398,6 +401,12 @@ export function enforceFreebieEvidence(
   if (kind !== "freebie") return { kind, obtain, category };
   if (ruleObtain === "lottery" || obtain === "lottery" || LOTTERY_TITLE_RE.test(title)) {
     return { kind, obtain: "lottery", category: "lottery" };
+  }
+  // 软件下载站的绿色版/修改版/精简版只是「下载一个重新打包的软件」，
+  // 不是「领到一份福利」：没有授权、没有领取动作，多半还是第三方破解。
+  // 用户看真福利时段看到一排「XX 绿色版」就是这个原因。
+  if (PIRATED_BUILD_RE.test(title) && !contentSignals(title).claim) {
+    return { kind: "info", obtain: null, category };
   }
   if (PRICED_TITLE_RE.test(title) || paidPrice || obtain === "paid") {
     return { kind: "deal", obtain: obtain === "free" ? "paid" : obtain, category };
