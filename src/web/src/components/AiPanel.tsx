@@ -575,7 +575,7 @@ export function AiPanel({
                   </div>
 
                   {/* 柔和流光进度条 */}
-                  <div className="relative h-2 overflow-hidden rounded-full bg-knob/80 ring-1 ring-brand-border/60">
+                  <div className="relative h-2 overflow-hidden rounded-full bg-ink-100 ring-1 ring-brand-border/60">
                     <div
                       className="relative h-full overflow-hidden rounded-full bg-accent-solid transition-[width] duration-300 ease-out"
                       style={{ width: Math.max(6, pct) + "%" }}
@@ -601,7 +601,7 @@ export function AiPanel({
                       {job.recentEvents.slice(0, 4).map((ev, idx) => (
                         <div
                           key={ev.title + idx}
-                          className="ai-enter flex items-center gap-2 rounded bg-knob/85 px-2.5 py-1 text-[12px]"
+                          className="ai-enter flex items-center gap-2 rounded bg-surface-muted px-2.5 py-1 text-[12px]"
                         >
                           <span className={"shrink-0 " + (ev.keep ? "text-deal" : "text-alert")}>
                             {ev.keep ? <Check size={12} /> : <CircleX size={12} />}
