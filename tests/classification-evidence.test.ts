@@ -343,7 +343,7 @@ for (const title of [
   });
 }
 
-for (const title of ["（已无）美团单车七天无限次骑行卡", "美团单车7天无限次卡还有5次可以领（已无）", "会员月卡已领完"]) {
+for (const title of ["（已无）美团单车七天无限次骑行卡", "美团单车7天无限次卡还有5次可以领（已无）", "会员月卡已领完", "【已无，后续看情况再来第三弹】什么？gpt又重置了？"]) {
   test(`标题自己写已无的福利不进真福利：${title.slice(0, 14)}`, () => {
     assert.equal(enforceFreebieEvidence("freebie", "conditional", title, "offline", {}).kind, "info");
   });
@@ -366,5 +366,11 @@ for (const title of [
 ]) {
   test(`有领取动作的仍算真福利：${title.slice(0, 16)}`, () => {
     assert.equal(enforceFreebieEvidence("freebie", "free", title, "ai", {}).kind, "freebie");
+  });
+}
+
+for (const title of ["账号已无法登录，求助怎么找回"]) {
+  test(`「已无法…」不是已领完：${title.slice(0, 10)}`, () => {
+    assert.notEqual(enforceFreebieEvidence("freebie", "free", title, "ai", {}).kind, "info");
   });
 }
